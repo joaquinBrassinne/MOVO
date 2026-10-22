@@ -1,0 +1,58 @@
+# Infra local de MOVO — solo desarrollo (Fase 0, tarea 0.2).
+#
+#   make up     # levanta y espera los healthchecks
+#   make down   # baja conservando volúmenes
+#
+# Los valores salen del .env de la raíz (ver .env.example).
+# Redis entra recién en la Fase 7 (§3.7 del SDD).
+
+name: movo
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.6
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-movo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-movo}
+      POSTGRES_DB: ${POSTGRES_DB:-movo}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  minio:
+    # minio/minio ya no se distribuye en Docker Hub y quay.io exige credenciales:
+    # el default es el espejo público congelado de Bitnami. Para usar otra imagen
+    # (por ejemplo la oficial) se ajustan MINIO_IMAGE y MINIO_DATA_DIR en el .env:
+    #   MINIO_IMAGE=quay.io/minio/minio:<tag>
+    #   MINIO_DATA_DIR=/data
+    # Los dos valores van juntos: si cambia el datadir, cambia el volumen montado.
+    # En Git Bash conviene definirlos en el .env y no como variables de shell,
+    # porque MSYS reescribe las rutas que empiezan con "/".
+    image: ${MINIO_IMAGE:-bitnamilegacy/minio:2025.7.23-debian-12-r5}
+    command: server ${MINIO_DATA_DIR:-/bitnami/minio/data} --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-movo}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-movo12345}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - miniodata:${MINIO_DATA_DIR:-/bitnami/minio/data}
+    healthcheck:
+      # Vale para cualquier imagen de MinIO: usa `mc` si está, si no el endpoint HTTP.
+      test: ["CMD-SHELL", "mc ready local >/dev/null 2>&1 || curl -fsS http://localhost:9000/minio/health/live >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  pgdata:
+  miniodata:

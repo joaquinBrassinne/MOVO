@@ -370,7 +370,7 @@ Convenciones de trabajo:
 **Objetivo:** repo listo para trabajar con calidad desde el primer commit.
 
 - [x] 0.1 Monorepo, `Makefile`, `.editorconfig`, `.gitignore` (S)
-- [ ] 0.2 `docker-compose` con Postgres+PostGIS y MinIO (S)
+- [x] 0.2 `docker-compose` con Postgres+PostGIS y MinIO (S)
 - [ ] 0.3 `internal/platform`: config por env, `slog`, apagado ordenado (M)
 - [ ] 0.4 Conexión DB con `pgx` + migraciones + primera migración (extensión PostGIS) (S)
 - [ ] 0.5 Servidor HTTP con `chi`, `request_id`, `/healthz`, `/readyz`, formato de error (M)
