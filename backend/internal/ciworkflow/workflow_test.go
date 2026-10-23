@@ -5,6 +5,7 @@
 package ciworkflow_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -61,14 +62,15 @@ func TestWorkflowTriggersOnWorkingBranches(t *testing.T) {
 
 // TestWorkflowKeepsMakeAtTheRepositoryRoot pins that no run step is moved into
 // backend/: the make targets of the root Makefile are the pipeline's entry
-// point, and a working-directory default breaks them silently.
+// point, and a global working-directory default breaks them silently. A
+// job-scoped default is fine: the frontend job does not use make at all.
 func TestWorkflowKeepsMakeAtTheRepositoryRoot(t *testing.T) {
 	t.Parallel()
 
 	workflow := repoFile(t, ".github/workflows/ci.yml")
 
-	if strings.Contains(workflow, "defaults:") {
-		t.Error("workflow sets defaults:, which moves make away from the root Makefile")
+	if regexp.MustCompile(`(?m)^defaults:`).MatchString(workflow) {
+		t.Error("workflow sets a top-level defaults:, which moves make away from the root Makefile")
 	}
 	for _, job := range []string{"test", "build", "migrations"} {
 		if block := jobBlock(t, workflow, job); !strings.Contains(block, "run: make ") {
@@ -105,7 +107,7 @@ func TestWorkflowBoundsEveryJob(t *testing.T) {
 
 	workflow := repoFile(t, ".github/workflows/ci.yml")
 
-	jobs := []string{"lint", "test", "build", "migrations"}
+	jobs := []string{"lint", "test", "build", "migrations", "frontend"}
 	for _, job := range jobs {
 		if block := jobBlock(t, workflow, job); !strings.Contains(block, "timeout-minutes:") {
 			t.Errorf("job %q has no timeout-minutes", job)
@@ -170,5 +172,89 @@ func TestLintVersionMatchesTheMakefile(t *testing.T) {
 	}
 	if !strings.Contains(workflow, "version: "+version[1]) {
 		t.Errorf("CI does not run golangci-lint %s, the version `make lint` expects", version[1])
+	}
+}
+
+// TestFrontendJobRunsEveryGate pins that the frontend gets the same treatment
+// as the backend: no commit reaches develop with a lint error, an unformatted
+// file, a type error or a build that does not compile.
+func TestFrontendJobRunsEveryGate(t *testing.T) {
+	t.Parallel()
+
+	workflow := repoFile(t, ".github/workflows/ci.yml")
+	block := jobBlock(t, workflow, "frontend")
+
+	for _, want := range []string{
+		"working-directory: frontend",
+		"run: npm ci",
+		"run: npm run lint",
+		"run: npm run format:check",
+		"run: npm run typecheck",
+		"run: npm run build",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("frontend job does not run %q", want)
+		}
+	}
+}
+
+// TestFrontendJobUsesThePinnedNodeVersion pins that CI installs the Node
+// version the project declares once, not a moving default that would drift
+// away from development.
+func TestFrontendJobUsesThePinnedNodeVersion(t *testing.T) {
+	t.Parallel()
+
+	workflow := repoFile(t, ".github/workflows/ci.yml")
+	block := jobBlock(t, workflow, "frontend")
+
+	if !strings.Contains(block, "node-version-file: frontend/.nvmrc") {
+		t.Error("frontend job does not read the Node version from frontend/.nvmrc")
+	}
+	if strings.Contains(block, "node-version:") {
+		t.Error("frontend job hardcodes a node-version instead of reading frontend/.nvmrc")
+	}
+	for _, want := range []string{"cache: npm", "cache-dependency-path: frontend/package-lock.json"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("frontend job does not configure %q", want)
+		}
+	}
+
+	nvmrc := strings.TrimSpace(repoFile(t, "frontend/.nvmrc"))
+	if !regexp.MustCompile(`^\d+\.\d+\.\d+$`).MatchString(nvmrc) {
+		t.Errorf("frontend/.nvmrc is %q, want an exact version such as 24.22.0", nvmrc)
+	}
+}
+
+// TestFrontendPinsExactDependencyVersions pins that every frontend dependency
+// is an exact version. A caret range in CI means the lockfile is the only pin,
+// and `npm install` locally silently moves the tree away from it.
+func TestFrontendPinsExactDependencyVersions(t *testing.T) {
+	t.Parallel()
+
+	var manifest struct {
+		Dependencies    map[string]string `json:"dependencies"`
+		DevDependencies map[string]string `json:"devDependencies"`
+	}
+	if err := json.Unmarshal([]byte(repoFile(t, "frontend/package.json")), &manifest); err != nil {
+		t.Fatalf("parse frontend/package.json: %v", err)
+	}
+
+	exact := regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+	pinned := 0
+	for _, deps := range []map[string]string{manifest.Dependencies, manifest.DevDependencies} {
+		for name, version := range deps {
+			pinned++
+			if !exact.MatchString(version) {
+				t.Errorf("dependency %q is %q, want an exact version without a range", name, version)
+			}
+		}
+	}
+	if pinned == 0 {
+		t.Fatal("frontend/package.json declares no dependencies")
+	}
+
+	// `npm ci` in CI depends on a lockfile that matches the manifest.
+	if lock := repoFile(t, "frontend/package-lock.json"); !strings.Contains(lock, `"lockfileVersion"`) {
+		t.Error("frontend/package-lock.json is not an npm lockfile")
 	}
 }

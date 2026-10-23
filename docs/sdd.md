@@ -383,7 +383,7 @@ Convenciones de trabajo:
 - [x] 0.5 Servidor HTTP con `chi`, `request_id`, `/healthz`, `/readyz`, formato de error (M)
 - [x] 0.6 CI (lint + test + build + chequeo de migraciones) (M)
 - [x] 0.7 `docs/adr/0001` con las decisiones de la sección 3 y `docs/adr/0002` de object storage (puerto `Storage` con API S3; RustFS pineado **sólo en desarrollo**, Garage como plan B, servicio gestionado en producción), y `CLAUDE.md` actualizado (S)
-- [ ] 0.8 Frontend Next.js + Tailwind base, ESLint/Prettier, layout (S)
+- [x] 0.8 Frontend Next.js + Tailwind base, ESLint/Prettier, layout (S)
 
 **DoD:** `make up` levanta todo; CI verde; `/readyz` responde con la DB conectada.
 

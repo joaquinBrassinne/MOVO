@@ -1,7 +1,7 @@
 name: CI
 
 # Cada push a una rama de trabajo y cada PR contra develop/main pasan por
-# lint, tests, build y migraciones (SDD §2 y tarea 0.6).
+# lint, tests, build, migraciones y frontend (SDD §2 y tareas 0.6 y 0.8).
 on:
   push:
     branches:
@@ -118,3 +118,28 @@ jobs:
           "SELECT extname FROM pg_extension WHERE extname LIKE 'postgis%'")"
       - name: re-apply migrations
         run: make migrate-up
+
+  # Este job no pasa por el Makefile de la raíz: los comandos del frontend
+  # viven en su package.json, así que fija el directorio una vez.
+  frontend:
+    name: frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          # Una sola declaración de la versión de Node: la del proyecto.
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # `npm ci` instala exactamente el lockfile: si el manifiesto se movió sin
+      # actualizarlo, el job falla en vez de resolver otra cosa.
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run build

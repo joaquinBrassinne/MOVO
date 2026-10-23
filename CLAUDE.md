@@ -54,6 +54,8 @@ Fuente de verdad: `docs/sdd.md` (fases, modelo de datos, flujos). Decisiones de 
 - `make up` / `make down`: levantar/bajar servicios.
 - `make migrate-up` / `make migrate-down` / `make migrate-status`: migraciones (leen `DATABASE_URL` del `.env`, o la del entorno si está definida).
 - `make lint` / `make test` / `make build`: lo mismo que corre CI (`.github/workflows/ci.yml`: lint, tests con `-race`, build e ida y vuelta de migraciones).
+- Frontend (`cd frontend`): `npm run dev`, `npm run lint`, `npm run typecheck`, `npm run format` / `npm run format:check`, `npm run build`. CI corre los cinco sobre Node 24.22.0, declarado en `frontend/.nvmrc`.
+- En `frontend/package.json` las versiones van **exactas** (sin `^` ni `~`): actualizar es una tarea, no un efecto colateral de `npm install`.
 
 ## Testing
 - Unitarios en `domain`; integración con `testcontainers-go` (incluye PostGIS); fakes para Mercado Pago y storage.
