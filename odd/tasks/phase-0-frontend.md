@@ -39,12 +39,12 @@ El scaffold usa **`@tailwindcss/turbopack`** (loader de Turbopack), no PostCSS: 
 
 | ID | Tarea | Specs | Commit |
 |----|-------|-------|--------|
-| T1 | Scaffold `frontend/` con `create-next-app@16.4.0` (App Router, TS, Tailwind, ESLint, sin `src/`), versiones pineadas | S1, S2 | `feat(frontend): …` |
-| T2 | ESLint flat config + Prettier + scripts `lint`/`typecheck`/`format`/`format:check` | S2, S4 | `chore(frontend): …` |
-| T3 | Layout base con Tailwind y copy en español; `globals.css` con el tema | S1, S4 | `feat(frontend): …` |
-| T4 | Job `frontend` en CI (lint + typecheck + build) y su test de contrato | S3 | `ci: …` |
-| T5 | Docs: checkbox 0.8 y comandos del frontend en `CLAUDE.md` | S2, S3 | junto a T4 |
-| T6 | Verificación: `npm run lint`, `format:check`, `typecheck`, `build` en local + run de CI verde | S3 | — |
+| T1 | Scaffold `frontend/` con `create-next-app@16.4.0` (App Router, TS, Tailwind, ESLint, sin `src/`), versiones pineadas | S1, S2 | `1b8ff2d` (+ `5e7d958` lockfile) |
+| T2 | ESLint flat config + Prettier + scripts `lint`/`typecheck`/`format`/`format:check` | S2, S4 | `1b8ff2d` |
+| T3 | Layout base con Tailwind y copy en español; `globals.css` con el tema | S1, S4 | `1b8ff2d` |
+| T4 | Job `frontend` en CI (lint + typecheck + build) y su test de contrato | S3 | `dd6a862` |
+| T5 | Docs: checkbox 0.8 y comandos del frontend en `CLAUDE.md` | S2, S3 | `dd6a862` |
+| T6 | Verificación: `npm run lint`, `format:check`, `typecheck`, `build` en local + run de CI verde | S3 | run `39896206545` |
 
 ## Log
 
@@ -57,3 +57,7 @@ El scaffold usa **`@tailwindcss/turbopack`** (loader de Turbopack), no PostCSS: 
 - **L7** (bug propio, verificado): escribí `eslint.config.mjs` con comentarios `#`, sintaxis de YAML. `eslint`, `prettier` y `npm run format:check` fallaban con `SyntaxError`; corregido a `//`.
 - **L8** (`typecheck` = `next typegen && tsc --noEmit`): los tipos `LayoutProps`/`PageProps` los genera Next en `.next/types`, que está gitignoreado, así que `tsc --noEmit` solo falla en un clon limpio (`Cannot find name 'LayoutProps'`). El script corre `next typegen` primero; verificado en local y en CI.
 - **L9** (test refinado, no debilitado): `TestWorkflowKeepsMakeAtTheRepositoryRoot` prohibía **cualquier** `defaults:`. El job `frontend` necesita un `defaults` de job (no usa `make`), así que la regla pasa a prohibir sólo el `defaults` de nivel superior, que es el defecto que se pagó. Sigue prohibiendo el `working-directory: backend` global.
+- **L10** (verificación independiente, `gentle-ai-verify`, 2026-10-23): **PASS**. `npm run lint`, `format:check`, `typecheck` y `build` en `EXIT=0` (rutas `/` y `/_not-found` estáticas); `make lint` → `0 issues`; `make test` → `ok`, incluido `internal/ciworkflow`. Run de CI `39896206545` sobre el SHA de este doc (`b1a3112`): los cinco jobs (`migrations`, `tests`, `build`, `lint`, `frontend`) en `success`. Sondas independientes en un directorio temporal: `defaults:` de nivel superior, `working-directory: backend` global y el borrado del paso `format:check` rompen el test de contrato; un error de tipos rompe `typecheck` y `build`; un archivo sin formatear rompe `format:check`. S1–S5 cumplidas, S6 fuera de alcance.
+- **L11** (desvío aceptado, observado por el verificador): T1, T2 y T3 quedaron en un solo commit (`1b8ff2d`, 254 líneas) en vez de tres; la tabla de tareas ya registra el commit real de cada una. Ninguna spec pide un commit por tarea y el tamaño quedó bajo el límite de 400 líneas.
+- **L12** (sugerencia descartada, con motivo): el verificador propuso un test que fije qué scripts declara `frontend/package.json`. No se agrega: si un script falta, el propio job `frontend` falla en el run real, que es la prueba que pide S3; el test de contrato existe para no esperar el run cuando cambia el workflow, no para duplicar lo que el run ya cubre.
+- **L13** (DoD de la fase, verificado el 2026-10-23 en esta rama): `make up` → `movo-postgres-1` y `movo-rustfs-1` en `healthy`; `make migrate-status` → `00001_extensions.sql` aplicada; `go run ./cmd/api` con el `.env` → `GET /healthz` `200 {"status":"ok"}` y `GET /readyz` `200 {"status":"ready"}` (base conectada), ambos con `X-Request-Id`. CI del HEAD en verde. Con eso la Fase 0 queda cerrada: 0.1–0.8 en `[x]` en `docs/sdd.md` y su DoD observado.
