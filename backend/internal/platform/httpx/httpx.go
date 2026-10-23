@@ -25,11 +25,16 @@ const RequestIDHeader = "X-Request-Id"
 const (
 	CodeNotFound         = "not_found"
 	CodeMethodNotAllowed = "method_not_allowed"
+	CodeNotReady         = "not_ready"
 )
 
-// maxRequestIDLen caps an incoming correlation id so a hostile header value
-// cannot flood the logs.
-const maxRequestIDLen = 128
+const (
+	// maxRequestIDLen caps an incoming correlation id so a hostile header value
+	// cannot flood the logs.
+	maxRequestIDLen = 128
+	// readyTimeout bounds the dependency check behind /readyz.
+	readyTimeout = 2 * time.Second
+)
 
 // ErrorEnvelope is the JSON body of every failure response.
 type ErrorEnvelope struct {
@@ -50,6 +55,11 @@ type statusBody struct {
 	Status string `json:"status"`
 }
 
+// Pinger reports whether a dependency is reachable. *pgxpool.Pool satisfies it.
+type Pinger interface {
+	Ping(ctx context.Context) error
+}
+
 type requestIDKey struct{}
 
 // RequestID returns the correlation id of the request in ctx, or "" when the
@@ -63,8 +73,9 @@ func RequestID(ctx context.Context) string {
 	return id
 }
 
-// NewRouter builds the API router. A nil logger discards request logs.
-func NewRouter(log *slog.Logger) http.Handler {
+// NewRouter builds the API router. A nil logger discards request logs; a nil
+// ready dependency fails /readyz closed.
+func NewRouter(log *slog.Logger, ready Pinger) http.Handler {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
@@ -73,6 +84,7 @@ func NewRouter(log *slog.Logger) http.Handler {
 	router.Use(withRequestID)
 	router.Use(withRequestLogging(log))
 	router.Get("/healthz", handleHealthz)
+	router.Get("/readyz", handleReadyz(log, ready))
 	router.NotFound(handleNotFound)
 	router.MethodNotAllowed(handleMethodNotAllowed)
 
@@ -96,6 +108,30 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 // handleHealthz answers liveness: the process serves HTTP, nothing else.
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, statusBody{Status: "ok"})
+}
+
+// handleReadyz answers readiness: the dependencies the API needs are usable.
+func handleReadyz(log *slog.Logger, ready Pinger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if ready == nil {
+			WriteError(w, http.StatusServiceUnavailable, CodeNotReady, "database is not reachable", nil)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), readyTimeout)
+		defer cancel()
+
+		if err := ready.Ping(ctx); err != nil {
+			log.Error("readiness check failed",
+				"request_id", RequestID(r.Context()),
+				"error", err,
+			)
+			WriteError(w, http.StatusServiceUnavailable, CodeNotReady, "database is not reachable", nil)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, statusBody{Status: "ready"})
+	}
 }
 
 func handleNotFound(w http.ResponseWriter, _ *http.Request) {

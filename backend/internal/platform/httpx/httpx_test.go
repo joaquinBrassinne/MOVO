@@ -2,7 +2,9 @@ package httpx_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -41,12 +43,21 @@ func decodeError(t *testing.T, body []byte) errorEnvelope {
 	return env
 }
 
+type pingerFunc func(ctx context.Context) error
+
+func (f pingerFunc) Ping(ctx context.Context) error { return f(ctx) }
+
+func healthyPinger() httpx.Pinger { return pingerFunc(func(context.Context) error { return nil }) }
+
+// testRouter wires the router with a reachable dependency and no logging.
+func testRouter() http.Handler { return httpx.NewRouter(discardLogger(), healthyPinger()) }
+
 // TestHealthzReportsLiveness pins that liveness only claims the process serves
 // HTTP, never that a dependency is reachable.
 func TestHealthzReportsLiveness(t *testing.T) {
 	t.Parallel()
 
-	rec := serve(t, httpx.NewRouter(discardLogger()), httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	rec := serve(t, testRouter(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /healthz status = %d, want %d", rec.Code, http.StatusOK)
@@ -70,7 +81,7 @@ func TestHealthzReportsLiveness(t *testing.T) {
 func TestUnknownRouteUsesErrorEnvelope(t *testing.T) {
 	t.Parallel()
 
-	rec := serve(t, httpx.NewRouter(discardLogger()), httptest.NewRequest(http.MethodGet, "/does-not-exist", nil))
+	rec := serve(t, testRouter(), httptest.NewRequest(http.MethodGet, "/does-not-exist", nil))
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("GET /does-not-exist status = %d, want %d", rec.Code, http.StatusNotFound)
@@ -84,7 +95,7 @@ func TestUnknownRouteUsesErrorEnvelope(t *testing.T) {
 func TestMethodNotAllowedUsesErrorEnvelope(t *testing.T) {
 	t.Parallel()
 
-	rec := serve(t, httpx.NewRouter(discardLogger()), httptest.NewRequest(http.MethodDelete, "/healthz", nil))
+	rec := serve(t, testRouter(), httptest.NewRequest(http.MethodDelete, "/healthz", nil))
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("DELETE /healthz status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
@@ -130,7 +141,7 @@ func TestRequestIDIsEchoed(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	req.Header.Set(httpx.RequestIDHeader, "abc-123")
-	rec := serve(t, httpx.NewRouter(discardLogger()), req)
+	rec := serve(t, testRouter(), req)
 
 	if got := rec.Header().Get(httpx.RequestIDHeader); got != "abc-123" {
 		t.Errorf("%s = %q, want %q", httpx.RequestIDHeader, got, "abc-123")
@@ -141,7 +152,7 @@ func TestRequestIDIsEchoed(t *testing.T) {
 func TestRequestIDIsGenerated(t *testing.T) {
 	t.Parallel()
 
-	router := httpx.NewRouter(discardLogger())
+	router := testRouter()
 	first := serve(t, router, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	second := serve(t, router, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 
@@ -161,7 +172,7 @@ func TestRequestIDIsGenerated(t *testing.T) {
 func TestUnusableRequestIDIsReplaced(t *testing.T) {
 	t.Parallel()
 
-	router := httpx.NewRouter(discardLogger())
+	router := testRouter()
 	rejected := map[string]string{
 		"too long":     strings.Repeat("a", 200),
 		"control char": "abc\ndef",
@@ -195,12 +206,91 @@ func TestRequestIsLoggedWithRequestID(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	req.Header.Set(httpx.RequestIDHeader, "log-me")
-	serve(t, httpx.NewRouter(logger), req)
+	serve(t, httpx.NewRouter(logger, healthyPinger()), req)
 
 	entry := logs.String()
 	for _, want := range []string{`"request_id":"log-me"`, `"path":"/healthz"`, `"status":200`} {
 		if !strings.Contains(entry, want) {
 			t.Errorf("log entry %q does not contain %s", entry, want)
 		}
+	}
+}
+
+// TestReadyzReportsReadyDependency pins that a reachable database means ready.
+func TestReadyzReportsReadyDependency(t *testing.T) {
+	t.Parallel()
+
+	rec := serve(t, httpx.NewRouter(discardLogger(), healthyPinger()), httptest.NewRequest(http.MethodGet, "/readyz", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /readyz status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var body struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body %q: %v", rec.Body.String(), err)
+	}
+	if body.Status != "ready" {
+		t.Errorf("status = %q, want %q", body.Status, "ready")
+	}
+}
+
+// TestReadyzReportsUnreachableDependency pins the 503 envelope and that the
+// dependency error never leaks to the client.
+func TestReadyzReportsUnreachableDependency(t *testing.T) {
+	t.Parallel()
+
+	const secret = "password authentication failed for user movo"
+	broken := pingerFunc(func(context.Context) error { return errors.New(secret) })
+
+	rec := serve(t, httpx.NewRouter(discardLogger(), broken), httptest.NewRequest(http.MethodGet, "/readyz", nil))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("GET /readyz status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	env := decodeError(t, rec.Body.Bytes())
+	if env.Error.Code != httpx.CodeNotReady {
+		t.Errorf("error code = %q, want %q", env.Error.Code, httpx.CodeNotReady)
+	}
+	if env.Error.Message == "" {
+		t.Error("error message is empty, want a human readable message")
+	}
+	if strings.Contains(rec.Body.String(), secret) {
+		t.Errorf("body leaks the dependency error: %q", rec.Body.String())
+	}
+}
+
+// TestReadyzFailsClosedWithoutDependency pins that a missing dependency is never
+// reported as ready.
+func TestReadyzFailsClosedWithoutDependency(t *testing.T) {
+	t.Parallel()
+
+	rec := serve(t, httpx.NewRouter(discardLogger(), nil), httptest.NewRequest(http.MethodGet, "/readyz", nil))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("GET /readyz status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if env := decodeError(t, rec.Body.Bytes()); env.Error.Code != httpx.CodeNotReady {
+		t.Errorf("error code = %q, want %q", env.Error.Code, httpx.CodeNotReady)
+	}
+}
+
+// TestReadyzBoundsTheCheck pins that the readiness probe cannot hang: a database
+// that never answers must not hold the request open.
+func TestReadyzBoundsTheCheck(t *testing.T) {
+	t.Parallel()
+
+	var deadlineSet bool
+	slow := pingerFunc(func(ctx context.Context) error {
+		_, deadlineSet = ctx.Deadline()
+		return nil
+	})
+
+	serve(t, httpx.NewRouter(discardLogger(), slow), httptest.NewRequest(http.MethodGet, "/readyz", nil))
+
+	if !deadlineSet {
+		t.Error("readiness check ran without a deadline, want a bounded context")
 	}
 }
