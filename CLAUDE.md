@@ -10,6 +10,7 @@ Fuente de verdad: `docs/sdd.md` (fases, modelo de datos, flujos). Decisiones de 
 - **Jobs:** cola sobre PostgreSQL (`river` o `FOR UPDATE SKIP LOCKED`). Redis solo desde la Fase 7.
 - **Frontend:** Next.js (App Router) + Tailwind. Mapas: OpenStreetMap + React Leaflet.
 - **Infra:** Docker / docker compose, entorno enfocado en la terminal (`make`).
+- **Storage:** puerto `Storage` con API S3 (URLs prefirmadas). En local, RustFS pineado en `docker compose`; en producción, servicio gestionado (R2, B2 o S3). El código nunca conoce un servidor de objetos concreto y el servidor local es sólo de desarrollo.
 
 ## Arquitectura (monolito modular)
 - Dos binarios en `backend/`: `cmd/api` (HTTP stateless con JWT) y `cmd/worker` (jobs, webhooks, cron).
