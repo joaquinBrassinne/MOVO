@@ -1,9 +1,15 @@
 # MOVO — Plataforma de bienestar.
 #
 # Convención: todo target documentado con "## " aparece en `make help`.
-# Las recetas asumen un shell POSIX (Git Bash en Windows, sh en CI/Linux).
-
-SHELL := sh
+# Las recetas asumen un shell POSIX (sh en CI/Linux). En Windows se apunta a
+# Git para Windows porque make no encuentra `sh` en el PATH cuando se lo invoca
+# desde PowerShell o cmd; con otra ruta, `make SHELL=/ruta/a/sh.exe`.
+# Se usa la ruta corta (8.3) porque make no acepta espacios en SHELL.
+ifeq ($(OS),Windows_NT)
+  SHELL := $(firstword $(wildcard C:/Progra~1/Git/bin/sh.exe) sh)
+else
+  SHELL := sh
+endif
 
 BACKEND := backend
 COMPOSE := docker compose --env-file .env -f deploy/docker-compose.yml
@@ -38,8 +44,10 @@ wait-db: env ## Espera (máx. 60s) a que Postgres acepte conexiones
 
 # --- Ayuda -------------------------------------------------------------------
 
+# En Windows, awk vive en el usr/bin de Git, que no está en el PATH cuando make
+# se invoca desde PowerShell o cmd: se lo agrega solo para esta receta.
 help: ## Lista los targets disponibles
-	@awk 'BEGIN {FS = ":.*## "; print ""; print "MOVO - targets disponibles"; print ""} \
+	@PATH="$$PATH:/usr/bin" awk 'BEGIN {FS = ":.*## "; print ""; print "MOVO - targets disponibles"; print ""} \
 	     /^[a-zA-Z0-9_.-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""
 
