@@ -51,8 +51,8 @@ Fuente de verdad: `docs/sdd.md` (fases, modelo de datos, flujos). Decisiones de 
 
 ## Comandos útiles
 - `make up` / `make down`: levantar/bajar servicios.
-- `make migrate-up` / `make migrate-down` / `make migrate-status`: migraciones (leen `DATABASE_URL` del `.env`).
-- `make lint` / `make test` / `make test-integration`
+- `make migrate-up` / `make migrate-down` / `make migrate-status`: migraciones (leen `DATABASE_URL` del `.env`, o la del entorno si está definida).
+- `make lint` / `make test` / `make build`: lo mismo que corre CI (`.github/workflows/ci.yml`: lint, tests con `-race`, build e ida y vuelta de migraciones).
 
 ## Testing
 - Unitarios en `domain`; integración con `testcontainers-go` (incluye PostGIS); fakes para Mercado Pago y storage.

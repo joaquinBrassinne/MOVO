@@ -55,8 +55,10 @@ wait-db: env ## Espera (máx. 60s) a que Postgres acepte conexiones
 # --- Migraciones -------------------------------------------------------------
 
 # .env se carga porque `go run` no lo lee solo; set -a lo exporta al proceso.
+# Si DATABASE_URL ya viene del entorno (CI), manda esa: el job define la suya y
+# no hay archivo .env que leer.
 migrate: env ## Ejecuta un comando de goose (CMD=up|down|status|version)
-	@set -a; . ./.env; set +a; cd $(BACKEND) && $(GO) run ./cmd/migrate $(CMD)
+	@set -a; [ -n "$$DATABASE_URL" ] || . ./.env; set +a; cd $(BACKEND) && $(GO) run ./cmd/migrate $(CMD)
 
 migrate-up: env ## Aplica las migraciones pendientes
 	@$(MAKE) --no-print-directory migrate CMD=up
