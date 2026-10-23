@@ -12,9 +12,12 @@ linters:
     - depguard
     # §7.4: los errores se envuelven con %w, no se comparan ni se aplanan.
     - errorlint
-    # Un //nolint sin motivo declarado no pasa.
+    # Un //nolint tiene que decir por qué y sobre qué linter; si sobra, molesta.
     - nolintlint
   settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
     depguard:
       rules:
         # En Fase 0 sólo existe internal/platform, así que la lista aprueba el
