@@ -323,6 +323,7 @@ Convenciones: errores en el sobre JSON único de §7.2 (`code`, `message`, `deta
 - Logs estructurados (`log/slog`) con `request_id`.
 - Endpoints `/healthz` (liveness) y `/readyz` (DB lista).
 - Todas las respuestas de error usan el mismo sobre JSON: `{"error":{"code":"...","message":"...","details":...}}`, con un `code` estable para el frontend, `details` opcional para errores por campo y sin filtrar detalles internos (el detalle técnico va al log).
+- Cada request lleva `X-Request-Id`: se reusa el del cliente si es válido y, si no, se genera uno nuevo; el id viaja en el log de la request.
 - Métricas (Prometheus) y trazas (OpenTelemetry) en Fase 8 o antes si hace falta.
 
 ### 7.3 Rendimiento

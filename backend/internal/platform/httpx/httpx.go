@@ -1,19 +1,35 @@
 // Package httpx builds the HTTP surface shared by the MOVO services: the chi
-// router and the JSON error envelope every endpoint returns on failure.
+// router, request-scoped structured logging with a correlation id, and the JSON
+// error envelope every endpoint returns on failure.
 package httpx
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
+
+// RequestIDHeader carries the correlation id of a request: the value is echoed
+// when the caller supplies a usable one and generated otherwise.
+const RequestIDHeader = "X-Request-Id"
 
 // Codes carried by the JSON error envelope.
 const (
 	CodeNotFound         = "not_found"
 	CodeMethodNotAllowed = "method_not_allowed"
 )
+
+// maxRequestIDLen caps an incoming correlation id so a hostile header value
+// cannot flood the logs.
+const maxRequestIDLen = 128
 
 // ErrorEnvelope is the JSON body of every failure response.
 type ErrorEnvelope struct {
@@ -34,9 +50,28 @@ type statusBody struct {
 	Status string `json:"status"`
 }
 
-// NewRouter builds the API router.
-func NewRouter() http.Handler {
+type requestIDKey struct{}
+
+// RequestID returns the correlation id of the request in ctx, or "" when the
+// request did not go through NewRouter.
+func RequestID(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+
+	id, _ := ctx.Value(requestIDKey{}).(string)
+	return id
+}
+
+// NewRouter builds the API router. A nil logger discards request logs.
+func NewRouter(log *slog.Logger) http.Handler {
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
+
 	router := chi.NewRouter()
+	router.Use(withRequestID)
+	router.Use(withRequestLogging(log))
 	router.Get("/healthz", handleHealthz)
 	router.NotFound(handleNotFound)
 	router.MethodNotAllowed(handleMethodNotAllowed)
@@ -54,7 +89,7 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.WriteHeader(status)
 
 	// The status line is already sent, so an encoding failure can no longer be
-	// reported to the client.
+	// reported to the client; request logging has already captured the status.
 	_ = json.NewEncoder(w).Encode(body)
 }
 
@@ -69,4 +104,93 @@ func handleNotFound(w http.ResponseWriter, _ *http.Request) {
 
 func handleMethodNotAllowed(w http.ResponseWriter, _ *http.Request) {
 	WriteError(w, http.StatusMethodNotAllowed, CodeMethodNotAllowed, "method not allowed", nil)
+}
+
+// withRequestID resolves the correlation id, exposes it in the context and the
+// response headers, and keeps it safe for headers and logs.
+func withRequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := usableRequestID(r.Header.Get(RequestIDHeader))
+		if id == "" {
+			id = newRequestID()
+		}
+
+		w.Header().Set(RequestIDHeader, id)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestIDKey{}, id)))
+	})
+}
+
+// usableRequestID reports the value as-is when it is short, printable ASCII, and
+// empty otherwise so the caller generates a fresh id.
+func usableRequestID(raw string) string {
+	id := strings.TrimSpace(raw)
+	if id == "" || len(id) > maxRequestIDLen {
+		return ""
+	}
+
+	for _, char := range id {
+		if char < ' ' || char > '~' {
+			return ""
+		}
+	}
+
+	return id
+}
+
+func newRequestID() string {
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		// crypto/rand does not fail in practice; the timestamp keeps the id
+		// unique enough to correlate a request instead of dropping it.
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+
+	return hex.EncodeToString(buf[:])
+}
+
+// statusRecorder remembers the status code so the log line can report it.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	if r.status == 0 {
+		r.status = status
+	}
+
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Write(body []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+
+	return r.ResponseWriter.Write(body)
+}
+
+// withRequestLogging emits one structured line per request.
+func withRequestLogging(log *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			recorder := &statusRecorder{ResponseWriter: w}
+
+			next.ServeHTTP(recorder, r)
+
+			status := recorder.status
+			if status == 0 {
+				status = http.StatusOK
+			}
+
+			log.Info("http request",
+				"request_id", RequestID(r.Context()),
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", status,
+				"duration_ms", time.Since(start).Milliseconds(),
+			)
+		})
+	}
 }

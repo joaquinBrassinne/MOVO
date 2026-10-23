@@ -1,7 +1,9 @@
 package httpx_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,6 +20,8 @@ type errorEnvelope struct {
 		Details map[string]any `json:"details"`
 	} `json:"error"`
 }
+
+func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
 func serve(t *testing.T, handler http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
@@ -42,7 +46,7 @@ func decodeError(t *testing.T, body []byte) errorEnvelope {
 func TestHealthzReportsLiveness(t *testing.T) {
 	t.Parallel()
 
-	rec := serve(t, httpx.NewRouter(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	rec := serve(t, httpx.NewRouter(discardLogger()), httptest.NewRequest(http.MethodGet, "/healthz", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /healthz status = %d, want %d", rec.Code, http.StatusOK)
@@ -66,7 +70,7 @@ func TestHealthzReportsLiveness(t *testing.T) {
 func TestUnknownRouteUsesErrorEnvelope(t *testing.T) {
 	t.Parallel()
 
-	rec := serve(t, httpx.NewRouter(), httptest.NewRequest(http.MethodGet, "/does-not-exist", nil))
+	rec := serve(t, httpx.NewRouter(discardLogger()), httptest.NewRequest(http.MethodGet, "/does-not-exist", nil))
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("GET /does-not-exist status = %d, want %d", rec.Code, http.StatusNotFound)
@@ -80,7 +84,7 @@ func TestUnknownRouteUsesErrorEnvelope(t *testing.T) {
 func TestMethodNotAllowedUsesErrorEnvelope(t *testing.T) {
 	t.Parallel()
 
-	rec := serve(t, httpx.NewRouter(), httptest.NewRequest(http.MethodDelete, "/healthz", nil))
+	rec := serve(t, httpx.NewRouter(discardLogger()), httptest.NewRequest(http.MethodDelete, "/healthz", nil))
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("DELETE /healthz status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
@@ -117,5 +121,86 @@ func TestErrorEnvelopeOmitsEmptyDetails(t *testing.T) {
 
 	if body := rec.Body.String(); strings.Contains(body, `"details"`) {
 		t.Errorf("body %q carries an empty details member, want it omitted", body)
+	}
+}
+
+// TestRequestIDIsEchoed pins that an upstream request id is preserved.
+func TestRequestIDIsEchoed(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set(httpx.RequestIDHeader, "abc-123")
+	rec := serve(t, httpx.NewRouter(discardLogger()), req)
+
+	if got := rec.Header().Get(httpx.RequestIDHeader); got != "abc-123" {
+		t.Errorf("%s = %q, want %q", httpx.RequestIDHeader, got, "abc-123")
+	}
+}
+
+// TestRequestIDIsGenerated pins that every request gets a fresh id.
+func TestRequestIDIsGenerated(t *testing.T) {
+	t.Parallel()
+
+	router := httpx.NewRouter(discardLogger())
+	first := serve(t, router, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	second := serve(t, router, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	firstID := first.Header().Get(httpx.RequestIDHeader)
+	secondID := second.Header().Get(httpx.RequestIDHeader)
+
+	if firstID == "" || secondID == "" {
+		t.Fatalf("generated request ids are empty: %q, %q", firstID, secondID)
+	}
+	if firstID == secondID {
+		t.Errorf("two requests share the request id %q, want distinct ids", firstID)
+	}
+}
+
+// TestUnusableRequestIDIsReplaced pins that a hostile header value never reaches
+// the response or the logs.
+func TestUnusableRequestIDIsReplaced(t *testing.T) {
+	t.Parallel()
+
+	router := httpx.NewRouter(discardLogger())
+	rejected := map[string]string{
+		"too long":     strings.Repeat("a", 200),
+		"control char": "abc\ndef",
+	}
+
+	for name, value := range rejected {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+			req.Header.Set(httpx.RequestIDHeader, value)
+			rec := serve(t, router, req)
+
+			got := rec.Header().Get(httpx.RequestIDHeader)
+			if got == value {
+				t.Errorf("%s = the rejected value %q, want a generated one", httpx.RequestIDHeader, got)
+			}
+			if got == "" {
+				t.Errorf("%s is empty, want a generated id", httpx.RequestIDHeader)
+			}
+		})
+	}
+}
+
+// TestRequestIsLoggedWithRequestID pins that structured logs carry the id.
+func TestRequestIsLoggedWithRequestID(t *testing.T) {
+	t.Parallel()
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set(httpx.RequestIDHeader, "log-me")
+	serve(t, httpx.NewRouter(logger), req)
+
+	entry := logs.String()
+	for _, want := range []string{`"request_id":"log-me"`, `"path":"/healthz"`, `"status":200`} {
+		if !strings.Contains(entry, want) {
+			t.Errorf("log entry %q does not contain %s", entry, want)
+		}
 	}
 }
