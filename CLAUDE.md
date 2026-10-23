@@ -38,6 +38,7 @@ Fuente de verdad: `docs/sdd.md` (fases, modelo de datos, flujos). Decisiones de 
 - Tipos compartidos desde el contrato OpenAPI cuando sea posible.
 
 ## Flujo de trabajo (IMPORTANTE)
+- Ramas: el trabajo sale de `develop` y los PR van contra `develop`. `main` solo recibe merge cuando se publica la v1.0.0; nunca se commitea directo ahí.
 - Trabajar **una tarea del SDD por vez** (ej. "Tarea 4.4"). No adelantarse a otras fases.
 - Cada tarea = un commit chico (< 400 líneas). Si crece, dividirla y avisar.
 - Orden por tarea: leer SDD → escribir test → implementar → `make lint test` → commit.
