@@ -303,7 +303,7 @@ Un job periódico marca como `expired` los vencidos (o se evalúa por `expires_a
 | POST | `/webhooks/mercadopago` | MP (firma) | Recibir eventos |
 | * | `/admin/...` | super_admin | Gestión |
 
-Convenciones: errores en formato único (`code`, `message`, `details`), validación de entrada en la capa HTTP, paginación consistente, OpenAPI generado o mantenido en `docs/openapi.yaml`.
+Convenciones: errores en el sobre JSON único de §7.2 (`code`, `message`, `details`), validación de entrada en la capa HTTP, paginación consistente, OpenAPI generado o mantenido en `docs/openapi.yaml`.
 
 ---
 
@@ -322,6 +322,7 @@ Convenciones: errores en formato único (`code`, `message`, `details`), validaci
 ### 7.2 Observabilidad
 - Logs estructurados (`log/slog`) con `request_id`.
 - Endpoints `/healthz` (liveness) y `/readyz` (DB lista).
+- Todas las respuestas de error usan el mismo sobre JSON: `{"error":{"code":"...","message":"...","details":...}}`, con un `code` estable para el frontend, `details` opcional para errores por campo y sin filtrar detalles internos (el detalle técnico va al log).
 - Métricas (Prometheus) y trazas (OpenTelemetry) en Fase 8 o antes si hace falta.
 
 ### 7.3 Rendimiento
@@ -378,7 +379,7 @@ Convenciones de trabajo:
 - [x] 0.2 `docker-compose` con Postgres+PostGIS y object storage S3 (RustFS) (S)
 - [x] 0.3 `internal/platform`: config por env, `slog`, apagado ordenado (M)
 - [x] 0.4 Conexión DB con `pgx` + migraciones + primera migración (extensión PostGIS) (S)
-- [ ] 0.5 Servidor HTTP con `chi`, `request_id`, `/healthz`, `/readyz`, formato de error (M)
+- [x] 0.5 Servidor HTTP con `chi`, `request_id`, `/healthz`, `/readyz`, formato de error (M)
 - [ ] 0.6 CI (lint + test + build + chequeo de migraciones) (M)
 - [ ] 0.7 `docs/adr/0001` con las decisiones de la sección 3 y `docs/adr/0002` de object storage (puerto `Storage` con API S3; RustFS pineado **sólo en desarrollo**, Garage como plan B, servicio gestionado en producción), y `CLAUDE.md` actualizado (S)
 - [ ] 0.8 Frontend Next.js + Tailwind base, ESLint/Prettier, layout (S)
