@@ -22,11 +22,11 @@ Rama `phase-0/foundations`. Un solo entregable: el pipeline de integración cont
 
 | ID | Tarea | Specs | Ruta | Commit |
 |----|-------|-------|------|--------|
-| T1 | Targets `lint`, `test`, `build` en el `Makefile` (mismos comandos en local y CI) | S8 | inline | `chore(make): …` |
-| T2 | `.golangci.yml` con el esquema v2 y el set de S3 | S3, S9 | inline | `chore(lint): …` |
-| T3 | `.github/workflows/ci.yml`: jobs `lint`, `test`, `build`, `migrations` (PostgreSQL+PostGIS como servicio) | S1, S2 | inline | `ci: …` |
-| T4 | Docs: checkbox 0.6 y comandos de `CLAUDE.md` si cambian | S2, S5 | inline | junto a T3 |
-| T5 | Verificación: lint/test/build en local, job de migraciones simulado contra la DB de compose, y **run real de GitHub Actions en verde** (`gh run watch`) | S5 | inline | — |
+| T1 | Targets `lint`, `test`, `build` en el `Makefile` (mismos comandos en local y CI) | S8 | inline | `2e30bbc` |
+| T2 | `.golangci.yml` con el esquema v2 y el set de S3 | S3, S9 | inline | `2e30bbc` |
+| T3 | `.github/workflows/ci.yml`: jobs `lint`, `test`, `build`, `migrations` (PostgreSQL+PostGIS como servicio) | S1, S2 | inline | `b906ff3`, `b5de0fd`, `5b1c731` |
+| T4 | Docs: checkbox 0.6 y comandos de `CLAUDE.md` | S2, S5 | inline | `b906ff3` |
+| T5 | Verificación: lint/test/build en local, job de migraciones con DB nueva, `actionlint`, y run real de GitHub Actions en verde | S5 | inline | run `39893436881` |
 
 ## Log
 
@@ -35,3 +35,8 @@ Rama `phase-0/foundations`. Un solo entregable: el pipeline de integración cont
 - **L3** (decisión, versiones por antigüedad ≥2 semanas al 2026-10-23): `golangci/golangci-lint v2.15.0` (2026-10-16) **descartada** por 7 días → `v2.14.0` (2026-09-24). `golangci/golangci-lint-action v9.3.0` (2026-06-29). `actions/checkout v7.0.1` y `actions/setup-go v7.0.0` (julio 2026).
 - **L4** (decisión): el runner lo fija S1 (GitHub Actions); no se consultó porque el SDD ya lo decide.
 - **L5** (corrección de un default previo): «`depguard` vacío» no es viable en el esquema v2 — sin `rules`, depguard sólo permite `$gostd` y marcaría en rojo `pgx`, `chi` y `goose` que ya usamos. Se resuelve en T2 y se documenta en el archivo.
+- **L6** (bug encontrado por el linter, `2e30bbc`): `errcheck` marcó `defer sqlDB.Close()` en `internal/platform/db/db.go` (código de 0.4, nunca lintado). El handle comparte el pool, así que el error no es accionable: el descarte ahora es explícito.
+- **L7** (bug encontrado por el job de migraciones, `ea537d3`): el `down` de `00001_extensions.sql` fallaba con `SQLSTATE 2BP01` en la DB de desarrollo. La imagen `postgis/postgis` preinstala `postgis_topology` y `postgis_tiger_geocoder`, que dependen de `postgis`. La verificación de 0.4 había pasado porque usó una DB creada fuera de la imagen. Se dropean explícitas, sin `CASCADE`.
+- **L8** (evidencia: run rojo `39893210782`): `defaults.run.working-directory: backend` dejaba a `make` sin Makefile en 3 de 4 jobs (`No rule to make target 'build'`). `lint` sobrevivió porque la action tiene su propio `working-directory`, y por eso el chequeo local no podía verlo. Corregido en `5b1c731`.
+- **L9** (evidencia: run rojo, sin jobs): el filtro `phase-*` no disparaba nada — en los filtros de rama de GitHub `*` no cruza `/`. Corregido a `phase-**` en `b5de0fd`.
+- **L10** (cierre): run `39893436881` sobre `5b1c731` en verde, 4/4 jobs (`lint`, `tests`, `build`, `migrations` con apply → status → down → re-apply). Runner fijado en `ubuntu-24.04`.
