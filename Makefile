@@ -15,8 +15,18 @@ BACKEND := backend
 COMPOSE := docker compose --env-file .env -f deploy/docker-compose.yml
 GO      ?= go
 
+# Versión de golangci-lint que espera la configuración de backend/.golangci.yml
+# (esquema v2) y la que corre CI. Se instala con:
+#   go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+GOLANGCI_LINT_VERSION := v2.14.0
+GOLANGCI_LINT         ?= golangci-lint
+
+# Flags extra para los tests. CI agrega -race; en Windows no hay gcc (CGO off),
+# así que el default local no lo pide.
+TESTFLAGS ?=
+
 .DEFAULT_GOAL := help
-.PHONY: help env up down ps logs wait-db migrate migrate-up migrate-down migrate-status fmt fmt-check tidy
+.PHONY: help env up down ps logs wait-db migrate migrate-up migrate-down migrate-status fmt fmt-check tidy lint test build
 
 # --- Entorno ----------------------------------------------------------------
 
@@ -77,3 +87,16 @@ fmt-check: ## Falla si algún archivo Go no está formateado
 
 tidy: ## Ordena backend/go.mod y backend/go.sum
 	cd $(BACKEND) && $(GO) mod tidy
+
+lint: ## Corre golangci-lint sobre el backend
+	@command -v $(GOLANGCI_LINT) >/dev/null 2>&1 || { \
+	  echo "golangci-lint no está instalado. Instalá la versión que usa CI:"; \
+	  echo "  go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)"; \
+	  exit 1; }
+	cd $(BACKEND) && $(GOLANGCI_LINT) run ./...
+
+test: ## Corre los tests del backend (CI agrega TESTFLAGS="-race")
+	cd $(BACKEND) && $(GO) test $(TESTFLAGS) ./...
+
+build: ## Compila los binarios del backend en backend/bin
+	cd $(BACKEND) && $(GO) build -o bin/ ./cmd/...

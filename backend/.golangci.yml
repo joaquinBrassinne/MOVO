@@ -1,0 +1,32 @@
+# golangci-lint para el backend Go. Esquema v2.
+#
+# La versión de la herramienta está fijada en el Makefile y en CI (v2.14.0):
+# otro esquema u otra versión cambia el resultado del mismo código.
+version: "2"
+
+linters:
+  # `standard` = errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    # §7.4: las dependencias externas se aprueban explícitamente.
+    - depguard
+    # §7.4: los errores se envuelven con %w, no se comparan ni se aplanan.
+    - errorlint
+    # Un //nolint sin motivo declarado no pasa.
+    - nolintlint
+  settings:
+    depguard:
+      rules:
+        # En Fase 0 sólo existe internal/platform, así que la lista aprueba el
+        # stdlib, nuestro módulo y las librerías ya elegidas. Las reglas de
+        # capas de §3 (domain / app / adapters) se suman con los módulos, en
+        # Fase 1. Agregar una dependencia externa es agregar su import acá.
+        backend:
+          files:
+            - $all
+          allow:
+            - $gostd
+            - github.com/joaquinBrassinne/MOVO
+            - github.com/go-chi/chi/v5
+            - github.com/jackc/pgx/v5
+            - github.com/pressly/goose/v3

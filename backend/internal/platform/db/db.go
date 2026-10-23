@@ -75,9 +75,10 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, command string) error {
 		return fmt.Errorf("db: set migration dialect: %w", err)
 	}
 
-	// OpenDBFromPool shares the pool; closing this handle does not close it.
+	// OpenDBFromPool shares the pool; closing this handle does not close it, so
+	// a close error could not be acted on either: it is discarded deliberately.
 	sqlDB := stdlib.OpenDBFromPool(pool)
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	if err := run(ctx, sqlDB, "."); err != nil {
 		return fmt.Errorf("db: migrate %s: %w", command, err)
