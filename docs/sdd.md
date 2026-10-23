@@ -54,9 +54,11 @@ Plataforma SaaS (B2B2C) que conecta usuarios con actividades físicas y de biene
 | Caché | Redis (**Fase 7**, cuando haya métricas) | Cache-aside con TTL; también rate limiting |
 | Frontend | Next.js (App Router) + Tailwind | SSR para SEO de fichas de locales |
 | Mapas | React Leaflet + tiles configurables por variable de entorno | Piloto: tiles públicos de OSM; producción: Protomaps (PMTiles) o proveedor (sección 12) |
-| Storage | S3 compatible (MinIO en local, R2/Backblaze/S3 en prod) | URLs prefirmadas |
+| Storage | S3 compatible: RustFS en local, gestionado (R2/B2/S3) en prod | URLs prefirmadas |
 | Infra | Docker + docker compose; VPS al inicio | Simple y barato |
 | CI | GitHub Actions | lint, tests, build, chequeo de migraciones |
+
+> **Storage:** el código no habla con un servidor de objetos concreto, habla con el puerto `Storage` sobre la **API S3**. El servidor es un detalle de entorno: en desarrollo corre un S3 local (RustFS, con la imagen pineada), en producción un servicio gestionado (Cloudflare R2, Backblaze B2 o AWS S3). Cambiar de servidor es cambiar configuración, no código.
 
 > Si preferís Gin (como en otros proyectos) es válido; lo importante es que los handlers HTTP sean una capa fina y reemplazable.
 
@@ -370,12 +372,12 @@ Convenciones de trabajo:
 **Objetivo:** repo listo para trabajar con calidad desde el primer commit.
 
 - [x] 0.1 Monorepo, `Makefile`, `.editorconfig`, `.gitignore` (S)
-- [x] 0.2 `docker-compose` con Postgres+PostGIS y MinIO (S)
+- [x] 0.2 `docker-compose` con Postgres+PostGIS y object storage S3 (RustFS) (S)
 - [x] 0.3 `internal/platform`: config por env, `slog`, apagado ordenado (M)
 - [ ] 0.4 Conexión DB con `pgx` + migraciones + primera migración (extensión PostGIS) (S)
 - [ ] 0.5 Servidor HTTP con `chi`, `request_id`, `/healthz`, `/readyz`, formato de error (M)
 - [ ] 0.6 CI (lint + test + build + chequeo de migraciones) (M)
-- [ ] 0.7 `docs/adr/0001` con las decisiones de la sección 3 y `CLAUDE.md` actualizado (S)
+- [ ] 0.7 `docs/adr/0001` con las decisiones de la sección 3 y `docs/adr/0002` de object storage (puerto `Storage` con API S3; RustFS pineado **sólo en desarrollo**, Garage como plan B, servicio gestionado en producción), y `CLAUDE.md` actualizado (S)
 - [ ] 0.8 Frontend Next.js + Tailwind base, ESLint/Prettier, layout (S)
 
 **DoD:** `make up` levanta todo; CI verde; `/readyz` responde con la DB conectada.
@@ -402,7 +404,7 @@ Convenciones de trabajo:
 - [ ] 2.1 Migraciones `categories`, `businesses`, `branches`, `business_hours`, `business_images` (con PostGIS) (S)
 - [ ] 2.2 Dominio `business` (estados, slug, validaciones) (M)
 - [ ] 2.3 Casos de uso: crear/editar mi negocio, agregar/editar sedes y horarios (un dueño = un negocio) (M)
-- [ ] 2.4 Puerto `Storage` + adaptador S3/MinIO con URL prefirmada y validación (M)
+- [ ] 2.4 Puerto `Storage` + adaptador S3 (RustFS en local, R2/B2/S3 en prod) con URL prefirmada y validación; endpoint, región y modo path-style configurables; test de integración (tag `integration`) que sube y baja un objeto con URL prefirmada contra el servidor local (M)
 - [ ] 2.5 Super admin: aprobar / pausar / reactivar / baja lógica + `audit_log` (M)
 - [ ] 2.5b Migraciones y dominio de `services` y `service_schedules` (CRUD, activar/desactivar) (M)
 - [ ] 2.5c Flujo de verificación: subida de la foto del DNI a storage privado, aprobación/rechazo del super admin con sello `verified_at` y eliminación de la imagen al resolverse (M)

@@ -25,7 +25,7 @@ env: ## Crea .env desde .env.example si todavía no existe
 
 # --- Infra local -------------------------------------------------------------
 
-up: env ## Levanta Postgres+PostGIS y MinIO, y espera los healthchecks
+up: env ## Levanta Postgres+PostGIS y RustFS, y espera los healthchecks
 	$(COMPOSE) up -d --wait
 
 down: env ## Baja los servicios conservando los volúmenes

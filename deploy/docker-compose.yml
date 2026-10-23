@@ -26,28 +26,26 @@ services:
       retries: 20
       start_period: 10s
 
-  minio:
-    # minio/minio ya no se distribuye en Docker Hub y quay.io exige credenciales:
-    # el default es el espejo público congelado de Bitnami. Para usar otra imagen
-    # (por ejemplo la oficial) se ajustan MINIO_IMAGE y MINIO_DATA_DIR en el .env:
-    #   MINIO_IMAGE=quay.io/minio/minio:<tag>
-    #   MINIO_DATA_DIR=/data
-    # Los dos valores van juntos: si cambia el datadir, cambia el volumen montado.
-    # En Git Bash conviene definirlos en el .env y no como variables de shell,
-    # porque MSYS reescribe las rutas que empiezan con "/".
-    image: ${MINIO_IMAGE:-bitnamilegacy/minio:2025.7.23-debian-12-r5}
-    command: server ${MINIO_DATA_DIR:-/bitnami/minio/data} --console-address ":9001"
+  rustfs:
+    # Object storage S3 de desarrollo. La imagen va pineada a propósito: el
+    # proyecto es joven (1.0.x) y sólo se usa en local — en producción el puerto
+    # `Storage` apunta a un servicio gestionado (R2, B2 o S3). Plan B: Garage.
+    image: ${RUSTFS_IMAGE:-rustfs/rustfs:1.0.3}
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-movo}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-movo12345}
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-movo}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-movo12345}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
     ports:
-      - "${MINIO_API_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "${RUSTFS_API_PORT:-9000}:9000"
+      - "${RUSTFS_CONSOLE_PORT:-9001}:9001"
     volumes:
-      - miniodata:${MINIO_DATA_DIR:-/bitnami/minio/data}
+      - objectdata:/data
     healthcheck:
-      # Vale para cualquier imagen de MinIO: usa `mc` si está, si no el endpoint HTTP.
-      test: ["CMD-SHELL", "mc ready local >/dev/null 2>&1 || curl -fsS http://localhost:9000/minio/health/live >/dev/null"]
+      # Endpoint de salud de la API S3 (la imagen trae curl).
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/health >/dev/null"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -55,4 +53,4 @@ services:
 
 volumes:
   pgdata:
-  miniodata:
+  objectdata:
