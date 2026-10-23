@@ -14,11 +14,11 @@ on:
       - develop
       - main
 
-# Un push nuevo sobre la misma rama cancela el run anterior: no tiene sentido
-# esperar el resultado de un commit que ya quedó viejo.
+# Un push nuevo cancela el run anterior sólo en ramas de trabajo: en develop y
+# main cada commit necesita su run verde registrado, es lo que mira el PR.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/develop' && github.ref != 'refs/heads/main' }}
 
 # El pipeline sólo lee el repositorio (SDD §7.1: permisos mínimos).
 permissions:
@@ -31,6 +31,7 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7.0.0
@@ -46,6 +47,7 @@ jobs:
   test:
     name: tests
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7.0.0
@@ -58,6 +60,7 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7.0.0
@@ -69,6 +72,7 @@ jobs:
   migrations:
     name: migrations
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     # Misma imagen que deploy/docker-compose.yml: la migración se valida contra
     # la versión de PostgreSQL+PostGIS que corre en desarrollo.
     services:
@@ -94,12 +98,23 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
       # Ida y vuelta: subir, revertir y volver a subir prueba que el `down` de
-      # cada migración existe y funciona, no sólo el `up`.
+      # cada migración existe y funciona, no sólo el `up`. Los pasos `assert`
+      # verifican el estado resultante: un comando que sale 0 sin haber hecho
+      # nada no alcanza.
       - name: apply migrations
         run: make migrate-up
+      - name: assert postgis is installed
+        run: >-
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc
+          "SELECT extversion FROM pg_extension WHERE extname = 'postgis'"
+          | grep -E '^3\.[0-9]+'
       - name: show status
         run: make migrate-status
       - name: revert the last migration
         run: make migrate-down
+      - name: assert postgis is gone
+        run: >-
+          test -z "$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc
+          "SELECT extname FROM pg_extension WHERE extname LIKE 'postgis%'")"
       - name: re-apply migrations
         run: make migrate-up
