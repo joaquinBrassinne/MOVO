@@ -24,14 +24,13 @@ concurrency:
 permissions:
   contents: read
 
-defaults:
-  run:
-    working-directory: backend
+# Los pasos invocan los targets del Makefile de la raíz, que ya entran solos a
+# backend/: un `working-directory: backend` acá dejaría a make sin Makefile.
 
 jobs:
   lint:
     name: lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7.0.0
@@ -46,7 +45,7 @@ jobs:
 
   test:
     name: tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7.0.0
@@ -58,7 +57,7 @@ jobs:
 
   build:
     name: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7.0.0
@@ -69,7 +68,7 @@ jobs:
 
   migrations:
     name: migrations
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Misma imagen que deploy/docker-compose.yml: la migración se valida contra
     # la versión de PostgreSQL+PostGIS que corre en desarrollo.
     services:
