@@ -6,7 +6,7 @@ Plataforma SaaS (B2B2C) que conecta usuarios con actividades físicas y de biene
 Fuente de verdad: `docs/sdd.md` (fases, modelo de datos, flujos). Decisiones de arquitectura: `docs/adr/`.
 
 ## Stack
-- **Backend:** Go 1.22+, `chi`, `pgx` + `sqlc`, PostgreSQL + PostGIS, migraciones SQL puras (`goose`).
+- **Backend:** Go 1.27+ (el módulo declara `go 1.27.0`), `chi`, `pgx` + `sqlc`, PostgreSQL + PostGIS, migraciones SQL puras (`goose`).
 - **Jobs:** cola sobre PostgreSQL (`river` o `FOR UPDATE SKIP LOCKED`). Redis solo desde la Fase 7.
 - **Frontend:** Next.js (App Router) + Tailwind. Mapas: OpenStreetMap + React Leaflet.
 - **Infra:** Docker / docker compose, entorno enfocado en la terminal (`make`).
@@ -23,6 +23,7 @@ Fuente de verdad: `docs/sdd.md` (fases, modelo de datos, flujos). Decisiones de 
   4. Las interfaces se definen del lado del consumidor.
   5. Todo servicio externo (Mercado Pago, geocoding, storage, email) va detrás de una interfaz con fake para tests.
 - CQRS ligero: comandos y queries separados; la caché (Redis) es un **decorador** de la query, no parte del dominio.
+- Contrato HTTP (`internal/platform/httpx`): sobre de error único `{"error":{"code","message","details"}}` con `code` estable, `X-Request-Id` por request, y `/healthz` (liveness) + `/readyz` (base lista) sin filtrar detalles internos al cliente.
 - Composición de dependencias solo en `main.go`; nada de variables globales mutables.
 
 ## Reglas de Desarrollo (Go)
@@ -42,7 +43,7 @@ Fuente de verdad: `docs/sdd.md` (fases, modelo de datos, flujos). Decisiones de 
 - Ramas: el trabajo sale de `develop` y los PR van contra `develop`. `main` solo recibe merge cuando se publica la v1.0.0; nunca se commitea directo ahí.
 - Trabajar **una tarea del SDD por vez** (ej. "Tarea 4.4"). No adelantarse a otras fases.
 - Cada tarea = un commit chico (< 400 líneas). Si crece, dividirla y avisar.
-- Orden por tarea: leer SDD → escribir test → implementar → `make lint test` → commit.
+- Orden por tarea: leer SDD → escribir test → implementar → `make lint test build` → commit.
 - No introducir Redis, CDN ni réplicas antes de la Fase 7 salvo que haya métricas que lo justifiquen (crear ADR).
 - Si algo del SDD es ambiguo o contradice el código, preguntar antes de decidir.
 - Los clientes finales NO tienen cuenta (datos de contacto + token de acceso); JWT solo para dueños y super admin.
