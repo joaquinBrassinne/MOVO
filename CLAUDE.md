@@ -13,7 +13,7 @@ Fuente de verdad: `docs/sdd.md` (fases, modelo de datos, flujos). Decisiones de 
 - **Storage:** puerto `Storage` con API S3 (URLs prefirmadas). En local, RustFS pineado en `docker compose`; en producción, servicio gestionado (R2, B2 o S3). El código nunca conoce un servidor de objetos concreto y el servidor local es sólo de desarrollo.
 
 ## Arquitectura (monolito modular)
-- Dos binarios en `backend/`: `cmd/api` (HTTP stateless con JWT) y `cmd/worker` (jobs, webhooks, cron).
+- Dos binarios de servicio en `backend/`: `cmd/api` (HTTP stateless con JWT) y `cmd/worker` (jobs, webhooks, cron). Más `cmd/migrate`: herramienta de un solo uso que aplica las migraciones SQL embebidas (`up`/`down`/`status`/`version`) antes de desplegar.
 - Módulos en `backend/internal/`: `identity`, `business`, `search`, `benefits`, `billing`, `admin`, `platform`.
 - Cada módulo: `domain/` → `app/{commands,queries}/` → `ports.go` → `adapters/{postgres,http}/`.
 - Reglas de dependencia:
@@ -51,7 +51,7 @@ Fuente de verdad: `docs/sdd.md` (fases, modelo de datos, flujos). Decisiones de 
 
 ## Comandos útiles
 - `make up` / `make down`: levantar/bajar servicios.
-- `make migrate-up` / `make migrate-down`
+- `make migrate-up` / `make migrate-down` / `make migrate-status`: migraciones (leen `DATABASE_URL` del `.env`).
 - `make lint` / `make test` / `make test-integration`
 
 ## Testing

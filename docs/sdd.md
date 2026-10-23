@@ -69,9 +69,11 @@ Plataforma SaaS (B2B2C) que conecta usuarios con actividades físicas y de biene
 ### 3.1 Estilo: monolito modular (no microservicios)
 Un solo repositorio, un solo despliegue, con **módulos con fronteras estrictas**. Se puede extraer un módulo a servicio más adelante si hay una razón real.
 
-Dos binarios, misma base de código:
+Dos binarios de servicio, misma base de código:
 - `cmd/api`: servidor HTTP stateless (JWT), escalable detrás de un balanceador.
 - `cmd/worker`: procesa jobs (webhooks, cron de reconciliación, emails).
+
+Más `cmd/migrate`: herramienta de un solo uso que aplica las migraciones SQL embebidas (`goose`) con `up`, `down`, `status` y `version`. Se ejecuta antes de desplegar, no queda corriendo.
 
 ### 3.2 Estructura del repositorio
 ```
@@ -81,7 +83,8 @@ movo/
 │   ├── go.sum
 │   ├── cmd/
 │   │   ├── api/main.go
-│   │   └── worker/main.go
+│   │   ├── worker/main.go
+│   │   └── migrate/main.go
 │   ├── internal/
 │   │   ├── platform/          # config, logger, db, httpx, jobs, clock, id
 │   │   ├── identity/          # users, auth, roles
@@ -374,7 +377,7 @@ Convenciones de trabajo:
 - [x] 0.1 Monorepo, `Makefile`, `.editorconfig`, `.gitignore` (S)
 - [x] 0.2 `docker-compose` con Postgres+PostGIS y object storage S3 (RustFS) (S)
 - [x] 0.3 `internal/platform`: config por env, `slog`, apagado ordenado (M)
-- [ ] 0.4 Conexión DB con `pgx` + migraciones + primera migración (extensión PostGIS) (S)
+- [x] 0.4 Conexión DB con `pgx` + migraciones + primera migración (extensión PostGIS) (S)
 - [ ] 0.5 Servidor HTTP con `chi`, `request_id`, `/healthz`, `/readyz`, formato de error (M)
 - [ ] 0.6 CI (lint + test + build + chequeo de migraciones) (M)
 - [ ] 0.7 `docs/adr/0001` con las decisiones de la sección 3 y `docs/adr/0002` de object storage (puerto `Storage` con API S3; RustFS pineado **sólo en desarrollo**, Garage como plan B, servicio gestionado en producción), y `CLAUDE.md` actualizado (S)

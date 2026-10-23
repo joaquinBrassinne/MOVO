@@ -16,7 +16,7 @@ COMPOSE := docker compose --env-file .env -f deploy/docker-compose.yml
 GO      ?= go
 
 .DEFAULT_GOAL := help
-.PHONY: help env up down ps logs wait-db fmt fmt-check tidy
+.PHONY: help env up down ps logs wait-db migrate migrate-up migrate-down migrate-status fmt fmt-check tidy
 
 # --- Entorno ----------------------------------------------------------------
 
@@ -41,6 +41,21 @@ wait-db: env ## Espera (máx. 60s) a que Postgres acepte conexiones
 	@i=0; until $(COMPOSE) exec -T postgres pg_isready -q >/dev/null 2>&1; do \
 	  i=$$((i+1)); [ $$i -ge 60 ] && { echo "postgres no respondió en 60s"; exit 1; }; sleep 1; done; \
 	echo "postgres listo"
+
+# --- Migraciones -------------------------------------------------------------
+
+# .env se carga porque `go run` no lo lee solo; set -a lo exporta al proceso.
+migrate: env ## Ejecuta un comando de goose (CMD=up|down|status|version)
+	@set -a; . ./.env; set +a; cd $(BACKEND) && $(GO) run ./cmd/migrate $(CMD)
+
+migrate-up: env ## Aplica las migraciones pendientes
+	@$(MAKE) --no-print-directory migrate CMD=up
+
+migrate-down: env ## Revierte la última migración aplicada
+	@$(MAKE) --no-print-directory migrate CMD=down
+
+migrate-status: env ## Muestra qué migraciones están aplicadas
+	@$(MAKE) --no-print-directory migrate CMD=status
 
 # --- Ayuda -------------------------------------------------------------------
 
