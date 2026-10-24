@@ -73,9 +73,13 @@ func RequestID(ctx context.Context) string {
 	return id
 }
 
+// apiPrefix is the versioned base path of every module endpoint.
+const apiPrefix = "/api/v1"
+
 // NewRouter builds the API router. A nil logger discards request logs; a nil
-// ready dependency fails /readyz closed.
-func NewRouter(log *slog.Logger, ready Pinger) http.Handler {
+// ready dependency fails /readyz closed. Each mount registers one module's
+// routes under /api/v1.
+func NewRouter(log *slog.Logger, ready Pinger, mounts ...func(chi.Router)) http.Handler {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
@@ -85,6 +89,11 @@ func NewRouter(log *slog.Logger, ready Pinger) http.Handler {
 	router.Use(withRequestLogging(log))
 	router.Get("/healthz", handleHealthz)
 	router.Get("/readyz", handleReadyz(log, ready))
+	router.Route(apiPrefix, func(api chi.Router) {
+		for _, mount := range mounts {
+			mount(api)
+		}
+	})
 	router.NotFound(handleNotFound)
 	router.MethodNotAllowed(handleMethodNotAllowed)
 
