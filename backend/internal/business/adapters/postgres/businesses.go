@@ -112,3 +112,17 @@ WHERE id = $1`,
 	}
 	return nil
 }
+
+// IsPilot reports whether the business is part of the pilot. It is not part of
+// business.BusinessRepository: the billing module declares the port that needs it.
+func (r *Businesses) IsPilot(ctx context.Context, businessID int64) (bool, error) {
+	var pilot bool
+	err := r.pool.QueryRow(ctx, `SELECT pilot FROM businesses WHERE id = $1`, businessID).Scan(&pilot)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, business.ErrBusinessNotFound
+	}
+	if err != nil {
+		return false, fmt.Errorf("postgres: select pilot flag: %w", err)
+	}
+	return pilot, nil
+}

@@ -329,3 +329,27 @@ func TestBranchesDeleteRemovesHoursAndIsScopedByBusiness(t *testing.T) {
 		t.Errorf("hours left after deleting the branch = %d, %v; want 0", n, err)
 	}
 }
+
+func TestBusinessesIsPilot(t *testing.T) {
+	t.Parallel()
+
+	pool := dbtest.New(t)
+	repo := postgres.NewBusinesses(pool)
+	created, err := repo.Create(t.Context(), draft(t, newOwner(t, pool, "owner@example.com"), categoryID(t, pool, "yoga"), "Studio"))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if pilot, err := repo.IsPilot(t.Context(), created.ID); err != nil || pilot {
+		t.Fatalf("new business IsPilot = %v, %v; want false", pilot, err)
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE businesses SET pilot = true WHERE id = $1`, created.ID); err != nil {
+		t.Fatalf("mark pilot: %v", err)
+	}
+	if pilot, err := repo.IsPilot(t.Context(), created.ID); err != nil || !pilot {
+		t.Errorf("pilot business IsPilot = %v, %v; want true", pilot, err)
+	}
+	if _, err := repo.IsPilot(t.Context(), 424242); !errors.Is(err, business.ErrBusinessNotFound) {
+		t.Errorf("missing business error = %v, want ErrBusinessNotFound", err)
+	}
+}
