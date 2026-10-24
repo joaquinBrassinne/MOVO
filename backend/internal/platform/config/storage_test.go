@@ -42,15 +42,16 @@ func TestLoadStorageOverrides(t *testing.T) {
 	t.Parallel()
 
 	got, err := config.LoadStorage(storageEnv(map[string]string{
-		"S3_ENDPOINT":    " http://localhost:9000 ",
-		"S3_REGION":      "auto",
-		"S3_PATH_STYLE":  "true",
-		"S3_PRESIGN_TTL": "2m",
+		"S3_ENDPOINT":      " http://localhost:9000 ",
+		"S3_REGION":        "auto",
+		"S3_PATH_STYLE":    "true",
+		"S3_PRESIGN_TTL":   "2m",
+		"S3_ENSURE_BUCKET": "true",
 	}))
 	if err != nil {
 		t.Fatalf("LoadStorage: %v", err)
 	}
-	if got.Endpoint != "http://localhost:9000" || got.Region != "auto" || !got.PathStyle || got.PresignTTL != 2*time.Minute {
+	if got.Endpoint != "http://localhost:9000" || got.Region != "auto" || !got.PathStyle || got.PresignTTL != 2*time.Minute || !got.EnsureBucket {
 		t.Errorf("storage = %+v", got)
 	}
 }
@@ -67,6 +68,7 @@ func TestLoadStorageRejections(t *testing.T) {
 		{"missing access key", map[string]string{"S3_ACCESS_KEY": ""}, "S3_ACCESS_KEY"},
 		{"missing secret key", map[string]string{"S3_SECRET_KEY": ""}, "S3_SECRET_KEY"},
 		{"bad path style", map[string]string{"S3_PATH_STYLE": "maybe"}, "S3_PATH_STYLE"},
+		{"bad ensure bucket", map[string]string{"S3_ENSURE_BUCKET": "sure"}, "S3_ENSURE_BUCKET"},
 		{"bad ttl", map[string]string{"S3_PRESIGN_TTL": "soon"}, "S3_PRESIGN_TTL"},
 		{"non-positive ttl", map[string]string{"S3_PRESIGN_TTL": "0s"}, "S3_PRESIGN_TTL"},
 		{"endpoint without scheme", map[string]string{"S3_ENDPOINT": "localhost:9000"}, "S3_ENDPOINT"},

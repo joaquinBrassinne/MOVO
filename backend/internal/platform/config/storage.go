@@ -11,13 +11,14 @@ import (
 
 // Environment variables understood by LoadStorage.
 const (
-	envS3Endpoint   = "S3_ENDPOINT"
-	envS3Region     = "S3_REGION"
-	envS3Bucket     = "S3_BUCKET"
-	envS3AccessKey  = "S3_ACCESS_KEY"
-	envS3SecretKey  = "S3_SECRET_KEY"
-	envS3PathStyle  = "S3_PATH_STYLE"
-	envS3PresignTTL = "S3_PRESIGN_TTL"
+	envS3Endpoint     = "S3_ENDPOINT"
+	envS3Region       = "S3_REGION"
+	envS3Bucket       = "S3_BUCKET"
+	envS3AccessKey    = "S3_ACCESS_KEY"
+	envS3SecretKey    = "S3_SECRET_KEY"
+	envS3PathStyle    = "S3_PATH_STYLE"
+	envS3PresignTTL   = "S3_PRESIGN_TTL"
+	envS3EnsureBucket = "S3_ENSURE_BUCKET"
 )
 
 const (
@@ -42,6 +43,9 @@ type Storage struct {
 	PathStyle bool
 	// PresignTTL is how long a presigned URL stays valid.
 	PresignTTL time.Duration
+	// EnsureBucket creates the bucket at startup when it does not exist. It is for
+	// the local development server only: production buckets come with the service.
+	EnsureBucket bool
 }
 
 // LoadStorage builds a Storage from get, normally os.Getenv.
@@ -66,13 +70,13 @@ func LoadStorage(get func(string) string) (Storage, error) {
 		}
 	}
 
-	pathStyle := false
-	if raw := strings.TrimSpace(get(envS3PathStyle)); raw != "" {
-		parsed, err := strconv.ParseBool(raw)
-		if err != nil {
-			return Storage{}, fmt.Errorf("config: %s %q must be true or false", envS3PathStyle, raw)
-		}
-		pathStyle = parsed
+	pathStyle, err := optionalBool(get, envS3PathStyle)
+	if err != nil {
+		return Storage{}, err
+	}
+	ensureBucket, err := optionalBool(get, envS3EnsureBucket)
+	if err != nil {
+		return Storage{}, err
 	}
 
 	ttl, err := parsePositiveDuration(envS3PresignTTL, get(envS3PresignTTL), defaultS3PresignTTL)
@@ -88,5 +92,20 @@ func LoadStorage(get func(string) string) (Storage, error) {
 		SecretKey:  required[envS3SecretKey],
 		PathStyle:  pathStyle,
 		PresignTTL: ttl,
+
+		EnsureBucket: ensureBucket,
 	}, nil
+}
+
+// optionalBool reads a true/false variable; empty means false.
+func optionalBool(get func(string) string, name string) (bool, error) {
+	raw := strings.TrimSpace(get(name))
+	if raw == "" {
+		return false, nil
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("config: %s %q must be true or false", name, raw)
+	}
+	return value, nil
 }
