@@ -73,3 +73,20 @@ func (f *fakeBusinesses) Save(_ context.Context, b domain.Business) error {
 	f.byID[b.ID] = b
 	return nil
 }
+
+// limits is a business.Entitlements with fixed limits; 0 means unlimited.
+type limits struct{ branches, services int }
+
+func (l limits) CanAddBranch(current int) bool { return l.branches == 0 || current < l.branches }
+
+func (l limits) CanActivateService(current int) bool { return l.services == 0 || current < l.services }
+
+// fixedEntitlements is a business.EntitlementsProvider that gives every business
+// the same limits.
+type fixedEntitlements struct{ limits limits }
+
+func (f fixedEntitlements) For(context.Context, int64) (business.Entitlements, error) {
+	return f.limits, nil
+}
+
+func unlimited() fixedEntitlements { return fixedEntitlements{} }

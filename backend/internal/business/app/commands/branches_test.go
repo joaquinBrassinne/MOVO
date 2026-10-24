@@ -33,7 +33,7 @@ func TestAddBranchAttachesItToTheCallersBusiness(t *testing.T) {
 	businesses, branches := twoOwners(t)
 	owned, _ := businesses.FindByOwner(t.Context(), 7)
 
-	got, err := commands.NewAddBranch(businesses, branches).Handle(t.Context(), commands.AddBranchInput{OwnerID: 7, Branch: validBranch})
+	got, err := commands.NewAddBranch(businesses, branches, unlimited()).Handle(t.Context(), commands.AddBranchInput{OwnerID: 7, Branch: validBranch})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestAddBranchRejections(t *testing.T) {
 	t.Parallel()
 
 	businesses, branches := twoOwners(t)
-	add := commands.NewAddBranch(businesses, branches)
+	add := commands.NewAddBranch(businesses, branches, unlimited())
 
 	if _, err := add.Handle(t.Context(), commands.AddBranchInput{OwnerID: 99, Branch: validBranch}); !errors.Is(err, business.ErrBusinessNotFound) {
 		t.Errorf("owner without business error = %v, want ErrBusinessNotFound", err)
@@ -72,7 +72,7 @@ func TestEditBranchCannotReachAnotherBusiness(t *testing.T) {
 	t.Parallel()
 
 	businesses, branches := twoOwners(t)
-	mine, err := commands.NewAddBranch(businesses, branches).Handle(t.Context(), commands.AddBranchInput{OwnerID: 7, Branch: validBranch})
+	mine, err := commands.NewAddBranch(businesses, branches, unlimited()).Handle(t.Context(), commands.AddBranchInput{OwnerID: 7, Branch: validBranch})
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestRemoveBranchCannotReachAnotherBusiness(t *testing.T) {
 	t.Parallel()
 
 	businesses, branches := twoOwners(t)
-	mine, err := commands.NewAddBranch(businesses, branches).Handle(t.Context(), commands.AddBranchInput{OwnerID: 7, Branch: validBranch})
+	mine, err := commands.NewAddBranch(businesses, branches, unlimited()).Handle(t.Context(), commands.AddBranchInput{OwnerID: 7, Branch: validBranch})
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestSetBranchHours(t *testing.T) {
 	t.Parallel()
 
 	businesses, branches := twoOwners(t)
-	mine, err := commands.NewAddBranch(businesses, branches).Handle(t.Context(), commands.AddBranchInput{OwnerID: 7, Branch: validBranch})
+	mine, err := commands.NewAddBranch(businesses, branches, unlimited()).Handle(t.Context(), commands.AddBranchInput{OwnerID: 7, Branch: validBranch})
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
@@ -153,5 +153,44 @@ func TestSetBranchHours(t *testing.T) {
 	}
 	if len(branches.hours[mine.ID]) != 0 {
 		t.Error("an empty list must close the branch all week")
+	}
+}
+
+func TestAddBranchRespectsThePlanLimit(t *testing.T) {
+	t.Parallel()
+
+	businesses, branches := twoOwners(t)
+	add := commands.NewAddBranch(businesses, branches, fixedEntitlements{limits: limits{branches: 2}})
+
+	var first domain.Branch
+	for i := range 2 {
+		got, err := add.Handle(t.Context(), commands.AddBranchInput{OwnerID: 7, Branch: validBranch})
+		if err != nil {
+			t.Fatalf("branch %d within the limit: %v", i+1, err)
+		}
+		if i == 0 {
+			first = got
+		}
+	}
+
+	if _, err := add.Handle(t.Context(), commands.AddBranchInput{OwnerID: 7, Branch: validBranch}); !errors.Is(err, business.ErrBranchLimitReached) {
+		t.Fatalf("third branch error = %v, want ErrBranchLimitReached", err)
+	}
+	if n, _ := branches.List(t.Context(), 1); len(n) != 2 {
+		t.Errorf("stored branches = %d, a rejected branch must not be stored", len(n))
+	}
+
+	// Another business has its own count.
+	if _, err := add.Handle(t.Context(), commands.AddBranchInput{OwnerID: 8, Branch: validBranch}); err != nil {
+		t.Errorf("another business must not be affected: %v", err)
+	}
+
+	// Branches left inactive by a downgrade do not use up the limit.
+	first.Active = false
+	if err := branches.Save(t.Context(), first); err != nil {
+		t.Fatalf("deactivate: %v", err)
+	}
+	if _, err := add.Handle(t.Context(), commands.AddBranchInput{OwnerID: 7, Branch: validBranch}); err != nil {
+		t.Errorf("an inactive branch must not count against the limit: %v", err)
 	}
 }

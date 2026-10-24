@@ -15,10 +15,9 @@ Que un local pueda existir, completar su perfil y ser aprobado manualmente (sin 
 - Las imágenes del onboarding (pasos 1 y 2) contradicen el SDD en "¡Pago recibido con éxito!" y "Verificado MOVO · AUTOMÁTICO": se sigue el SDD y se consulta en la 2.8.
 
 ## Hecho
-- 2.1 a 2.4 (commits `5778179`..`4456585`).
+- 2.1 a 2.5 (commits `5778179`..`0e7b573` y el de límite de sedes).
 
 ## Pendiente
-- 2.5 `PlanCatalog` + `Entitlements` (+ enganchar límite de sedes).
 - 2.6 servicios y horarios.
 - 2.7 super admin + `audit_log`.
 - 2.7b capa HTTP y wiring.

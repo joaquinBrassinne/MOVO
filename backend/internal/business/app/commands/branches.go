@@ -30,16 +30,18 @@ type AddBranchInput struct {
 
 // AddBranch adds a branch to the owner's business.
 type AddBranch struct {
-	businesses business.BusinessRepository
-	branches   business.BranchRepository
+	businesses   business.BusinessRepository
+	branches     business.BranchRepository
+	entitlements business.EntitlementsProvider
 }
 
 // NewAddBranch wires the AddBranch use case.
-func NewAddBranch(businesses business.BusinessRepository, branches business.BranchRepository) *AddBranch {
-	return &AddBranch{businesses: businesses, branches: branches}
+func NewAddBranch(businesses business.BusinessRepository, branches business.BranchRepository, entitlements business.EntitlementsProvider) *AddBranch {
+	return &AddBranch{businesses: businesses, branches: branches, entitlements: entitlements}
 }
 
-// Handle validates the branch and stores it.
+// Handle validates the branch and stores it. It returns
+// business.ErrBranchLimitReached when the plan has no room for another active branch.
 func (c *AddBranch) Handle(ctx context.Context, in AddBranchInput) (domain.Branch, error) {
 	owned, err := editableBusiness(ctx, c.businesses, in.OwnerID)
 	if err != nil {
@@ -52,11 +54,39 @@ func (c *AddBranch) Handle(ctx context.Context, in AddBranchInput) (domain.Branc
 	}
 	branch.BusinessID = owned.ID
 
+	if err := c.checkLimit(ctx, owned.ID); err != nil {
+		return domain.Branch{}, err
+	}
+
 	stored, err := c.branches.Create(ctx, branch)
 	if err != nil {
 		return domain.Branch{}, fmt.Errorf("create branch: %w", err)
 	}
 	return stored, nil
+}
+
+// checkLimit counts only active branches: the ones a downgrade left inactive do
+// not use up the plan.
+func (c *AddBranch) checkLimit(ctx context.Context, businessID int64) error {
+	ent, err := c.entitlements.For(ctx, businessID)
+	if err != nil {
+		return fmt.Errorf("resolve entitlements: %w", err)
+	}
+	existing, err := c.branches.List(ctx, businessID)
+	if err != nil {
+		return fmt.Errorf("list branches: %w", err)
+	}
+
+	active := 0
+	for _, b := range existing {
+		if b.Active {
+			active++
+		}
+	}
+	if !ent.CanAddBranch(active) {
+		return business.ErrBranchLimitReached
+	}
+	return nil
 }
 
 // EditBranchInput is the new details of an existing branch.

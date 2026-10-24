@@ -4,6 +4,7 @@
 package billing
 
 import (
+	"context"
 	"errors"
 
 	"github.com/joaquinBrassinne/MOVO/internal/billing/domain"
@@ -27,4 +28,10 @@ type PlanCatalog interface {
 	Entitlements(plan domain.Plan) (domain.Entitlements, error)
 	// Plans lists every plan, cheapest first.
 	Plans() []PlanInfo
+}
+
+// PlanResolver tells which plan a business is on. Subscriptions arrive in
+// phase 5; until then a fixed resolver answers for everyone.
+type PlanResolver interface {
+	PlanOf(ctx context.Context, businessID int64) (domain.Plan, error)
 }
