@@ -28,6 +28,12 @@ var (
 
 	ErrServiceNotFound     = errors.New("business: service not found")
 	ErrServiceLimitReached = errors.New("business: active service limit of the plan reached")
+
+	ErrImageNotFound     = errors.New("business: image not found")
+	ErrImageLimitReached = errors.New("business: image limit reached")
+	ErrImageExists       = errors.New("business: image is already registered")
+	ErrImageNotUploaded  = errors.New("business: image was not uploaded")
+	ErrImageOrderInvalid = errors.New("business: image order must list every image once")
 )
 
 // BusinessRepository stores businesses. One owner has at most one business.
@@ -154,10 +160,29 @@ type AdminDirectory interface {
 	List(ctx context.Context, filter AdminFilter) (AdminPage, error)
 }
 
-// ImageStorage creates the presigned URLs images are uploaded to. The object
-// server behind it is an environment detail (see docs/adr/0002).
+// ImageStorage moves photos through presigned URLs. The object server behind it
+// is an environment detail (see docs/adr/0002).
 type ImageStorage interface {
 	PresignUpload(ctx context.Context, req storage.UploadRequest) (storage.PresignedUpload, error)
+	PresignDownload(ctx context.Context, key string) (string, error)
+	Exists(ctx context.Context, key string) (bool, error)
+	Delete(ctx context.Context, key string) error
+}
+
+// ImageRepository stores the photos of a business. Position 0 is the cover and
+// positions are always contiguous.
+type ImageRepository interface {
+	// Add registers key at the end of the list. It returns ErrImageLimitReached when
+	// the business already has max images and ErrImageExists when the key is taken.
+	Add(ctx context.Context, businessID int64, key string, max int) (domain.Image, error)
+	// List returns the images ordered by position.
+	List(ctx context.Context, businessID int64) ([]domain.Image, error)
+	// Remove deletes the image, closes the gap in the positions and returns what it
+	// removed so the object can be deleted (ErrImageNotFound).
+	Remove(ctx context.Context, businessID, imageID int64) (domain.Image, error)
+	// Reorder sets the positions from the order of ids, which must be exactly the
+	// ids of the business images (ErrImageOrderInvalid).
+	Reorder(ctx context.Context, businessID int64, ids []int64) error
 }
 
 // CategoryRepository reads the category catalog.
