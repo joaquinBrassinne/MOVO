@@ -20,6 +20,9 @@ var (
 	ErrCategoryNotFound   = errors.New("business: category not found")
 	ErrBranchNotFound     = errors.New("business: branch not found")
 	ErrBranchLimitReached = errors.New("business: branch limit of the plan reached")
+
+	ErrServiceNotFound     = errors.New("business: service not found")
+	ErrServiceLimitReached = errors.New("business: active service limit of the plan reached")
 )
 
 // BusinessRepository stores businesses. One owner has at most one business.
@@ -71,4 +74,23 @@ type Entitlements interface {
 // them is the billing module's business; this module only asks questions.
 type EntitlementsProvider interface {
 	For(ctx context.Context, businessID int64) (Entitlements, error)
+}
+
+// ServiceRepository stores the services of a business and their weekly
+// schedules. Like BranchRepository, every method is scoped by business id.
+type ServiceRepository interface {
+	// Create stores a new service and returns it with ID set.
+	Create(ctx context.Context, s domain.Service) (domain.Service, error)
+	// List returns every service of the business, active or not, oldest first.
+	List(ctx context.Context, businessID int64) ([]domain.Service, error)
+	// Find returns ErrServiceNotFound when the service is not in the business.
+	Find(ctx context.Context, businessID, serviceID int64) (domain.Service, error)
+	// Save persists the details and the active flag (ErrServiceNotFound).
+	Save(ctx context.Context, s domain.Service) error
+	// Delete removes the service with its schedule (ErrServiceNotFound).
+	Delete(ctx context.Context, businessID, serviceID int64) error
+	// Schedule returns the weekly slots ordered by weekday and start.
+	Schedule(ctx context.Context, businessID, serviceID int64) ([]domain.Slot, error)
+	// ReplaceSchedule atomically swaps all the slots (ErrServiceNotFound).
+	ReplaceSchedule(ctx context.Context, businessID, serviceID int64, slots []domain.Slot) error
 }
