@@ -36,8 +36,8 @@ El puerto 5432 lo ocupa otro contenedor (`locos_deporte_db`). MOVO se levanta co
 
 ## Pendiente
 
-- 1.3: emisor JWT, handlers HTTP y composición en `cmd/api`.
-- 1.5, 1.6, 1.7.
+- 1.3: handlers HTTP y composición en `cmd/api`.
+- 1.6, 1.7.
 
 ## Para la tarea 1.7
 
