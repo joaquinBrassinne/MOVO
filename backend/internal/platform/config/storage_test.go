@@ -47,11 +47,12 @@ func TestLoadStorageOverrides(t *testing.T) {
 		"S3_PATH_STYLE":    "true",
 		"S3_PRESIGN_TTL":   "2m",
 		"S3_ENSURE_BUCKET": "true",
+		"S3_CORS_ORIGINS":  " http://localhost:3000, ,https://socios.movo.example ",
 	}))
 	if err != nil {
 		t.Fatalf("LoadStorage: %v", err)
 	}
-	if got.Endpoint != "http://localhost:9000" || got.Region != "auto" || !got.PathStyle || got.PresignTTL != 2*time.Minute || !got.EnsureBucket {
+	if got.Endpoint != "http://localhost:9000" || got.Region != "auto" || !got.PathStyle || got.PresignTTL != 2*time.Minute || !got.EnsureBucket || len(got.CORSOrigins) != 2 || got.CORSOrigins[1] != "https://socios.movo.example" {
 		t.Errorf("storage = %+v", got)
 	}
 }

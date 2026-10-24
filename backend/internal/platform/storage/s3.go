@@ -19,10 +19,11 @@ import (
 // addressing come from configuration, so the same code serves RustFS in
 // development and R2, B2 or AWS S3 in production.
 type S3 struct {
-	client  *s3.Client
-	presign *s3.PresignClient
-	bucket  string
-	ttl     func(*s3.PresignOptions)
+	client      *s3.Client
+	presign     *s3.PresignClient
+	bucket      string
+	corsOrigins []string
+	ttl         func(*s3.PresignOptions)
 }
 
 // NewS3 builds the adapter from the storage configuration. It makes no network
@@ -40,10 +41,11 @@ func NewS3(cfg config.Storage) *S3 {
 	})
 
 	return &S3{
-		client:  client,
-		presign: s3.NewPresignClient(client),
-		bucket:  cfg.Bucket,
-		ttl:     func(o *s3.PresignOptions) { o.Expires = cfg.PresignTTL },
+		client:      client,
+		presign:     s3.NewPresignClient(client),
+		bucket:      cfg.Bucket,
+		corsOrigins: cfg.CORSOrigins,
+		ttl:         func(o *s3.PresignOptions) { o.Expires = cfg.PresignTTL },
 	}
 }
 
@@ -54,20 +56,34 @@ func endpointOrNil(endpoint string) *string {
 	return aws.String(endpoint)
 }
 
-// EnsureBucket creates the bucket when it does not exist. It is meant for the
-// local development server; production buckets are provisioned with the service.
+// EnsureBucket creates the bucket when it does not exist and applies the CORS
+// rule that lets the browser upload with the presigned URLs. It is meant for the
+// local development server; production buckets and their CORS rules are set up
+// with the service.
 func (s *S3) EnsureBucket(ctx context.Context) error {
-	_, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: &s.bucket})
-	if err == nil {
-		return nil
+	if _, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: &s.bucket}); err != nil {
+		if _, err := s.client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: &s.bucket}); err != nil {
+			var exists *types.BucketAlreadyOwnedByYou
+			if !errors.As(err, &exists) {
+				return fmt.Errorf("storage: create bucket %q: %w", s.bucket, err)
+			}
+		}
 	}
 
-	if _, err := s.client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: &s.bucket}); err != nil {
-		var exists *types.BucketAlreadyOwnedByYou
-		if errors.As(err, &exists) {
-			return nil
-		}
-		return fmt.Errorf("storage: create bucket %q: %w", s.bucket, err)
+	if len(s.corsOrigins) == 0 {
+		return nil
+	}
+	_, err := s.client.PutBucketCors(ctx, &s3.PutBucketCorsInput{
+		Bucket: &s.bucket,
+		CORSConfiguration: &types.CORSConfiguration{CORSRules: []types.CORSRule{{
+			AllowedOrigins: s.corsOrigins,
+			AllowedMethods: []string{http.MethodPut, http.MethodGet},
+			AllowedHeaders: []string{"*"},
+			MaxAgeSeconds:  aws.Int32(600),
+		}}},
+	})
+	if err != nil {
+		return fmt.Errorf("storage: set cors of bucket %q: %w", s.bucket, err)
 	}
 	return nil
 }

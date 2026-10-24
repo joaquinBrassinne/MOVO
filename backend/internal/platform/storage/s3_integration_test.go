@@ -146,3 +146,39 @@ func TestS3ExistsSeesUploadedObjectsOnly(t *testing.T) {
 		t.Error("after delete the object must be gone")
 	}
 }
+
+// TestS3EnsureBucketLetsTheBrowserUploadFromTheConfiguredOrigin pins the CORS rule
+// the web app needs to PUT a file straight to the object server.
+func TestS3EnsureBucketLetsTheBrowserUploadFromTheConfiguredOrigin(t *testing.T) {
+	cfg, err := config.LoadStorage(func(name string) string {
+		defaults := map[string]string{
+			"S3_ENDPOINT":     "http://localhost:9000",
+			"S3_BUCKET":       "movo-test",
+			"S3_ACCESS_KEY":   "movo",
+			"S3_SECRET_KEY":   "movo12345",
+			"S3_PATH_STYLE":   "true",
+			"S3_CORS_ORIGINS": "http://localhost:3000",
+		}
+		return env(name, defaults[name])
+	})
+	if err != nil {
+		t.Fatalf("LoadStorage: %v", err)
+	}
+	if err := storage.NewS3(cfg).EnsureBucket(t.Context()); err != nil {
+		t.Fatalf("EnsureBucket: %v", err)
+	}
+
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodOptions, cfg.Endpoint+"/"+cfg.Bucket+"/cors-check.jpg", nil)
+	req.Header.Set("Origin", "http://localhost:3000")
+	req.Header.Set("Access-Control-Request-Method", "PUT")
+	req.Header.Set("Access-Control-Request-Headers", "content-type")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("preflight: %v", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if got := res.Header.Get("Access-Control-Allow-Origin"); got != "http://localhost:3000" {
+		t.Errorf("Access-Control-Allow-Origin = %q, want the configured origin", got)
+	}
+}

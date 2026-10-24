@@ -19,6 +19,7 @@ const (
 	envS3PathStyle    = "S3_PATH_STYLE"
 	envS3PresignTTL   = "S3_PRESIGN_TTL"
 	envS3EnsureBucket = "S3_ENSURE_BUCKET"
+	envS3CORSOrigins  = "S3_CORS_ORIGINS"
 )
 
 const (
@@ -46,6 +47,10 @@ type Storage struct {
 	// EnsureBucket creates the bucket at startup when it does not exist. It is for
 	// the local development server only: production buckets come with the service.
 	EnsureBucket bool
+	// CORSOrigins are the web origins allowed to upload and read from the bucket
+	// with the presigned URLs. EnsureBucket applies them; in production they are
+	// set in the provider console.
+	CORSOrigins []string
 }
 
 // LoadStorage builds a Storage from get, normally os.Getenv.
@@ -94,6 +99,7 @@ func LoadStorage(get func(string) string) (Storage, error) {
 		PresignTTL: ttl,
 
 		EnsureBucket: ensureBucket,
+		CORSOrigins:  splitList(get(envS3CORSOrigins)),
 	}, nil
 }
 
@@ -108,4 +114,15 @@ func optionalBool(get func(string) string, name string) (bool, error) {
 		return false, fmt.Errorf("config: %s %q must be true or false", name, raw)
 	}
 	return value, nil
+}
+
+// splitList splits a comma separated list, dropping blanks.
+func splitList(raw string) []string {
+	var out []string
+	for _, item := range strings.Split(raw, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }
