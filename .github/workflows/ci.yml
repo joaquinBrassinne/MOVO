@@ -1,0 +1,145 @@
+name: CI
+
+# Cada push a una rama de trabajo y cada PR contra develop/main pasan por
+# lint, tests, build, migraciones y frontend (SDD §2 y tareas 0.6 y 0.8).
+on:
+  push:
+    branches:
+      - develop
+      - main
+      # `**` cruza la barra: `phase-*` no matchea `phase-0/foundations`.
+      - "phase-**"
+  pull_request:
+    branches:
+      - develop
+      - main
+
+# Un push nuevo cancela el run anterior sólo en ramas de trabajo: en develop y
+# main cada commit necesita su run verde registrado, es lo que mira el PR.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/develop' && github.ref != 'refs/heads/main' }}
+
+# El pipeline sólo lee el repositorio (SDD §7.1: permisos mínimos).
+permissions:
+  contents: read
+
+# Los pasos invocan los targets del Makefile de la raíz, que ya entran solos a
+# backend/: un `working-directory: backend` acá dejaría a make sin Makefile.
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      # Misma versión que `make lint` y que backend/.golangci.yml.
+      - uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: v2.14.0
+          working-directory: backend
+
+  test:
+    name: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      # -race necesita cgo: en Linux está disponible, en el Windows de desarrollo no.
+      - run: make test TESTFLAGS="-race -count=1"
+
+  build:
+    name: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - run: make build
+
+  migrations:
+    name: migrations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Misma imagen que deploy/docker-compose.yml: la migración se valida contra
+    # la versión de PostgreSQL+PostGIS que corre en desarrollo.
+    services:
+      postgres:
+        image: postgis/postgis:16-3.6
+        env:
+          POSTGRES_USER: movo
+          POSTGRES_PASSWORD: movo
+          POSTGRES_DB: movo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U movo -d movo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgres://movo:movo@localhost:5432/movo?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      # Ida y vuelta: subir, revertir y volver a subir prueba que el `down` de
+      # cada migración existe y funciona, no sólo el `up`. Los pasos `assert`
+      # verifican el estado resultante: un comando que sale 0 sin haber hecho
+      # nada no alcanza.
+      - name: apply migrations
+        run: make migrate-up
+      - name: assert postgis is installed
+        run: >-
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc
+          "SELECT extversion FROM pg_extension WHERE extname = 'postgis'"
+          | grep -E '^3\.[0-9]+'
+      - name: show status
+        run: make migrate-status
+      - name: revert the last migration
+        run: make migrate-down
+      - name: assert postgis is gone
+        run: >-
+          test -z "$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc
+          "SELECT extname FROM pg_extension WHERE extname LIKE 'postgis%'")"
+      - name: re-apply migrations
+        run: make migrate-up
+
+  # Este job no pasa por el Makefile de la raíz: los comandos del frontend
+  # viven en su package.json, así que fija el directorio una vez.
+  frontend:
+    name: frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          # Una sola declaración de la versión de Node: la del proyecto.
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # `npm ci` instala exactamente el lockfile: si el manifiesto se movió sin
+      # actualizarlo, el job falla en vez de resolver otra cosa.
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run build

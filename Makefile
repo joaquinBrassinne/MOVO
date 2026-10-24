@@ -15,8 +15,18 @@ BACKEND := backend
 COMPOSE := docker compose --env-file .env -f deploy/docker-compose.yml
 GO      ?= go
 
+# Versión de golangci-lint que espera la configuración de backend/.golangci.yml
+# (esquema v2) y la que corre CI. Se instala con:
+#   go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+GOLANGCI_LINT_VERSION := v2.14.0
+GOLANGCI_LINT         ?= golangci-lint
+
+# Flags extra para los tests. CI agrega -race; en Windows no hay gcc (CGO off),
+# así que el default local no lo pide.
+TESTFLAGS ?=
+
 .DEFAULT_GOAL := help
-.PHONY: help env up down ps logs wait-db fmt fmt-check tidy
+.PHONY: help env up down ps logs wait-db migrate migrate-up migrate-down migrate-status fmt fmt-check tidy lint test build
 
 # --- Entorno ----------------------------------------------------------------
 
@@ -42,6 +52,23 @@ wait-db: env ## Espera (máx. 60s) a que Postgres acepte conexiones
 	  i=$$((i+1)); [ $$i -ge 60 ] && { echo "postgres no respondió en 60s"; exit 1; }; sleep 1; done; \
 	echo "postgres listo"
 
+# --- Migraciones -------------------------------------------------------------
+
+# .env se carga porque `go run` no lo lee solo; set -a lo exporta al proceso.
+# Si DATABASE_URL ya viene del entorno (CI), manda esa: el job define la suya y
+# no hay archivo .env que leer.
+migrate: env ## Ejecuta un comando de goose (CMD=up|down|status|version)
+	@set -a; [ -n "$$DATABASE_URL" ] || . ./.env; set +a; cd $(BACKEND) && $(GO) run ./cmd/migrate $(CMD)
+
+migrate-up: env ## Aplica las migraciones pendientes
+	@$(MAKE) --no-print-directory migrate CMD=up
+
+migrate-down: env ## Revierte la última migración aplicada
+	@$(MAKE) --no-print-directory migrate CMD=down
+
+migrate-status: env ## Muestra qué migraciones están aplicadas
+	@$(MAKE) --no-print-directory migrate CMD=status
+
 # --- Ayuda -------------------------------------------------------------------
 
 # En Windows, awk vive en el usr/bin de Git, que no está en el PATH cuando make
@@ -62,3 +89,16 @@ fmt-check: ## Falla si algún archivo Go no está formateado
 
 tidy: ## Ordena backend/go.mod y backend/go.sum
 	cd $(BACKEND) && $(GO) mod tidy
+
+lint: ## Corre golangci-lint sobre el backend
+	@command -v $(GOLANGCI_LINT) >/dev/null 2>&1 || { \
+	  echo "golangci-lint no está instalado. Instalá la versión que usa CI:"; \
+	  echo "  go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)"; \
+	  exit 1; }
+	cd $(BACKEND) && $(GOLANGCI_LINT) run ./...
+
+test: ## Corre los tests del backend (CI agrega TESTFLAGS="-race")
+	cd $(BACKEND) && $(GO) test $(TESTFLAGS) ./...
+
+build: ## Compila los binarios del backend en backend/bin
+	cd $(BACKEND) && $(GO) build -o bin/ ./cmd/...

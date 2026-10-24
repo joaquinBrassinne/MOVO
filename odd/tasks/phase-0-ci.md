@@ -1,0 +1,49 @@
+# Fase 0 — Tarea 0.6: CI (lint + test + build + chequeo de migraciones)
+
+Rama `phase-0/foundations`. Un solo entregable: el pipeline de integración continua que valida el backend Go en cada push y PR contra `develop`.
+
+## Specs
+
+- **S1** (§2, tabla de stack): `| CI | GitHub Actions | lint, tests, build, chequeo de migraciones |`
+- **S2** (§9, checklist): `- [ ] 0.6 CI (lint + test + build + chequeo de migraciones) (M)`
+- **S3** (§7.4): `- golangci-lint (incl. errcheck, govet, staticcheck, depguard).`
+- **S4** (§7.4): `Sin variables globales mutables; dependencias inyectadas por constructor (main.go es la raíz de composición).`
+- **S5** (DoD de la fase): `**DoD:** make up levanta todo; CI verde; /readyz responde con la DB conectada.`
+- **S6** (§7.1): `- Dependencias auditadas (govulncheck, npm audit) en CI.`
+- **S7** (§9, checklist): `- [ ] 8.1 Checklist de seguridad (sección 7.1) y govulncheck/npm audit en CI (M)`
+
+> **Resolución S6 vs S7:** `govulncheck` y `npm audit` entran en la tarea **8.1**, no en 0.6. El alcance de 0.6 es el que fija S2. Queda registrado acá para no perderlo.
+
+- **S8** (`CLAUDE.md`, comandos): `- make lint / make test / make test-integration`
+  El pipeline invoca los mismos targets que el desarrollador, para que "verde en local" y "verde en CI" signifiquen lo mismo.
+- **S9** (§7.4): `- Errores siempre manejados y envueltos (fmt.Errorf("...: %w", err)); errores de dominio tipados.`
+
+## Tasks
+
+| ID | Tarea | Specs | Ruta | Commit |
+|----|-------|-------|------|--------|
+| T1 | Targets `lint`, `test`, `build` en el `Makefile` (mismos comandos en local y CI) | S8 | inline | `2e30bbc` |
+| T2 | `.golangci.yml` con el esquema v2 y el set de S3 | S3, S9 | inline | `2e30bbc` |
+| T3 | `.github/workflows/ci.yml`: jobs `lint`, `test`, `build`, `migrations` (PostgreSQL+PostGIS como servicio) | S1, S2 | inline | `b906ff3`, `b5de0fd`, `5b1c731` |
+| T4 | Docs: checkbox 0.6 y comandos de `CLAUDE.md` | S2, S5 | inline | `b906ff3` |
+| T5 | Verificación: lint/test/build en local, job de migraciones con DB nueva, `actionlint`, y run real de GitHub Actions en verde | S5 | inline | run `39893436881` |
+
+## Log
+
+- **L1** (pedido del usuario, verbatim): *"pasame el comando para instalar gh"* → instalado `gh` 2.103.0, `gh auth status` en verde con scopes `repo` y `workflow`.
+- **L2** (pedido original de la fase, verbatim del SDD): construir la plataforma MOVO por fases, una tarea del SDD por vez.
+- **L3** (decisión, versiones por antigüedad ≥2 semanas al 2026-10-23): `golangci/golangci-lint v2.15.0` (2026-10-16) **descartada** por 7 días → `v2.14.0` (2026-09-24). `golangci/golangci-lint-action v9.3.0` (2026-06-29). `actions/checkout v7.0.1` y `actions/setup-go v7.0.0` (julio 2026).
+- **L4** (decisión): el runner lo fija S1 (GitHub Actions); no se consultó porque el SDD ya lo decide.
+- **L5** (corrección de un default previo): «`depguard` vacío» no es viable en el esquema v2 — sin `rules`, depguard sólo permite `$gostd` y marcaría en rojo `pgx`, `chi` y `goose` que ya usamos. Se resuelve en T2 y se documenta en el archivo.
+- **L6** (bug encontrado por el linter, `2e30bbc`): `errcheck` marcó `defer sqlDB.Close()` en `internal/platform/db/db.go` (código de 0.4, nunca lintado). El handle comparte el pool, así que el error no es accionable: el descarte ahora es explícito.
+- **L7** (bug encontrado por el job de migraciones, `ea537d3`): el `down` de `00001_extensions.sql` fallaba con `SQLSTATE 2BP01` en la DB de desarrollo. La imagen `postgis/postgis` preinstala `postgis_topology` y `postgis_tiger_geocoder`, que dependen de `postgis`. La verificación de 0.4 había pasado porque usó una DB creada fuera de la imagen. Se dropean explícitas, sin `CASCADE`.
+- **L8** (evidencia: run rojo `39893210782`): `defaults.run.working-directory: backend` dejaba a `make` sin Makefile en 3 de 4 jobs (`No rule to make target 'build'`). `lint` sobrevivió porque la action tiene su propio `working-directory`, y por eso el chequeo local no podía verlo. Corregido en `5b1c731`.
+- **L9** (evidencia: run rojo, sin jobs): el filtro `phase-*` no disparaba nada — en los filtros de rama de GitHub `*` no cruza `/`. Corregido a `phase-**` en `b5de0fd`.
+- **L10** (cierre): run `39893436881` sobre `5b1c731` en verde, 4/4 jobs (`lint`, `tests`, `build`, `migrations` con apply → status → down → re-apply). Runner fijado en `ubuntu-24.04`.
+- **L11** (verificación independiente, `gentle-ai-verify` sobre `d8a2b1e..a7324b4`): 9 hallazgos. Resolución:
+  - **S8, aceptado con corrección de la spec:** el job de lint usa la action oficial en la **misma versión pineada** y con el **mismo archivo de configuración** que `make lint`; forzar la invocación del target agregaría un `go install` de ~40 s por run sin cambiar el veredicto. La paridad —lo único que puede podrirse en silencio— queda pineada por `TestLintVersionMatchesTheMakefile`.
+  - **`nolintlint` no hacía nada** (`require-explanation` no está en el default): mi comentario afirmaba algo falso. Ahora `require-explanation: true` + `require-specific: true`, verificado RED/GREEN con un `//nolint:errcheck` sin motivo.
+  - **Ningún job tenía `timeout-minutes`** y `cancel-in-progress: true` cancelaba también en `develop`/`main`, donde cada commit necesita su run verde. Ahora hay tope por job y la cancelación sólo aplica a ramas de trabajo.
+  - **El job de migraciones no afirmaba nada sobre el estado:** salir 0 no prueba que la extensión esté. Se agregaron pasos `psql` que exigen `postgis` presente tras `up` y ausente tras `down`.
+  - **Sin guardas durables:** 7 tests en `backend/internal/ciworkflow` pinen el contrato del workflow (triggers, ausencia de `defaults:`, actions pineadas, timeouts, aserciones de migraciones, imagen de DB compartida con compose, paridad de versión del linter) y 1 en `backend/migrations` pinea el orden del `down`. Los tres defectos se reintrodujeron a mano para confirmar que los tests fallan.
+  - Los hallazgos 6-8 se mantienen como decisiones deliberadas ya documentadas (el `down` dropea extensiones que el `up` no creó; `make build` necesita un checkout git; un `DATABASE_URL` exportado gana sobre `.env`). El 9 (suite de integración) es de Fase 1+.
