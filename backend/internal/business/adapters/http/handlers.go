@@ -35,6 +35,13 @@ type Deps struct {
 	EditBranch     *commands.EditBranch
 	RemoveBranch   *commands.RemoveBranch
 	SetBranchHours *commands.SetBranchHours
+
+	ListServices       *queries.ListMyServices
+	AddService         *commands.AddService
+	EditService        *commands.EditService
+	RemoveService      *commands.RemoveService
+	SetServiceActive   *commands.SetServiceActive
+	SetServiceSchedule *commands.SetServiceSchedule
 }
 
 // Handlers serves the business endpoints.
@@ -64,6 +71,7 @@ func (h *Handlers) Mount(r chi.Router) {
 		me.Post("/submit", h.handleSubmit)
 		me.Post("/images/presign", h.handlePresign)
 		h.mountBranches(me)
+		h.mountServices(me)
 	})
 }
 

@@ -92,3 +92,30 @@ func toSlots(in []slotJSON) ([]domain.Slot, error) {
 	}
 	return out, nil
 }
+
+// serviceBaseJSON is what a service write answers with. The schedule is left out
+// because those writes do not touch it; GET /me/business/services carries it.
+type serviceBaseJSON struct {
+	ID          int64  `json:"id"`
+	BranchID    *int64 `json:"branch_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Active      bool   `json:"active"`
+}
+
+type serviceJSON struct {
+	serviceBaseJSON
+	Schedule []slotJSON `json:"schedule"`
+}
+
+func toServiceBaseJSON(s domain.Service) serviceBaseJSON {
+	out := serviceBaseJSON{ID: s.ID, Name: s.Name, Description: s.Description, Active: s.Active}
+	if s.BranchID != 0 {
+		out.BranchID = &s.BranchID
+	}
+	return out
+}
+
+func toServiceJSON(s domain.Service, schedule []domain.Slot) serviceJSON {
+	return serviceJSON{serviceBaseJSON: toServiceBaseJSON(s), Schedule: toSlotsJSON(schedule)}
+}
