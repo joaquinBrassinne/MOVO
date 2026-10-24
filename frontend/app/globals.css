@@ -5,6 +5,22 @@
   --color-brand-100: oklch(0.94 0.04 165);
   --color-brand-600: oklch(0.55 0.12 165);
   --color-brand-700: oklch(0.47 0.11 165);
+
+  /* Portal de socios: valores tomados del diseño entregado para la Fase 1. */
+  --color-movo-page: #262649;
+  --color-movo-card: #1e1c3e;
+  --color-movo-tabs: #181733;
+  --color-movo-field: #14132b;
+  --color-movo-accent: #fcd34d;
+  --color-movo-muted: #b7b5cf;
+  --color-movo-ink: #23213f;
+  --color-movo-error: #ff9aa2;
+  --color-movo-error-bg: #4e4560;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
