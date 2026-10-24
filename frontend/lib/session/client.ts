@@ -10,6 +10,9 @@ const NETWORK_ERROR: ApiError = {
   message: "the request could not be completed",
 };
 
+// El access token vive solo en memoria de la pestaña; nunca en localStorage.
+let access: { token: string; expiresAt: number } | null = null;
+
 async function readError(response: Response): Promise<ApiError> {
   try {
     const body = (await response.json()) as { error?: ApiError };
@@ -33,8 +36,12 @@ async function call(
     });
 
     if (response.ok) {
-      return { ok: true, data: (await response.json()) as SessionPayload };
+      const data = (await response.json()) as SessionPayload;
+      access = { token: data.access_token, expiresAt: Date.parse(data.access_expires_at) };
+      return { ok: true, data };
     }
+
+    if (action === "refresh" && response.status === 401) access = null;
 
     const retryAfter = Number(response.headers.get("Retry-After"));
     return {
@@ -52,7 +59,19 @@ export const login = (email: string, password: string) => call("login", { email,
 export const register = (email: string, password: string) => call("register", { email, password });
 
 export async function logout(): Promise<void> {
+  access = null;
   await call("logout");
+}
+
+/** Margen para no mandar un token que vence en el camino. */
+const EXPIRY_MARGIN_MS = 30_000;
+
+/** El access token vigente; si venció o falta, lo renueva con la cookie. `null` si no hay sesión. */
+export async function getAccessToken(): Promise<string | null> {
+  if (access && access.expiresAt - Date.now() > EXPIRY_MARGIN_MS) return access.token;
+
+  const renewed = await refresh();
+  return renewed.ok ? renewed.data.access_token : null;
 }
 
 let inFlight: Promise<SessionResult> | null = null;
