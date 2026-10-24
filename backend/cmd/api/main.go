@@ -12,6 +12,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	identityhttp "github.com/joaquinBrassinne/MOVO/internal/identity/adapters/http"
+	"github.com/joaquinBrassinne/MOVO/internal/identity/adapters/postgres"
+	"github.com/joaquinBrassinne/MOVO/internal/identity/adapters/ratelimit"
+	"github.com/joaquinBrassinne/MOVO/internal/identity/adapters/tokens"
+	"github.com/joaquinBrassinne/MOVO/internal/identity/app/commands"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/config"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/db"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
@@ -25,6 +33,14 @@ const (
 	readTimeout       = 15 * time.Second
 	writeTimeout      = 30 * time.Second
 	idleTimeout       = 60 * time.Second
+)
+
+// Failed-login budget: after loginMaxAttempts failures within loginWindow an
+// email or a client address is blocked until the window ends.
+const (
+	loginMaxAttempts = 5
+	loginWindow      = 15 * time.Minute
+	loginMaxKeys     = 100_000
 )
 
 func main() {
@@ -45,12 +61,48 @@ func run() error {
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	auth, err := config.LoadAuth(os.Getenv)
+	if err != nil {
+		return err
+	}
+
 	pool, err := db.Connect(signalCtx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
 
-	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, httpx.NewRouter(log, pool), pool.Close)
+	identityRoutes, err := newIdentityRoutes(log, pool, auth)
+	if err != nil {
+		pool.Close()
+		return err
+	}
+
+	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, httpx.NewRouter(log, pool, identityRoutes), pool.Close)
+}
+
+// newIdentityRoutes composes the identity module: adapters, use cases and HTTP.
+func newIdentityRoutes(log *slog.Logger, pool *pgxpool.Pool, auth config.Auth) (func(chi.Router), error) {
+	signer, err := tokens.NewSigner(auth.JWTSecret, auth.AccessTokenTTL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	users := postgres.NewUsers(pool)
+	store := postgres.NewRefreshTokens(pool)
+	limiter := ratelimit.New(ratelimit.Config{
+		MaxAttempts: loginMaxAttempts,
+		Window:      loginWindow,
+		MaxKeys:     loginMaxKeys,
+	}, nil)
+	sessions := commands.NewSessions(signer, store, users, auth.RefreshTokenTTL, nil, log)
+
+	return identityhttp.New(
+		commands.NewRegister(users, sessions),
+		commands.NewLogin(users, limiter, sessions),
+		commands.NewRefresh(sessions),
+		commands.NewLogout(store, nil),
+		log,
+	).Mount, nil
 }
 
 // serve runs the HTTP server until ctx is done and then shuts it down within

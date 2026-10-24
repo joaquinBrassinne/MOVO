@@ -31,15 +31,20 @@ El puerto 5432 lo ocupa otro contenedor (`locos_deporte_db`). MOVO se levanta co
 
 - **1.1** migración `00002_identity.sql` (`users`, `refresh_tokens`) con tests contra Postgres real (`internal/platform/dbtest`, testcontainers-go v0.44.0).
 - **1.2** dominio `identity` (`User`, roles, email, política de contraseña, argon2id PHC) y reglas depguard de capas.
-- **1.3 (parcial)** casos de uso `Register`/`Login`/`Refresh`/`Logout`, puertos y adaptadores Postgres (rotación atómica con detección de reuso).
+- **1.3** casos de uso `Register`/`Login`/`Refresh`/`Logout`, adaptadores Postgres (rotación atómica con detección de reuso), firmador JWT HS256 y endpoints `/api/v1/auth/*` compuestos en `cmd/api`. `config.LoadAuth` se carga aparte de `config.Load` para no exigir `JWT_SECRET` a `cmd/migrate`.
 - **1.4** `httpx.Authenticate` (Bearer) y `httpx.RequireRole`, con el `Principal` en el contexto.
+- **1.5** limitador de intentos en memoria (`adapters/ratelimit`) detrás del puerto `LoginLimiter`, con tope de claves.
 
 ## Pendiente
 
-- 1.3: handlers HTTP y composición en `cmd/api`.
-- 1.6, 1.7.
+- 1.6 (super admin por env), 1.7 (frontend) y cierre de fase.
+
+## Antes de desplegar detrás de un proxy
+
+`clientIP` usa la dirección del par TCP. Detrás de un reverse proxy todos los clientes comparten una IP y el límite por dirección bloquearía a todos tras 5 fallos. Hay que resolver la IP real con proxies de confianza (tarea de despliegue, Fase 8).
 
 ## Para la tarea 1.7
 
 - El refresh rota y reutilizar un token ya rotado revoca todas las sesiones del usuario: el frontend debe serializar los refresh (una sola llamada en vuelo), o dos pestañas simultáneas se cerrarán la sesión entre sí.
+- Dónde guardar los tokens en el navegador se decide al implementar la vista.
 - `sqlc` todavía no está en el repo: los adaptadores usan `pgx` directo.

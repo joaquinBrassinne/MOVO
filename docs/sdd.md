@@ -462,7 +462,7 @@ Convenciones de trabajo:
 
 - [x] 1.1 Migraciones `users`, `refresh_tokens` (S)
 - [x] 1.2 Dominio `identity`: entidad User, validaciones, hashing (M)
-- [ ] 1.3 Casos de uso Register / Login / Refresh / Logout (M)
+- [x] 1.3 Casos de uso Register / Login / Refresh / Logout (M)
 - [x] 1.4 Middleware JWT + middleware de roles (S)
 - [x] 1.5 Límite de intentos de login (en memoria, interfaz lista para Redis) (S)
 - [ ] 1.6 Primer super admin por seed/variables de entorno (S)
