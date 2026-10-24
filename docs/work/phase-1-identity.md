@@ -30,10 +30,16 @@ El puerto 5432 lo ocupa otro contenedor (`locos_deporte_db`). MOVO se levanta co
 ## Hecho
 
 - **1.1** migración `00002_identity.sql` (`users`, `refresh_tokens`) con tests contra Postgres real (`internal/platform/dbtest`, testcontainers-go v0.44.0).
-
-- **1.2** dominio `identity` (`User`, roles, email, política de contraseña, argon2id PHC) y regla depguard que mantiene el dominio puro.
-
+- **1.2** dominio `identity` (`User`, roles, email, política de contraseña, argon2id PHC) y reglas depguard de capas.
+- **1.3 (parcial)** casos de uso `Register`/`Login`/`Refresh`/`Logout`, puertos y adaptadores Postgres (rotación atómica con detección de reuso).
+- **1.4** `httpx.Authenticate` (Bearer) y `httpx.RequireRole`, con el `Principal` en el contexto.
 
 ## Pendiente
 
-1.3 a 1.7.
+- 1.3: emisor JWT, handlers HTTP y composición en `cmd/api`.
+- 1.5, 1.6, 1.7.
+
+## Para la tarea 1.7
+
+- El refresh rota y reutilizar un token ya rotado revoca todas las sesiones del usuario: el frontend debe serializar los refresh (una sola llamada en vuelo), o dos pestañas simultáneas se cerrarán la sesión entre sí.
+- `sqlc` todavía no está en el repo: los adaptadores usan `pgx` directo.
