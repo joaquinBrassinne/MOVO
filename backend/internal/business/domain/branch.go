@@ -116,3 +116,15 @@ func validateBookingURL(raw string) (string, error) {
 	}
 	return raw, nil
 }
+
+// Activate shows the branch again. Whether the plan has room is the use case's call.
+func (b Branch) Activate() Branch {
+	b.Active = true
+	return b
+}
+
+// Deactivate hides the branch without deleting it.
+func (b Branch) Deactivate() Branch {
+	b.Active = false
+	return b
+}

@@ -54,7 +54,7 @@ func (c *AddBranch) Handle(ctx context.Context, in AddBranchInput) (domain.Branc
 	}
 	branch.BusinessID = owned.ID
 
-	if err := c.checkLimit(ctx, owned.ID); err != nil {
+	if err := ensureBranchRoom(ctx, c.entitlements, c.branches, owned.ID); err != nil {
 		return domain.Branch{}, err
 	}
 
@@ -65,14 +65,20 @@ func (c *AddBranch) Handle(ctx context.Context, in AddBranchInput) (domain.Branc
 	return stored, nil
 }
 
-// checkLimit counts only active branches: the ones a downgrade left inactive do
-// not use up the plan.
-func (c *AddBranch) checkLimit(ctx context.Context, businessID int64) error {
-	ent, err := c.entitlements.For(ctx, businessID)
+// ensureBranchRoom counts only active branches: the ones a downgrade left inactive do
+// not use up the plan. It returns business.ErrBranchLimitReached when there is no room
+// for one more.
+func ensureBranchRoom(
+	ctx context.Context,
+	entitlements business.EntitlementsProvider,
+	branches business.BranchRepository,
+	businessID int64,
+) error {
+	ent, err := entitlements.For(ctx, businessID)
 	if err != nil {
 		return fmt.Errorf("resolve entitlements: %w", err)
 	}
-	existing, err := c.branches.List(ctx, businessID)
+	existing, err := branches.List(ctx, businessID)
 	if err != nil {
 		return fmt.Errorf("list branches: %w", err)
 	}
@@ -191,4 +197,52 @@ func (c *SetBranchHours) Handle(ctx context.Context, in SetBranchHoursInput) err
 		return fmt.Errorf("replace hours: %w", err)
 	}
 	return nil
+}
+
+// SetBranchActiveInput turns a branch on or off.
+type SetBranchActiveInput struct {
+	OwnerID  int64
+	BranchID int64
+	Active   bool
+}
+
+// SetBranchActive shows or hides a branch of the owner's business.
+type SetBranchActive struct {
+	businesses   business.BusinessRepository
+	branches     business.BranchRepository
+	entitlements business.EntitlementsProvider
+}
+
+// NewSetBranchActive wires the SetBranchActive use case.
+func NewSetBranchActive(businesses business.BusinessRepository, branches business.BranchRepository, entitlements business.EntitlementsProvider) *SetBranchActive {
+	return &SetBranchActive{businesses: businesses, branches: branches, entitlements: entitlements}
+}
+
+// Handle switches the flag. Hiding is always allowed; showing checks the plan, except
+// when the branch is already shown, which changes nothing.
+func (c *SetBranchActive) Handle(ctx context.Context, in SetBranchActiveInput) (domain.Branch, error) {
+	owned, err := editableBusiness(ctx, c.businesses, in.OwnerID)
+	if err != nil {
+		return domain.Branch{}, err
+	}
+	current, err := c.branches.Find(ctx, owned.ID, in.BranchID)
+	if err != nil {
+		return domain.Branch{}, fmt.Errorf("find branch: %w", err)
+	}
+	if current.Active == in.Active {
+		return current, nil
+	}
+
+	updated := current.Deactivate()
+	if in.Active {
+		if err := ensureBranchRoom(ctx, c.entitlements, c.branches, owned.ID); err != nil {
+			return domain.Branch{}, err
+		}
+		updated = current.Activate()
+	}
+
+	if err := c.branches.Save(ctx, updated); err != nil {
+		return domain.Branch{}, fmt.Errorf("save branch: %w", err)
+	}
+	return updated, nil
 }

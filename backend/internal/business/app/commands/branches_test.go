@@ -194,3 +194,40 @@ func TestAddBranchRespectsThePlanLimit(t *testing.T) {
 		t.Errorf("an inactive branch must not count against the limit: %v", err)
 	}
 }
+
+func TestSetBranchActiveChecksThePlanOnlyWhenTurningOn(t *testing.T) {
+	t.Parallel()
+
+	businesses, branches := twoOwners(t)
+	ent := fixedEntitlements{limits: limits{branches: 1}}
+	add := commands.NewAddBranch(businesses, branches, ent)
+	set := commands.NewSetBranchActive(businesses, branches, ent)
+
+	first, err := add.Handle(t.Context(), commands.AddBranchInput{OwnerID: 7, Branch: validBranch})
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if got, err := set.Handle(t.Context(), commands.SetBranchActiveInput{OwnerID: 7, BranchID: first.ID, Active: true}); err != nil || !got.Active {
+		t.Fatalf("activating an active branch = %+v, %v; want a no-op that does not count itself", got, err)
+	}
+	if got, err := set.Handle(t.Context(), commands.SetBranchActiveInput{OwnerID: 7, BranchID: first.ID, Active: false}); err != nil || got.Active {
+		t.Fatalf("deactivate = %+v, %v", got, err)
+	}
+
+	second, err := add.Handle(t.Context(), commands.AddBranchInput{OwnerID: 7, Branch: validBranch})
+	if err != nil {
+		t.Fatalf("a deactivated branch must free its place: %v", err)
+	}
+	if _, err := set.Handle(t.Context(), commands.SetBranchActiveInput{OwnerID: 7, BranchID: first.ID, Active: true}); !errors.Is(err, business.ErrBranchLimitReached) {
+		t.Errorf("activation over the limit error = %v, want ErrBranchLimitReached", err)
+	}
+	if branches.byID[first.ID].Active {
+		t.Error("a refused activation must leave the branch off")
+	}
+	if _, err := set.Handle(t.Context(), commands.SetBranchActiveInput{OwnerID: 7, BranchID: second.ID, Active: false}); err != nil {
+		t.Errorf("deactivating is always allowed: %v", err)
+	}
+	if _, err := set.Handle(t.Context(), commands.SetBranchActiveInput{OwnerID: 8, BranchID: second.ID, Active: true}); !errors.Is(err, business.ErrBranchNotFound) {
+		t.Errorf("foreign branch error = %v, want ErrBranchNotFound", err)
+	}
+}

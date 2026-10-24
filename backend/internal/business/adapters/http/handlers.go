@@ -31,14 +31,15 @@ type Deps struct {
 	SubmitBusiness *commands.SubmitBusiness
 	PresignImage   *commands.PresignImageUpload
 
-	Geocode        *commands.GeocodeAddress
-	RegisterImage  *commands.RegisterImage
-	ReorderImages  *commands.ReorderImages
-	RemoveImage    *commands.RemoveImage
-	AddBranch      *commands.AddBranch
-	EditBranch     *commands.EditBranch
-	RemoveBranch   *commands.RemoveBranch
-	SetBranchHours *commands.SetBranchHours
+	Geocode         *commands.GeocodeAddress
+	RegisterImage   *commands.RegisterImage
+	ReorderImages   *commands.ReorderImages
+	RemoveImage     *commands.RemoveImage
+	AddBranch       *commands.AddBranch
+	EditBranch      *commands.EditBranch
+	RemoveBranch    *commands.RemoveBranch
+	SetBranchHours  *commands.SetBranchHours
+	SetBranchActive *commands.SetBranchActive
 
 	ListServices       *queries.ListMyServices
 	AddService         *commands.AddService

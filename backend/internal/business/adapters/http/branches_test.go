@@ -214,3 +214,30 @@ func TestBranchReferenceRoundTripsAndIsBounded(t *testing.T) {
 		t.Errorf("long reference = %d field %q, want 422 reference", got.status, got.errorField())
 	}
 }
+
+func TestBranchVisibilityToggleRespectsThePlan(t *testing.T) {
+	t.Parallel()
+
+	s := newServer(t, planLimits{branches: 1})
+	owner := ownerWithBusiness(s, "owner@example.com")
+	other := ownerWithBusiness(s, "other@example.com")
+
+	first := s.do(http.MethodPost, "/me/business/branches", owner, validBranch())
+	path := "/me/business/branches/" + branchID(first) + "/active"
+
+	if got := s.do(http.MethodPut, path, owner, map[string]any{"active": false}); got.status != http.StatusOK || got.body["active"] != false {
+		t.Fatalf("hide = %d %v", got.status, got.body)
+	}
+	if got := s.do(http.MethodPost, "/me/business/branches", owner, validBranch()); got.status != http.StatusCreated {
+		t.Fatalf("a hidden branch must free its place, got %d", got.status)
+	}
+	if got := s.do(http.MethodPut, path, owner, map[string]any{"active": true}); got.status != http.StatusConflict || got.errorCode() != "plan_limit_reached" {
+		t.Errorf("show over the limit = %d %q, want 409 plan_limit_reached", got.status, got.errorCode())
+	}
+	if got := s.do(http.MethodPut, path, other, map[string]any{"active": true}); got.status != http.StatusNotFound {
+		t.Errorf("foreign branch = %d, want 404", got.status)
+	}
+	if got := s.do(http.MethodPut, path, owner, map[string]any{"active": true, "extra": 1}); got.status != http.StatusBadRequest {
+		t.Errorf("unknown field = %d, want 400", got.status)
+	}
+}

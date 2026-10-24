@@ -111,3 +111,16 @@ func TestBranchReferenceIsOptionalTrimmedAndBounded(t *testing.T) {
 		t.Errorf("101 characters error = %v, want ErrReferenceInvalid", err)
 	}
 }
+
+func TestBranchActivation(t *testing.T) {
+	t.Parallel()
+
+	b := domain.Branch{ID: 1, Active: true, Name: "Centro"}
+	off := b.Deactivate()
+	if off.Active || off.Name != "Centro" || off.ID != 1 {
+		t.Errorf("Deactivate = %+v", off)
+	}
+	if !off.Activate().Active {
+		t.Error("Activate must turn the branch on")
+	}
+}

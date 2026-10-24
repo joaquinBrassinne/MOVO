@@ -38,6 +38,7 @@ func (h *Handlers) mountBranches(me chi.Router) {
 	me.Put("/branches/{id}", h.handleEditBranch)
 	me.Delete("/branches/{id}", h.handleRemoveBranch)
 	me.Put("/branches/{id}/hours", h.handleSetHours)
+	me.Put("/branches/{id}/active", h.handleSetBranchActive)
 }
 
 func (h *Handlers) handleAddBranch(w http.ResponseWriter, r *http.Request) {
@@ -83,6 +84,24 @@ func (h *Handlers) handleRemoveBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handlers) handleSetBranchActive(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.pathID(w, r, business.ErrBranchNotFound)
+	if !ok {
+		return
+	}
+	var req activeRequest
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+
+	updated, err := h.SetBranchActive.Handle(r.Context(), commands.SetBranchActiveInput{OwnerID: callerID(r), BranchID: id, Active: req.Active})
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"id": updated.ID, "active": updated.Active})
 }
 
 func (h *Handlers) handleSetHours(w http.ResponseWriter, r *http.Request) {

@@ -69,10 +69,11 @@ func newBusinessRoutes(
 		ReorderImages:  commands.NewReorderImages(businesses, photos),
 		RemoveImage:    commands.NewRemoveImage(businesses, photos, images),
 
-		AddBranch:      commands.NewAddBranch(businesses, branches, entitlements),
-		EditBranch:     commands.NewEditBranch(businesses, branches),
-		RemoveBranch:   commands.NewRemoveBranch(businesses, branches),
-		SetBranchHours: commands.NewSetBranchHours(businesses, branches),
+		AddBranch:       commands.NewAddBranch(businesses, branches, entitlements),
+		EditBranch:      commands.NewEditBranch(businesses, branches),
+		RemoveBranch:    commands.NewRemoveBranch(businesses, branches),
+		SetBranchHours:  commands.NewSetBranchHours(businesses, branches),
+		SetBranchActive: commands.NewSetBranchActive(businesses, branches, entitlements),
 
 		ListServices:       queries.NewListMyServices(businesses, services),
 		AddService:         commands.NewAddService(businesses, branches, services, entitlements),
