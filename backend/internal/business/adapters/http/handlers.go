@@ -30,6 +30,11 @@ type Deps struct {
 	UpdateBusiness *commands.UpdateBusiness
 	SubmitBusiness *commands.SubmitBusiness
 	PresignImage   *commands.PresignImageUpload
+
+	AddBranch      *commands.AddBranch
+	EditBranch     *commands.EditBranch
+	RemoveBranch   *commands.RemoveBranch
+	SetBranchHours *commands.SetBranchHours
 }
 
 // Handlers serves the business endpoints.
@@ -58,6 +63,7 @@ func (h *Handlers) Mount(r chi.Router) {
 		me.Put("/", h.handleUpdate)
 		me.Post("/submit", h.handleSubmit)
 		me.Post("/images/presign", h.handlePresign)
+		h.mountBranches(me)
 	})
 }
 

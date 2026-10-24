@@ -2,6 +2,7 @@ package businesshttp_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/joaquinBrassinne/MOVO/internal/business"
 	businesshttp "github.com/joaquinBrassinne/MOVO/internal/business/adapters/http"
 	"github.com/joaquinBrassinne/MOVO/internal/business/adapters/postgres"
 	"github.com/joaquinBrassinne/MOVO/internal/business/app/commands"
@@ -41,6 +43,10 @@ func (l planLimits) CanActivateService(current int) bool {
 	return l.services == 0 || current < l.services
 }
 
+type fixedPlan struct{ limits planLimits }
+
+func (f fixedPlan) For(context.Context, int64) (business.Entitlements, error) { return f.limits, nil }
+
 // server is the whole stack over a real database: handlers, use cases and
 // Postgres adapters, with the object storage faked.
 type server struct {
@@ -58,15 +64,21 @@ func newServer(t *testing.T, limits planLimits) *server {
 	businesses := postgres.NewBusinesses(pool)
 	s := &server{t: t, pool: pool, tokens: tokens{}, storage: storage.NewMemory()}
 
+	branches := postgres.NewBranches(pool)
+	plan := fixedPlan{limits: limits}
+
 	handlers := businesshttp.New(businesshttp.Deps{
 		Verifier:       s.tokens,
-		MyBusiness:     queries.NewGetMyBusiness(businesses, postgres.NewBranches(pool)),
+		MyBusiness:     queries.NewGetMyBusiness(businesses, branches),
 		CreateBusiness: commands.NewCreateBusiness(businesses),
 		UpdateBusiness: commands.NewUpdateBusiness(businesses),
 		SubmitBusiness: commands.NewSubmitBusiness(businesses),
 		PresignImage:   commands.NewPresignImageUpload(businesses, s.storage, nil),
+		AddBranch:      commands.NewAddBranch(businesses, branches, plan),
+		EditBranch:     commands.NewEditBranch(businesses, branches),
+		RemoveBranch:   commands.NewRemoveBranch(businesses, branches),
+		SetBranchHours: commands.NewSetBranchHours(businesses, branches),
 	})
-	_ = limits
 
 	ts := httptest.NewServer(httpx.NewRouter(nil, nil, handlers.Mount))
 	t.Cleanup(ts.Close)

@@ -75,3 +75,20 @@ func toMyBusinessJSON(v queries.MyBusinessView) myBusinessJSON {
 	}
 	return out
 }
+
+// toSlots parses the request slots; a time that is not "HH:MM" is domain.ErrClockInvalid.
+func toSlots(in []slotJSON) ([]domain.Slot, error) {
+	out := make([]domain.Slot, 0, len(in))
+	for _, s := range in {
+		start, err := domain.ParseClock(s.Start)
+		if err != nil {
+			return nil, err
+		}
+		end, err := domain.ParseClock(s.End)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, domain.Slot{Weekday: s.Weekday, Start: start, End: end})
+	}
+	return out, nil
+}
