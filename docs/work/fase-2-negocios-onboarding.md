@@ -15,9 +15,15 @@ Que un local pueda existir, completar su perfil y ser aprobado manualmente (sin 
 - Las imágenes del onboarding (pasos 1 y 2) contradicen el SDD en "¡Pago recibido con éxito!" y "Verificado MOVO · AUTOMÁTICO": se sigue el SDD y se consulta en la 2.8.
 
 ## Hecho
-- 2.1 a 2.7 (rama `phase-2/business-onboarding`, ver `git log`).
+- 2.1 a 2.7b (rama `phase-2/business-onboarding`, ver `git log`).
 
 ## Pendiente
-- 2.7b capa HTTP y wiring.
 - 2.8 a 2.10 vistas (imágenes de pasos 1 y 2 ya recibidas; falta Servicios, Fotos, Sedes y Super admin → Locales).
 - Variables `S3_*` en `.env.example`: bloqueado por permisos, pendiente.
+
+## Pendiente antes o durante las vistas (detectado en 2.7b)
+- `GET /categories` (público): el onboarding necesita listar las categorías; falta caso de uso y repositorio.
+- Registro de fotos: hoy solo existe `POST /me/business/images/presign`. Falta confirmar la subida (guardar `business_images` con posición), listar, reordenar y borrar; va con la vista Fotos (2.8).
+- `docs/openapi.yaml` (SDD §6) no existe todavía, ni para identity; decidir si se crea ahora o en la fase 8.
+- `.env` debe tener `PLAN_*` y `S3_*` (más `S3_ENSURE_BUCKET=true` en desarrollo) o `cmd/api` no arranca.
+- Pilotos: `billing/adapters/pilotplan` (temporal) se cablea en `cmd/api/business.go`.

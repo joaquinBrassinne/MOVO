@@ -25,6 +25,7 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/logger"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/shutdown"
+	"github.com/joaquinBrassinne/MOVO/internal/platform/storage"
 )
 
 // HTTP server timeouts; the shutdown budget is separate and comes from config.
@@ -66,12 +67,35 @@ func run() error {
 		return err
 	}
 
+	plans, err := config.LoadPlans(os.Getenv)
+	if err != nil {
+		return err
+	}
+
+	storageCfg, err := config.LoadStorage(os.Getenv)
+	if err != nil {
+		return err
+	}
+
+	signer, err := tokens.NewSigner(auth.JWTSecret, auth.AccessTokenTTL, nil)
+	if err != nil {
+		return err
+	}
+
 	pool, err := db.Connect(signalCtx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
 
-	identityRoutes, err := newIdentityRoutes(log, pool, auth)
+	images := storage.NewS3(storageCfg)
+	if storageCfg.EnsureBucket {
+		if err := ensureBucket(signalCtx, images); err != nil {
+			pool.Close()
+			return err
+		}
+	}
+
+	businessMount, billingMount, err := newBusinessRoutes(pool, signer, plans, images)
 	if err != nil {
 		pool.Close()
 		return err
@@ -82,7 +106,20 @@ func run() error {
 		return err
 	}
 
-	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, httpx.NewRouter(log, pool, identityRoutes), pool.Close)
+	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount)
+	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, router, pool.Close)
+}
+
+// ensureBucket creates the development bucket when it is missing. It is bounded
+// so an unreachable object server stops the start-up instead of hanging it.
+func ensureBucket(ctx context.Context, images *storage.S3) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if err := images.EnsureBucket(ctx); err != nil {
+		return fmt.Errorf("prepare object storage: %w", err)
+	}
+	return nil
 }
 
 // seedSuperAdmin creates the first super admin when the environment configures
@@ -104,12 +141,7 @@ func seedSuperAdmin(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, a
 }
 
 // newIdentityRoutes composes the identity module: adapters, use cases and HTTP.
-func newIdentityRoutes(log *slog.Logger, pool *pgxpool.Pool, auth config.Auth) (func(chi.Router), error) {
-	signer, err := tokens.NewSigner(auth.JWTSecret, auth.AccessTokenTTL, nil)
-	if err != nil {
-		return nil, err
-	}
-
+func newIdentityRoutes(log *slog.Logger, pool *pgxpool.Pool, auth config.Auth, signer *tokens.Signer) func(chi.Router) {
 	users := postgres.NewUsers(pool)
 	store := postgres.NewRefreshTokens(pool)
 	limiter := ratelimit.New(ratelimit.Config{
@@ -125,7 +157,7 @@ func newIdentityRoutes(log *slog.Logger, pool *pgxpool.Pool, auth config.Auth) (
 		commands.NewRefresh(sessions),
 		commands.NewLogout(store, nil),
 		log,
-	).Mount, nil
+	).Mount
 }
 
 // serve runs the HTTP server until ctx is done and then shuts it down within

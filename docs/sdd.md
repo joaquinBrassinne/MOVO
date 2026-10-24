@@ -483,6 +483,7 @@ Convenciones de trabajo:
 - [x] 2.5 Puerto `PlanCatalog` + `ConfigPlanCatalog` (env), value object `Entitlements` y política de downgrade sin borrar datos (M)
 - [x] 2.6 Migraciones y dominio de `services` y `service_schedules` (CRUD, activar/desactivar, límites del plan) (M)
 - [x] 2.7 Super admin: aprobar / pausar / reactivar / baja lógica, marcar verificado, marcar piloto + `audit_log` (M)
+- [x] 2.7b Capa HTTP de la fase: endpoints `/me/business...`, `/admin/businesses...` y `/plans`, con rol por grupo de rutas, y cableado en `cmd/api` (M)
 - [ ] 2.8 Frontend `/onboarding`: crear cuenta y completar datos, WhatsApp, sede con pin en el mapa, fotos y número de operación opcional; estado "en revisión" (L)
 - [ ] 2.9 Frontend: Servicios y horarios y Sedes, con contador del límite del plan (M)
 - [ ] 2.10 Frontend super admin: lista de locales y acciones (M)
