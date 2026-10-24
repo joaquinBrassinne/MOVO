@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/joaquinBrassinne/MOVO/internal/billing"
 	"github.com/joaquinBrassinne/MOVO/internal/billing/adapters/configcatalog"
 	"github.com/joaquinBrassinne/MOVO/internal/billing/adapters/fixedplan"
 	billinghttp "github.com/joaquinBrassinne/MOVO/internal/billing/adapters/http"
@@ -29,6 +31,35 @@ type entitlementsOf struct {
 
 func (e entitlementsOf) For(ctx context.Context, businessID int64) (business.Entitlements, error) {
 	return e.query.Handle(ctx, businessID)
+}
+
+// ownerPlans answers which plan an owner's business is on. It joins the two modules
+// here so billing never reads businesses.
+type ownerPlans struct {
+	businesses *businesspostgres.Businesses
+	resolver   billing.PlanResolver
+	catalog    billing.PlanCatalog
+}
+
+func (o ownerPlans) PlanOfOwner(ctx context.Context, ownerID int64) (billing.PlanInfo, error) {
+	b, err := o.businesses.FindByOwner(ctx, ownerID)
+	if errors.Is(err, business.ErrBusinessNotFound) {
+		return billing.PlanInfo{}, billing.ErrOwnerHasNoBusiness
+	}
+	if err != nil {
+		return billing.PlanInfo{}, err
+	}
+
+	plan, err := o.resolver.PlanOf(ctx, b.ID)
+	if err != nil {
+		return billing.PlanInfo{}, err
+	}
+	for _, info := range o.catalog.Plans() {
+		if info.Plan == plan {
+			return info, nil
+		}
+	}
+	return billing.PlanInfo{}, billing.ErrUnknownPlan
 }
 
 // newBusinessRoutes composes the business and billing modules: adapters, use
@@ -87,5 +118,6 @@ func newBusinessRoutes(
 		AdminAction:    commands.NewApplyAdminAction(admin),
 	})
 
-	return handlers.Mount, billinghttp.New(catalog).Mount, nil
+	planHandlers := billinghttp.New(catalog).WithOwnerPlans(verifier, ownerPlans{businesses: businesses, resolver: resolver, catalog: catalog})
+	return handlers.Mount, planHandlers.Mount, nil
 }

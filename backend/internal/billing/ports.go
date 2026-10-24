@@ -35,3 +35,13 @@ type PlanCatalog interface {
 type PlanResolver interface {
 	PlanOf(ctx context.Context, businessID int64) (domain.Plan, error)
 }
+
+// ErrOwnerHasNoBusiness means the owner has not created a business, so there is no plan.
+var ErrOwnerHasNoBusiness = errors.New("billing: owner has no business")
+
+// OwnerPlans tells which plan an owner's business is on. The composition root builds
+// it from the business module and the PlanResolver, so billing never reads businesses.
+type OwnerPlans interface {
+	// PlanOfOwner returns ErrOwnerHasNoBusiness when the owner has no business.
+	PlanOfOwner(ctx context.Context, ownerID int64) (PlanInfo, error)
+}

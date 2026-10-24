@@ -190,3 +190,39 @@ type unusedGeocoder struct{}
 func (unusedGeocoder) Geocode(context.Context, string) (business.Place, error) {
 	panic("the geocoder must not be called in this test")
 }
+
+// TestMyPlanFollowsTheBusinessOfTheCaller proves /me/plan end to end with real tokens:
+// no business yet, then a Starter business, then the same business marked as pilot.
+func TestMyPlanFollowsTheBusinessOfTheCaller(t *testing.T) {
+	t.Parallel()
+
+	h := newAPIHarness(t)
+	var categoryID int64
+	if err := h.pool.QueryRow(t.Context(), `SELECT id FROM categories WHERE slug = 'yoga'`).Scan(&categoryID); err != nil {
+		t.Fatalf("category: %v", err)
+	}
+	token := h.user("owner@example.com", identitydomain.RoleBusinessAdmin)
+
+	if status, body := h.do(http.MethodGet, "/me/plan", token, nil); status != http.StatusNotFound || errorCode(body) != "business_not_found" {
+		t.Fatalf("before creating the business = %d %v, want 404 business_not_found", status, body)
+	}
+
+	if status, body := h.do(http.MethodPost, "/me/business", token, map[string]any{
+		"category_id": categoryID, "name": "Studio", "whatsapp": "5491112345678",
+	}); status != http.StatusCreated {
+		t.Fatalf("create = %d %v", status, body)
+	}
+
+	status, body := h.do(http.MethodGet, "/me/plan", token, nil)
+	if status != http.StatusOK || body["plan"] != "starter" || body["max_branches"] != float64(2) || body["max_active_services"] != float64(3) {
+		t.Fatalf("regular business plan = %d %v, want Starter with 2 branches and 3 services", status, body)
+	}
+
+	if _, err := h.pool.Exec(t.Context(), `UPDATE businesses SET pilot = true`); err != nil {
+		t.Fatalf("mark pilot: %v", err)
+	}
+	status, body = h.do(http.MethodGet, "/me/plan", token, nil)
+	if status != http.StatusOK || body["plan"] != "pro" || body["max_branches"] != float64(4) || body["max_active_services"] != nil {
+		t.Errorf("pilot business plan = %d %v, want Pro with 4 branches and unlimited services", status, body)
+	}
+}
