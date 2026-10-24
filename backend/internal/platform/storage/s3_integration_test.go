@@ -117,3 +117,32 @@ func TestS3RejectsInvalidUploadsBeforeSigning(t *testing.T) {
 		t.Error("an html upload must be rejected")
 	}
 }
+
+func TestS3ExistsSeesUploadedObjectsOnly(t *testing.T) {
+	s3 := localStorage(t)
+	payload := []byte("bytes")
+	key := "integration/exists-" + time.Now().UTC().Format("20060102T150405.000000000") + ".jpg"
+	t.Cleanup(func() { _ = s3.Delete(t.Context(), key) })
+
+	if ok, err := s3.Exists(t.Context(), key); err != nil || ok {
+		t.Fatalf("before upload = %v, %v; want false without error", ok, err)
+	}
+
+	up, err := s3.PresignUpload(t.Context(), storage.UploadRequest{Key: key, ContentType: "image/jpeg", Size: int64(len(payload))})
+	if err != nil {
+		t.Fatalf("PresignUpload: %v", err)
+	}
+	if res := do(t, up.Method, up.URL, up.Headers, payload); res.StatusCode != http.StatusOK {
+		t.Fatalf("upload status = %d", res.StatusCode)
+	}
+	if ok, err := s3.Exists(t.Context(), key); err != nil || !ok {
+		t.Errorf("after upload = %v, %v; want true", ok, err)
+	}
+
+	if err := s3.Delete(t.Context(), key); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if ok, _ := s3.Exists(t.Context(), key); ok {
+		t.Error("after delete the object must be gone")
+	}
+}

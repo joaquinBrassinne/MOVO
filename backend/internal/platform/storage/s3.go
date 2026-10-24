@@ -125,3 +125,23 @@ func (s *S3) Delete(ctx context.Context, key string) error {
 	}
 	return nil
 }
+
+// Exists asks the server whether the object is there, without reading it.
+func (s *S3) Exists(ctx context.Context, key string) (bool, error) {
+	if err := validateKey(key); err != nil {
+		return false, err
+	}
+
+	if _, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: &s.bucket, Key: &key}); err != nil {
+		var notFound *types.NotFound
+		if errors.As(err, &notFound) {
+			return false, nil
+		}
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) && (apiErr.ErrorCode() == "NotFound" || apiErr.ErrorCode() == "NoSuchKey") {
+			return false, nil
+		}
+		return false, fmt.Errorf("storage: head object: %w", err)
+	}
+	return true, nil
+}

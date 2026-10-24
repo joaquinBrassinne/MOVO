@@ -52,6 +52,8 @@ type Storage interface {
 	PresignUpload(ctx context.Context, req UploadRequest) (PresignedUpload, error)
 	// PresignDownload returns a URL to read the object.
 	PresignDownload(ctx context.Context, key string) (string, error)
+	// Exists reports whether the object was uploaded.
+	Exists(ctx context.Context, key string) (bool, error)
 	// Delete removes the object. It is idempotent: a missing object is not an error.
 	Delete(ctx context.Context, key string) error
 }

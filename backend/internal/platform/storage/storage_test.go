@@ -82,3 +82,27 @@ func TestMemoryStorage(t *testing.T) {
 		t.Errorf("deleted = %v", got)
 	}
 }
+
+func TestMemoryExistsFollowsPutAndDelete(t *testing.T) {
+	t.Parallel()
+
+	mem := storage.NewMemory()
+	key := "businesses/1/a.jpg"
+
+	if ok, err := mem.Exists(t.Context(), key); err != nil || ok {
+		t.Fatalf("before upload = %v, %v; want false", ok, err)
+	}
+	mem.Put(key)
+	if ok, err := mem.Exists(t.Context(), key); err != nil || !ok {
+		t.Fatalf("after upload = %v, %v; want true", ok, err)
+	}
+	if err := mem.Delete(t.Context(), key); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if ok, _ := mem.Exists(t.Context(), key); ok {
+		t.Error("a deleted object must not exist")
+	}
+	if _, err := mem.Exists(t.Context(), "../x"); !errors.Is(err, storage.ErrKeyInvalid) {
+		t.Errorf("invalid key error = %v, want ErrKeyInvalid", err)
+	}
+}

@@ -11,6 +11,7 @@ type Memory struct {
 	mu      sync.Mutex
 	uploads []UploadRequest
 	deleted []string
+	objects map[string]bool
 }
 
 // NewMemory builds an empty fake.
@@ -49,6 +50,7 @@ func (m *Memory) Delete(_ context.Context, key string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.deleted = append(m.deleted, key)
+	delete(m.objects, key)
 	return nil
 }
 
@@ -64,4 +66,26 @@ func (m *Memory) Deleted() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]string(nil), m.deleted...)
+}
+
+// Put marks the object as uploaded, which is what a client does with the
+// presigned URL. Tests call it to simulate that step.
+func (m *Memory) Put(key string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.objects == nil {
+		m.objects = map[string]bool{}
+	}
+	m.objects[key] = true
+}
+
+// Exists reports whether Put was called for the key and it was not deleted since.
+func (m *Memory) Exists(_ context.Context, key string) (bool, error) {
+	if err := validateKey(key); err != nil {
+		return false, err
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.objects[key], nil
 }
