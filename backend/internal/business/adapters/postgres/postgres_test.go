@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -375,3 +376,5 @@ func TestCategoriesListTheSeededCatalogInOrder(t *testing.T) {
 		t.Errorf("names = %q, %q; want the accented Spanish names", got[6].Name, got[4].Name)
 	}
 }
+
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }
