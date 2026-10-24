@@ -353,3 +353,25 @@ func TestBusinessesIsPilot(t *testing.T) {
 		t.Errorf("missing business error = %v, want ErrBusinessNotFound", err)
 	}
 }
+
+func TestCategoriesListTheSeededCatalogInOrder(t *testing.T) {
+	t.Parallel()
+
+	got, err := postgres.NewCategories(dbtest.New(t)).List(t.Context())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	want := []string{"gimnasios", "pilates", "yoga", "entrenadores", "estetica", "natacion", "padel"}
+	if len(got) != len(want) {
+		t.Fatalf("categories = %+v, want %d", got, len(want))
+	}
+	for i, slug := range want {
+		if got[i].Slug != slug || got[i].ID == 0 || got[i].Name == "" {
+			t.Errorf("category %d = %+v, want slug %q", i, got[i], slug)
+		}
+	}
+	if got[6].Name != "Pádel" || got[4].Name != "Estética" {
+		t.Errorf("names = %q, %q; want the accented Spanish names", got[6].Name, got[4].Name)
+	}
+}

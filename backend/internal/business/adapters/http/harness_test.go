@@ -88,6 +88,7 @@ func newServer(t *testing.T, limits planLimits) *server {
 		SetServiceActive:   commands.NewSetServiceActive(businesses, services, plan),
 		SetServiceSchedule: commands.NewSetServiceSchedule(businesses, services),
 
+		Categories:     queries.NewListCategories(postgres.NewCategories(pool)),
 		ListBusinesses: queries.NewListBusinesses(admin),
 		AdminAction:    commands.NewApplyAdminAction(admin),
 	})

@@ -155,3 +155,9 @@ type AdminDirectory interface {
 type ImageStorage interface {
 	PresignUpload(ctx context.Context, req storage.UploadRequest) (storage.PresignedUpload, error)
 }
+
+// CategoryRepository reads the category catalog.
+type CategoryRepository interface {
+	// List returns every category in catalog order.
+	List(ctx context.Context) ([]domain.Category, error)
+}

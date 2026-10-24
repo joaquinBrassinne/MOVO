@@ -75,6 +75,7 @@ func newBusinessRoutes(
 		SetServiceActive:   commands.NewSetServiceActive(businesses, services, entitlements),
 		SetServiceSchedule: commands.NewSetServiceSchedule(businesses, services),
 
+		Categories:     queries.NewListCategories(businesspostgres.NewCategories(pool)),
 		ListBusinesses: queries.NewListBusinesses(admin),
 		AdminAction:    commands.NewApplyAdminAction(admin),
 	})

@@ -43,6 +43,8 @@ type Deps struct {
 	SetServiceActive   *commands.SetServiceActive
 	SetServiceSchedule *commands.SetServiceSchedule
 
+	Categories *queries.ListCategories
+
 	ListBusinesses *queries.ListBusinesses
 	AdminAction    *commands.ApplyAdminAction
 }
@@ -76,6 +78,7 @@ func (h *Handlers) Mount(r chi.Router) {
 		h.mountBranches(me)
 		h.mountServices(me)
 	})
+	h.mountCategories(r)
 	h.mountAdmin(r)
 }
 

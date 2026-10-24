@@ -196,3 +196,21 @@ func TestPresignImageUpload(t *testing.T) {
 		t.Errorf("presigned uploads = %d, want only the valid one", len(s.storage.Uploads()))
 	}
 }
+
+func TestCategoriesArePublicAndCacheable(t *testing.T) {
+	t.Parallel()
+
+	s := newServer(t, planLimits{})
+
+	got := s.do(http.MethodGet, "/categories", "", nil)
+	list, _ := got.body["categories"].([]any)
+	if got.status != http.StatusOK || len(list) != 7 {
+		t.Fatalf("categories = %d %v, want 7 without any token", got.status, got.body)
+	}
+	if first, _ := list[0].(map[string]any); first["slug"] != "gimnasios" || first["name"] != "Gimnasios" || first["id"] == nil {
+		t.Errorf("first category = %v", first)
+	}
+	if cc := got.header.Get("Cache-Control"); cc != "public, max-age=300" {
+		t.Errorf("Cache-Control = %q", cc)
+	}
+}
