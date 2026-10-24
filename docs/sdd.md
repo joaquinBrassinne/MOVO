@@ -460,7 +460,7 @@ Convenciones de trabajo:
 ### Fase 1 — Identidad y autorización (dueños y super admin)
 **Objetivo:** login seguro para dueños de local y super admin. Los clientes no tienen cuenta.
 
-- [ ] 1.1 Migraciones `users`, `refresh_tokens` (S)
+- [x] 1.1 Migraciones `users`, `refresh_tokens` (S)
 - [ ] 1.2 Dominio `identity`: entidad User, validaciones, hashing (M)
 - [ ] 1.3 Casos de uso Register / Login / Refresh / Logout (M)
 - [ ] 1.4 Middleware JWT + middleware de roles (S)
