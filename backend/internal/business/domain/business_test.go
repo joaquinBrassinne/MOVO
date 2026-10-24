@@ -47,7 +47,7 @@ func TestNewBusiness(t *testing.T) {
 		{"empty name", func(in *domain.NewBusinessInput) { in.Name = "  " }, domain.ErrNameInvalid},
 		{"name too long", func(in *domain.NewBusinessInput) { in.Name = strings.Repeat("a", 101) }, domain.ErrNameInvalid},
 		{"name without letters or digits", func(in *domain.NewBusinessInput) { in.Name = "***" }, domain.ErrSlugInvalid},
-		{"description too long", func(in *domain.NewBusinessInput) { in.Description = strings.Repeat("a", 1001) }, domain.ErrDescriptionInvalid},
+		{"description too long", func(in *domain.NewBusinessInput) { in.Description = strings.Repeat("a", 501) }, domain.ErrDescriptionInvalid},
 		{"invalid whatsapp", func(in *domain.NewBusinessInput) { in.WhatsApp = "123" }, domain.ErrWhatsAppInvalid},
 		{"missing category", func(in *domain.NewBusinessInput) { in.CategoryID = 0 }, domain.ErrCategoryRequired},
 	}
@@ -188,5 +188,20 @@ func TestSetPilot(t *testing.T) {
 	}
 	if _, err := (domain.Business{Status: domain.StatusDeleted}).SetPilot(true); !errors.Is(err, domain.ErrNotEditable) {
 		t.Errorf("deleted business error = %v, want ErrNotEditable", err)
+	}
+}
+
+func TestDescriptionLimitIsFiveHundredCharacters(t *testing.T) {
+	t.Parallel()
+
+	in := domain.NewBusinessInput{CategoryID: 1, Name: "Studio", WhatsApp: "5491112345678"}
+
+	in.Description = strings.Repeat("á", 500)
+	if _, err := domain.NewBusiness(in); err != nil {
+		t.Errorf("500 characters must be accepted (they are counted as characters, not bytes): %v", err)
+	}
+	in.Description = strings.Repeat("á", 501)
+	if _, err := domain.NewBusiness(in); !errors.Is(err, domain.ErrDescriptionInvalid) {
+		t.Errorf("501 characters error = %v, want ErrDescriptionInvalid", err)
 	}
 }

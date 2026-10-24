@@ -95,7 +95,7 @@ func TestCreateBusinessRejections(t *testing.T) {
 		{"empty name", other, with("name", " "), http.StatusUnprocessableEntity, "validation_failed", "name"},
 		{"unknown category", other, with("category_id", 9999), http.StatusUnprocessableEntity, "validation_failed", "category_id"},
 		{"missing category", other, with("category_id", 0), http.StatusUnprocessableEntity, "validation_failed", "category_id"},
-		{"description too long", other, with("description", strings.Repeat("a", 1001)), http.StatusUnprocessableEntity, "validation_failed", "description"},
+		{"description too long", other, with("description", strings.Repeat("a", 501)), http.StatusUnprocessableEntity, "validation_failed", "description"},
 		{"unknown field", other, with("owner_user_id", 1), http.StatusBadRequest, "invalid_request", ""},
 	}
 	for _, tt := range tests {

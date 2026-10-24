@@ -19,7 +19,7 @@ var (
 
 const (
 	maxNameLen        = 100
-	maxDescriptionLen = 1000
+	maxDescriptionLen = 500
 )
 
 // Status is where a business is in its lifecycle.

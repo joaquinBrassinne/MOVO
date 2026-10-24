@@ -176,7 +176,7 @@ Todas las tablas con `id` (UUID v7 o `bigserial`), `created_at`, `updated_at`. M
 | `refresh_tokens` | user_id, token_hash, expires_at, revoked_at, replaced_by |
 | `customers` | name, phone (WhatsApp, normalizado), created_at — contacto declarado, **sin verificación ni contraseña** |
 | `categories` | slug, name — seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel |
-| `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description, whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, payment_reference |
+| `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description (≤ 500 caracteres), whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, payment_reference |
 | `branches` | business_id, name, address, city, `location geography(Point,4326)`, external_booking_url (opcional), rating_avg, rating_count, active — **la búsqueda se hace por sede** |
 | `business_hours` | branch_id, weekday, opens_at, closes_at |
 | `business_images` | business_id, object_key, position |

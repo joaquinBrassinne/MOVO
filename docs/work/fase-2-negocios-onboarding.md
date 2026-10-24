@@ -7,7 +7,7 @@ Que un local pueda existir, completar su perfil y ser aprobado manualmente (sin 
 
 ## Decisiones
 - Un módulo no importa internals de otro, tampoco en tests (los tests de `business` crean usuarios con SQL directo).
-- La descripción del negocio admite hasta 1000 caracteres; la imagen del onboarding muestra 300. Pendiente de confirmar.
+- La descripción del negocio admite hasta 500 caracteres (decidido por el usuario; dominio, validación, contador de la UI y SDD).
 - El slug se deriva del nombre y se sufija (`-2`, `-3`...) si está tomado; no cambia al editar el nombre.
 - `Storage` es un puerto compartido en `internal/platform/storage`; el SDK es `aws-sdk-go-v2` (decidido por el usuario). Solo JPEG/PNG/WebP, máximo 5 MiB, el tamaño va firmado en la URL.
 - Se suma la capa HTTP (handlers de `/me/business...`, `/admin/...` y cableado en `main.go`) como tarea **2.7b**, antes de las vistas.
