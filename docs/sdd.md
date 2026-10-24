@@ -481,7 +481,7 @@ Convenciones de trabajo:
 - [x] 2.3 Casos de uso: crear/editar mi negocio, agregar/editar sedes y horarios (un dueño = un negocio) (M)
 - [x] 2.4 Puerto `Storage` + adaptador S3 (RustFS en local, R2/B2/S3 en prod) con URL prefirmada y validación; endpoint, región y modo path-style configurables; test de integración (tag `integration`) que sube y baja un objeto con URL prefirmada contra el servidor local (M)
 - [x] 2.5 Puerto `PlanCatalog` + `ConfigPlanCatalog` (env), value object `Entitlements` y política de downgrade sin borrar datos (M)
-- [ ] 2.6 Migraciones y dominio de `services` y `service_schedules` (CRUD, activar/desactivar, límites del plan) (M)
+- [x] 2.6 Migraciones y dominio de `services` y `service_schedules` (CRUD, activar/desactivar, límites del plan) (M)
 - [ ] 2.7 Super admin: aprobar / pausar / reactivar / baja lógica, marcar verificado, marcar piloto + `audit_log` (M)
 - [ ] 2.8 Frontend `/onboarding`: crear cuenta y completar datos, WhatsApp, sede con pin en el mapa, fotos y número de operación opcional; estado "en revisión" (L)
 - [ ] 2.9 Frontend: Servicios y horarios y Sedes, con contador del límite del plan (M)
