@@ -92,3 +92,14 @@ function position(weekday: number): number {
 function byWeekStart(a: number, b: number): number {
   return position(a) - position(b);
 }
+
+/** "Mar y Jue · 18:30 a 20:30", o "Horarios variables" si cambian según el día. Vacío sin tramos. */
+export function describeSchedule(slots: Slot[]): string {
+  if (slots.length === 0) return "";
+
+  const weekly = toRanges(slots);
+  if (weekly === null) return "Horarios variables";
+
+  const ranges = weekly.ranges.map(({ start, end }) => `${start} a ${end}`).join(" y ");
+  return `${describeDays(weekly.days)} · ${ranges}`;
+}

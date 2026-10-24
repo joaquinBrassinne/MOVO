@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   buildSlots,
   describeDays,
+  describeSchedule,
   findOverlap,
   isValidRange,
   toRanges,
@@ -74,4 +75,24 @@ test("describeDays names runs of days the way the panel shows them", () => {
   assert.equal(describeDays([1, 3, 5]), "Lun, Mié y Vie");
   assert.equal(describeDays([0]), "Dom");
   assert.equal(describeDays([]), "");
+});
+
+test("describeSchedule summarizes a uniform schedule in one line", () => {
+  const slots = buildSlots([2, 4], [{ start: "18:30", end: "20:30" }]);
+
+  assert.equal(describeSchedule(slots), "Mar y Jue · 18:30 a 20:30");
+  assert.equal(
+    describeSchedule(buildSlots([1, 3], [evening, late])),
+    "Lun y Mié · 18:00 a 19:00 y 19:30 a 20:30",
+  );
+});
+
+test("describeSchedule is honest when the days differ or there is nothing", () => {
+  const uneven = [
+    { weekday: 1, start: "09:00", end: "10:00" },
+    { weekday: 2, start: "18:00", end: "19:00" },
+  ];
+
+  assert.equal(describeSchedule(uneven), "Horarios variables");
+  assert.equal(describeSchedule([]), "");
 });
