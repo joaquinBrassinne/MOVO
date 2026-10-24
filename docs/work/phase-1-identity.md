@@ -35,17 +35,30 @@ El puerto 5432 lo ocupa otro contenedor (`locos_deporte_db`). MOVO se levanta co
 - **1.4** `httpx.Authenticate` (Bearer) y `httpx.RequireRole`, con el `Principal` en el contexto.
 - **1.5** limitador de intentos en memoria (`adapters/ratelimit`) detrás del puerto `LoginLimiter`, con tope de claves.
 - **1.6** seed del primer super admin por `SUPER_ADMIN_EMAIL`/`SUPER_ADMIN_PASSWORD` al arrancar la API: idempotente, no pisa cuentas existentes y se niega a tocar el email de un dueño.
+- **1.7** vistas de ingreso y alta (`/socios/ingresar`, `/socios/crear-cuenta`), BFF de sesión (`/api/session/*`) con refresh token en cookie `httpOnly`, hook de sesión con renovación serializada y panel provisorio (`/socios/panel`). Verificado en navegador (Edge headless por CDP): 15 comprobaciones de flujo OK.
 
 ## Pendiente
 
-- 1.7 (frontend) y cierre de fase.
+- Cierre de fase (DoD) y decisiones del usuario listadas abajo.
 
 ## Antes de desplegar detrás de un proxy
 
 `clientIP` usa la dirección del par TCP. Detrás de un reverse proxy todos los clientes comparten una IP y el límite por dirección bloquearía a todos tras 5 fallos. Hay que resolver la IP real con proxies de confianza (tarea de despliegue, Fase 8).
 
-## Para la tarea 1.7
+## Diseño de la 1.7 contra el SDD (decisiones a confirmar)
 
-- El refresh rota y reutilizar un token ya rotado revoca todas las sesiones del usuario: el frontend debe serializar los refresh (una sola llamada en vuelo), o dos pestañas simultáneas se cerrarán la sesión entre sí.
-- Dónde guardar los tokens en el navegador se decide al implementar la vista.
+Donde el diseño contradice el SDD se siguió el SDD:
+
+- "¿Olvidaste tu contraseña?" y "restablecé tu clave": el SDD §5.7 define reseteo **asistido por WhatsApp** (sin email). El link abre WhatsApp de soporte con `NEXT_PUBLIC_SUPPORT_WHATSAPP`; sin número se oculta. El texto del error se ajustó.
+- "Cifrado bancario B2B" y "Liquidaciones 24h": el MVP no procesa pagos ni liquida (SDD §1.2). Se omitieron.
+- "Sin costo de alta ni comisiones fijas. Activá tus pases…": los locales pagan suscripción mensual y el término es "cupón". Se omitió.
+- "Términos de Negocios MOVO": los términos llegan en la tarea 8.5; no se enlaza una página que no existe.
+- Contraseña de 8+ caracteres en el diseño; el backend exige 10 (decisión de la 1.2). La UI muestra 10.
+
+Pendientes de diseño: logotipo con la onda (hoy es texto, falta el archivo), tokens de color estimados desde la imagen, y el ícono de error del ingreso va contorneado en lugar de relleno.
+
+## Para fases siguientes
+
 - `sqlc` todavía no está en el repo: los adaptadores usan `pgx` directo.
+- No hay runner de tests en el frontend (`package.json` no tiene uno); la lógica pura (`lib/session/messages.ts`) quedó lista para probarse.
+- Las llamadas autenticadas de la Fase 2 necesitan un wrapper que renueve el access token ante un 401 (hoy nada lo usa).
