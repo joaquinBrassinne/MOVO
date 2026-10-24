@@ -36,6 +36,8 @@ linters:
             - github.com/testcontainers/testcontainers-go
             - golang.org/x/crypto/argon2
             - github.com/golang-jwt/jwt/v5
+            - github.com/aws/aws-sdk-go-v2
+            - github.com/aws/smithy-go
         # §3.3 regla 1: el dominio de cada módulo no importa infraestructura,
         # aunque la regla "backend" autorice esos paquetes para otras capas.
         domain-is-pure:
@@ -48,6 +50,8 @@ linters:
               desc: domain must not depend on the database driver
             - pkg: github.com/go-chi/chi
               desc: domain must not depend on the HTTP router
+            - pkg: github.com/aws
+              desc: domain must not depend on the object storage SDK
             - pkg: github.com/joaquinBrassinne/MOVO/internal/platform
               desc: domain must not depend on platform infrastructure
         # §3.3 regla 2: app depende de interfaces (ports.go), nunca de adapters.
@@ -59,6 +63,10 @@ linters:
           deny:
             - pkg: github.com/joaquinBrassinne/MOVO/internal/identity/adapters
               desc: app must depend on the ports, not on adapters
+            - pkg: github.com/joaquinBrassinne/MOVO/internal/business/adapters
+              desc: app must depend on the ports, not on adapters
+            - pkg: github.com/aws
+              desc: app must not depend on the object storage SDK
             - pkg: github.com/jackc/pgx
               desc: app must not depend on the database driver
             - pkg: github.com/go-chi/chi
