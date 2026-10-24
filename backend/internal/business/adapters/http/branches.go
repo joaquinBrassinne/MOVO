@@ -19,11 +19,12 @@ type branchRequest struct {
 	Latitude   float64 `json:"latitude"`
 	Longitude  float64 `json:"longitude"`
 	BookingURL string  `json:"booking_url"`
+	Reference  string  `json:"reference"`
 }
 
 func (b branchRequest) input() domain.NewBranchInput {
 	return domain.NewBranchInput{
-		Name: b.Name, Address: b.Address, City: b.City, Latitude: b.Latitude, Longitude: b.Longitude, BookingURL: b.BookingURL,
+		Name: b.Name, Address: b.Address, City: b.City, Latitude: b.Latitude, Longitude: b.Longitude, BookingURL: b.BookingURL, Reference: b.Reference,
 	}
 }
 

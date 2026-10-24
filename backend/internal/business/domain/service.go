@@ -11,8 +11,12 @@ var (
 	ErrServiceNameInvalid        = errors.New("business: service name is not valid")
 	ErrServiceDescriptionInvalid = errors.New("business: service description is not valid")
 	// ErrBranchNotFoundForService means the branch id cannot refer to any branch.
+	ErrPriceInvalid             = errors.New("business: service price is not valid")
 	ErrBranchNotFoundForService = errors.New("business: service branch is not valid")
 )
+
+// MaxPrice is the highest estimated price an owner may set, in whole pesos.
+const MaxPrice = 100_000_000
 
 const (
 	maxServiceNameLen        = 100
@@ -25,6 +29,7 @@ type Service struct {
 	ID          int64
 	BusinessID  int64
 	BranchID    int64 // 0 when the service is offered by the whole business
+	Price       int   // estimated price in whole pesos, 0 when the owner did not set one
 	Name        string
 	Description string
 	Active      bool
@@ -35,6 +40,7 @@ type ServiceInput struct {
 	Name        string
 	Description string
 	BranchID    int64
+	Price       int
 }
 
 // NewService validates the input and builds an active service. BusinessID and ID
@@ -58,7 +64,11 @@ func (s Service) Update(in ServiceInput) (Service, error) {
 		return Service{}, ErrBranchNotFoundForService
 	}
 
-	s.Name, s.Description, s.BranchID = name, description, in.BranchID
+	if in.Price < 0 || in.Price > MaxPrice {
+		return Service{}, ErrPriceInvalid
+	}
+
+	s.Name, s.Description, s.BranchID, s.Price = name, description, in.BranchID, in.Price
 	return s, nil
 }
 

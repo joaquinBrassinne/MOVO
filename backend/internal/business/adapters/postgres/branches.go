@@ -14,7 +14,7 @@ import (
 
 const selectBranch = `
 SELECT id, business_id, name, address, city, ST_Y(location::geometry), ST_X(location::geometry),
-       external_booking_url, active
+       external_booking_url, active, reference
 FROM branches`
 
 // Branches implements business.BranchRepository. Every statement filters by
@@ -31,10 +31,10 @@ func NewBranches(pool *pgxpool.Pool) *Branches {
 // Create stores b and returns it with ID set.
 func (r *Branches) Create(ctx context.Context, b domain.Branch) (domain.Branch, error) {
 	err := r.pool.QueryRow(ctx, `
-INSERT INTO branches (business_id, name, address, city, location, external_booking_url, active)
-VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($6, $5), 4326)::geography, NULLIF($7, ''), $8)
+INSERT INTO branches (business_id, name, address, city, location, external_booking_url, active, reference)
+VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($6, $5), 4326)::geography, NULLIF($7, ''), $8, $9)
 RETURNING id`,
-		b.BusinessID, b.Name, b.Address, b.City, b.Latitude, b.Longitude, b.BookingURL, b.Active,
+		b.BusinessID, b.Name, b.Address, b.City, b.Latitude, b.Longitude, b.BookingURL, b.Active, b.Reference,
 	).Scan(&b.ID)
 	if err != nil {
 		return domain.Branch{}, fmt.Errorf("postgres: insert branch: %w", err)
@@ -78,9 +78,9 @@ func (r *Branches) Save(ctx context.Context, b domain.Branch) error {
 	tag, err := r.pool.Exec(ctx, `
 UPDATE branches
 SET name = $3, address = $4, city = $5, location = ST_SetSRID(ST_MakePoint($7, $6), 4326)::geography,
-    external_booking_url = NULLIF($8, ''), active = $9, updated_at = now()
+    external_booking_url = NULLIF($8, ''), active = $9, reference = $10, updated_at = now()
 WHERE id = $1 AND business_id = $2`,
-		b.ID, b.BusinessID, b.Name, b.Address, b.City, b.Latitude, b.Longitude, b.BookingURL, b.Active)
+		b.ID, b.BusinessID, b.Name, b.Address, b.City, b.Latitude, b.Longitude, b.BookingURL, b.Active, b.Reference)
 	if err != nil {
 		return fmt.Errorf("postgres: update branch: %w", err)
 	}
@@ -181,7 +181,7 @@ func scanBranch(row pgx.Row) (domain.Branch, error) {
 		b       domain.Branch
 		booking *string
 	)
-	err := row.Scan(&b.ID, &b.BusinessID, &b.Name, &b.Address, &b.City, &b.Latitude, &b.Longitude, &booking, &b.Active)
+	err := row.Scan(&b.ID, &b.BusinessID, &b.Name, &b.Address, &b.City, &b.Latitude, &b.Longitude, &booking, &b.Active, &b.Reference)
 	if err != nil {
 		return domain.Branch{}, fmt.Errorf("postgres: scan branch: %w", err)
 	}

@@ -54,6 +54,8 @@ var validation = map[error]fieldError{
 	domain.ErrCityInvalid:               {"city", "invalid"},
 	domain.ErrLocationInvalid:           {"location", "invalid"},
 	domain.ErrBookingURLInvalid:         {"booking_url", "invalid"},
+	domain.ErrReferenceInvalid:          {"reference", "too_long"},
+	domain.ErrPriceInvalid:              {"price", "invalid"},
 	domain.ErrServiceNameInvalid:        {"name", "invalid"},
 	domain.ErrServiceDescriptionInvalid: {"description", "too_long"},
 	domain.ErrBranchNotFoundForService:  {"branch_id", "invalid"},

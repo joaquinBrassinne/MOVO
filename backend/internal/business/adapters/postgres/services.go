@@ -13,7 +13,7 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/business/domain"
 )
 
-const selectService = `SELECT id, business_id, branch_id, name, description, active FROM services`
+const selectService = `SELECT id, business_id, branch_id, name, description, active, COALESCE(price, 0) FROM services`
 
 // Services implements business.ServiceRepository. Every statement filters by
 // business_id, so a service id from another business behaves as if it did not exist.
@@ -30,10 +30,10 @@ func NewServices(pool *pgxpool.Pool) *Services {
 // refused by the composite foreign key and reported as business.ErrBranchNotFound.
 func (r *Services) Create(ctx context.Context, s domain.Service) (domain.Service, error) {
 	err := r.pool.QueryRow(ctx, `
-INSERT INTO services (business_id, branch_id, name, description, active)
-VALUES ($1, NULLIF($2, 0), $3, $4, $5)
+INSERT INTO services (business_id, branch_id, name, description, active, price)
+VALUES ($1, NULLIF($2, 0), $3, $4, $5, NULLIF($6, 0))
 RETURNING id`,
-		s.BusinessID, s.BranchID, s.Name, s.Description, s.Active,
+		s.BusinessID, s.BranchID, s.Name, s.Description, s.Active, s.Price,
 	).Scan(&s.ID)
 	if err := mapBranchError(err); err != nil {
 		return domain.Service{}, err
@@ -76,9 +76,9 @@ func (r *Services) Find(ctx context.Context, businessID, serviceID int64) (domai
 func (r *Services) Save(ctx context.Context, s domain.Service) error {
 	tag, err := r.pool.Exec(ctx, `
 UPDATE services
-SET branch_id = NULLIF($3, 0), name = $4, description = $5, active = $6, updated_at = now()
+SET branch_id = NULLIF($3, 0), name = $4, description = $5, active = $6, price = NULLIF($7, 0), updated_at = now()
 WHERE id = $1 AND business_id = $2`,
-		s.ID, s.BusinessID, s.BranchID, s.Name, s.Description, s.Active)
+		s.ID, s.BusinessID, s.BranchID, s.Name, s.Description, s.Active, s.Price)
 	if err := mapBranchError(err); err != nil {
 		return err
 	}
@@ -192,7 +192,7 @@ func scanService(row pgx.Row) (domain.Service, error) {
 		s      domain.Service
 		branch *int64
 	)
-	if err := row.Scan(&s.ID, &s.BusinessID, &branch, &s.Name, &s.Description, &s.Active); err != nil {
+	if err := row.Scan(&s.ID, &s.BusinessID, &branch, &s.Name, &s.Description, &s.Active, &s.Price); err != nil {
 		return domain.Service{}, fmt.Errorf("postgres: scan service: %w", err)
 	}
 	if branch != nil {

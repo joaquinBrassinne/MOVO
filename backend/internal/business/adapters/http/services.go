@@ -16,12 +16,17 @@ type serviceRequest struct {
 	Description string `json:"description"`
 	// BranchID is null (or absent) for a service of the whole business.
 	BranchID *int64 `json:"branch_id"`
+	// Price is the estimated price in whole pesos; null or absent means not set.
+	Price *int `json:"price"`
 }
 
 func (s serviceRequest) input() domain.ServiceInput {
 	in := domain.ServiceInput{Name: s.Name, Description: s.Description}
 	if s.BranchID != nil {
 		in.BranchID = *s.BranchID
+	}
+	if s.Price != nil {
+		in.Price = *s.Price
 	}
 	return in
 }

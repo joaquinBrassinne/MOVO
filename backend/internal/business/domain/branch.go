@@ -14,6 +14,7 @@ var (
 	ErrCityInvalid       = errors.New("business: branch city is not valid")
 	ErrLocationInvalid   = errors.New("business: branch location is not valid")
 	ErrBookingURLInvalid = errors.New("business: booking url is not valid")
+	ErrReferenceInvalid  = errors.New("business: branch reference is not valid")
 )
 
 const (
@@ -21,6 +22,7 @@ const (
 	MaxAddressLen    = 200
 	MaxCityLen       = 100
 	maxBookingURLLen = 500
+	maxReferenceLen  = 100
 )
 
 // Branch is a physical place of a business. Public search runs per branch.
@@ -33,6 +35,7 @@ type Branch struct {
 	Latitude   float64
 	Longitude  float64
 	BookingURL string
+	Reference  string
 	Active     bool
 }
 
@@ -44,6 +47,7 @@ type NewBranchInput struct {
 	Latitude   float64
 	Longitude  float64
 	BookingURL string
+	Reference  string
 }
 
 // NewBranch validates the input and builds an active branch. BusinessID and ID
@@ -75,7 +79,13 @@ func (b Branch) Update(in NewBranchInput) (Branch, error) {
 		return Branch{}, err
 	}
 
+	reference := strings.TrimSpace(in.Reference)
+	if utf8.RuneCountInString(reference) > maxReferenceLen {
+		return Branch{}, ErrReferenceInvalid
+	}
+
 	b.Name, b.Address, b.City = name, address, city
+	b.Reference = reference
 	b.Latitude, b.Longitude = in.Latitude, in.Longitude
 	b.BookingURL = bookingURL
 	return b, nil

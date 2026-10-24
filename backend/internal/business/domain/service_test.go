@@ -77,3 +77,28 @@ func TestServiceActivation(t *testing.T) {
 		t.Error("Activate must turn the service on")
 	}
 }
+
+func TestServicePriceIsOptionalAndBounded(t *testing.T) {
+	t.Parallel()
+
+	got, err := domain.NewService(domain.ServiceInput{Name: "Yoga", Price: 5500})
+	if err != nil || got.Price != 5500 {
+		t.Fatalf("priced service = %+v, %v", got, err)
+	}
+	if got, err := domain.NewService(domain.ServiceInput{Name: "Yoga"}); err != nil || got.Price != 0 {
+		t.Errorf("a service without price = %+v, %v; want 0 meaning not set", got, err)
+	}
+	if _, err := domain.NewService(domain.ServiceInput{Name: "x", Price: domain.MaxPrice}); err != nil {
+		t.Errorf("the maximum price must be accepted: %v", err)
+	}
+	for _, price := range []int{-1, domain.MaxPrice + 1} {
+		if _, err := domain.NewService(domain.ServiceInput{Name: "x", Price: price}); !errors.Is(err, domain.ErrPriceInvalid) {
+			t.Errorf("price %d error = %v, want ErrPriceInvalid", price, err)
+		}
+	}
+
+	updated, err := domain.Service{ID: 1, Price: 100}.Update(domain.ServiceInput{Name: "x"})
+	if err != nil || updated.Price != 0 {
+		t.Errorf("updating without a price = %+v, %v; want the price cleared", updated, err)
+	}
+}

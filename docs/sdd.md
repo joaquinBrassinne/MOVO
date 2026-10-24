@@ -177,10 +177,10 @@ Todas las tablas con `id` (UUID v7 o `bigserial`), `created_at`, `updated_at`. M
 | `customers` | name, phone (WhatsApp, normalizado), created_at — contacto declarado, **sin verificación ni contraseña** |
 | `categories` | slug, name — seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel |
 | `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description (≤ 500 caracteres), whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, payment_reference |
-| `branches` | business_id, name, address, city, `location geography(Point,4326)`, external_booking_url (opcional), rating_avg, rating_count, active — **la búsqueda se hace por sede** |
+| `branches` | business_id, name, address, city, reference (opcional, ≤ 100), `location geography(Point,4326)`, external_booking_url (opcional), rating_avg, rating_count, active — **la búsqueda se hace por sede** |
 | `business_hours` | branch_id, weekday, opens_at, closes_at |
 | `business_images` | business_id, object_key, position |
-| `services` | business_id, branch_id (opcional), name, description, active — lo que el negocio ofrece (clase de yoga, alquiler de cancha, etc.) |
+| `services` | business_id, branch_id (opcional), name, description, price (opcional, pesos enteros; sin duración porque el MVP no tiene agenda), active — lo que el negocio ofrece (clase de yoga, alquiler de cancha, etc.) |
 | `service_schedules` | service_id, weekday, starts_at, ends_at |
 | `subscriptions` | business_id, plan (`starter`/`pro`), paid_until, payment_reference, confirmed_by, confirmed_at, notes |
 | `benefits` | business_id, type (`percent`/`welcome_gift`), percent (10/15/20), gift_description, active, monthly_limit (configurable por el dueño) |

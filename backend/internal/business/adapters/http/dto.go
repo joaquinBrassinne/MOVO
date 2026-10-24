@@ -52,6 +52,7 @@ type branchJSON struct {
 	Latitude   float64    `json:"latitude"`
 	Longitude  float64    `json:"longitude"`
 	BookingURL string     `json:"booking_url"`
+	Reference  string     `json:"reference"`
 	Active     bool       `json:"active"`
 	Hours      []slotJSON `json:"hours"`
 }
@@ -59,7 +60,7 @@ type branchJSON struct {
 func toBranchJSON(b domain.Branch, hours []domain.Slot) branchJSON {
 	return branchJSON{
 		ID: b.ID, Name: b.Name, Address: b.Address, City: b.City, Latitude: b.Latitude, Longitude: b.Longitude,
-		BookingURL: b.BookingURL, Active: b.Active, Hours: toSlotsJSON(hours),
+		BookingURL: b.BookingURL, Reference: b.Reference, Active: b.Active, Hours: toSlotsJSON(hours),
 	}
 }
 
@@ -114,6 +115,7 @@ type serviceBaseJSON struct {
 	BranchID    *int64 `json:"branch_id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Price       *int   `json:"price"`
 	Active      bool   `json:"active"`
 }
 
@@ -126,6 +128,9 @@ func toServiceBaseJSON(s domain.Service) serviceBaseJSON {
 	out := serviceBaseJSON{ID: s.ID, Name: s.Name, Description: s.Description, Active: s.Active}
 	if s.BranchID != 0 {
 		out.BranchID = &s.BranchID
+	}
+	if s.Price != 0 {
+		out.Price = &s.Price
 	}
 	return out
 }

@@ -2,6 +2,7 @@ package businesshttp_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -192,5 +193,24 @@ func TestBranchesOfAnotherBusinessAreUnreachable(t *testing.T) {
 
 	if got := s.do(http.MethodPut, "/me/business/branches/not-a-number", alice, validBranch()); got.status != http.StatusNotFound {
 		t.Errorf("non numeric id = %d, want 404", got.status)
+	}
+}
+
+func TestBranchReferenceRoundTripsAndIsBounded(t *testing.T) {
+	t.Parallel()
+
+	s := newServer(t, planLimits{})
+	owner := ownerWithBusiness(s, "owner@example.com")
+
+	body := validBranch()
+	body["reference"] = "PB, timbre 4B"
+	created := s.do(http.MethodPost, "/me/business/branches", owner, body)
+	if created.status != http.StatusCreated || created.body["reference"] != "PB, timbre 4B" {
+		t.Fatalf("branch with reference = %d %v", created.status, created.body)
+	}
+
+	body["reference"] = strings.Repeat("a", 101)
+	if got := s.do(http.MethodPost, "/me/business/branches", owner, body); got.status != http.StatusUnprocessableEntity || got.errorField() != "reference" {
+		t.Errorf("long reference = %d field %q, want 422 reference", got.status, got.errorField())
 	}
 }

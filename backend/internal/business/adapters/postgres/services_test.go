@@ -163,3 +163,33 @@ func TestServicesDeleteRemovesTheScheduleAndIsScopedByBusiness(t *testing.T) {
 		t.Errorf("schedules left after deleting the service = %d, %v; want 0", n, err)
 	}
 }
+
+func TestServicesStoreAnOptionalPrice(t *testing.T) {
+	t.Parallel()
+
+	pool, _, mine, _ := setupBranches(t)
+	repo := postgres.NewServices(pool)
+
+	priced := newService(t, mine, 0, "Yoga")
+	priced.Price = 5500
+	created, err := repo.Create(t.Context(), priced)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if got, _ := repo.Find(t.Context(), mine, created.ID); got.Price != 5500 {
+		t.Errorf("price = %d, want 5500", got.Price)
+	}
+
+	cleared := created
+	cleared.Price = 0
+	if err := repo.Save(t.Context(), cleared); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if got, _ := repo.Find(t.Context(), mine, created.ID); got.Price != 0 {
+		t.Errorf("price after clearing = %d, want 0", got.Price)
+	}
+	var stored *int
+	if err := pool.QueryRow(t.Context(), `SELECT price FROM services WHERE id = $1`, created.ID).Scan(&stored); err != nil || stored != nil {
+		t.Errorf("stored price = %v, %v; want NULL and not zero", stored, err)
+	}
+}

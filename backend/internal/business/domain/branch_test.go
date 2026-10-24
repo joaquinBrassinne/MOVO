@@ -89,3 +89,25 @@ func TestBranchUpdateKeepsIdentityAndState(t *testing.T) {
 		t.Errorf("invalid update error = %v, want ErrBranchNameInvalid", err)
 	}
 }
+
+func TestBranchReferenceIsOptionalTrimmedAndBounded(t *testing.T) {
+	t.Parallel()
+
+	base := domain.NewBranchInput{Name: "Centro", Address: "Calle 1", City: "Rosario", Latitude: -32.95, Longitude: -60.65}
+
+	withRef := base
+	withRef.Reference = "  PB, timbre 4B "
+	got, err := domain.NewBranch(withRef)
+	if err != nil || got.Reference != "PB, timbre 4B" {
+		t.Fatalf("branch with reference = %+v, %v", got, err)
+	}
+	if got, err := domain.NewBranch(base); err != nil || got.Reference != "" {
+		t.Errorf("branch without reference = %+v, %v", got, err)
+	}
+
+	tooLong := base
+	tooLong.Reference = strings.Repeat("a", 101)
+	if _, err := domain.NewBranch(tooLong); !errors.Is(err, domain.ErrReferenceInvalid) {
+		t.Errorf("101 characters error = %v, want ErrReferenceInvalid", err)
+	}
+}

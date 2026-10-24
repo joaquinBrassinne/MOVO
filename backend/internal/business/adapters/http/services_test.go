@@ -165,3 +165,32 @@ func TestServicesOfAnotherBusinessAreUnreachable(t *testing.T) {
 		t.Errorf("alice's service changed: %v", first)
 	}
 }
+
+func TestServicePriceRoundTripsAndIsValidated(t *testing.T) {
+	t.Parallel()
+
+	s := newServer(t, planLimits{})
+	owner := ownerWithBusiness(s, "owner@example.com")
+
+	created := s.do(http.MethodPost, "/me/business/services", owner, map[string]any{"name": "Yoga", "price": 5500})
+	if created.status != http.StatusCreated || created.body["price"] != float64(5500) {
+		t.Fatalf("priced service = %d %v", created.status, created.body)
+	}
+	free := s.do(http.MethodPost, "/me/business/services", owner, map[string]any{"name": "Libre"})
+	if free.status != http.StatusCreated || free.body["price"] != nil {
+		t.Fatalf("service without price = %d %v, want price null", free.status, free.body)
+	}
+
+	list := s.do(http.MethodGet, "/me/business/services", owner, nil)
+	first, _ := list.body["services"].([]any)[0].(map[string]any)
+	if first["price"] != float64(5500) {
+		t.Errorf("listed price = %v", first["price"])
+	}
+
+	for _, price := range []int{-5, 100_000_001} {
+		got := s.do(http.MethodPost, "/me/business/services", owner, map[string]any{"name": "x", "price": price})
+		if got.status != http.StatusUnprocessableEntity || got.errorField() != "price" {
+			t.Errorf("price %d = %d field %q, want 422 price", price, got.status, got.errorField())
+		}
+	}
+}

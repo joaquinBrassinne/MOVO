@@ -378,3 +378,26 @@ func TestCategoriesListTheSeededCatalogInOrder(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+func TestBranchesStoreTheirReference(t *testing.T) {
+	t.Parallel()
+
+	_, repo, mine, _ := setupBranches(t)
+	b := newBranch(t, mine, "Centro")
+	b.Reference = "PB, timbre 4B"
+	created, err := repo.Create(t.Context(), b)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if got, _ := repo.Find(t.Context(), mine, created.ID); got.Reference != "PB, timbre 4B" {
+		t.Errorf("reference = %q", got.Reference)
+	}
+
+	created.Reference = ""
+	if err := repo.Save(t.Context(), created); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if got, _ := repo.Find(t.Context(), mine, created.ID); got.Reference != "" {
+		t.Errorf("reference after clearing = %q", got.Reference)
+	}
+}
