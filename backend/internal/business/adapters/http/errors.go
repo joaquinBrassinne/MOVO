@@ -19,6 +19,9 @@ const (
 	CodeBranchNotFound   = "branch_not_found"
 	CodeServiceNotFound  = "service_not_found"
 	CodeAddressNotFound  = "address_not_found"
+	CodeImageNotFound    = "image_not_found"
+	CodeImageLimit       = "image_limit_reached"
+	CodeImageExists      = "image_exists"
 	CodeGeocoderBusy     = "geocoder_busy"
 	CodeGeocoderDown     = "geocoder_unavailable"
 	CodeBusinessExists   = "business_exists"
@@ -59,6 +62,9 @@ var validation = map[error]fieldError{
 	domain.ErrSlotsOverlap:              {"slots", "overlap"},
 	storage.ErrContentTypeNotAllowed:    {"content_type", "not_allowed"},
 	storage.ErrSizeInvalid:              {"size", "invalid"},
+	domain.ErrImageKeyInvalid:           {"object_key", "invalid"},
+	business.ErrImageNotUploaded:        {"object_key", "not_uploaded"},
+	business.ErrImageOrderInvalid:       {"ids", "invalid"},
 	commands.ErrUnknownAdminAction:      {"action", "unknown"},
 	queries.ErrAdminFilterInvalid:       {"filter", "invalid"},
 }
@@ -72,6 +78,8 @@ var conflicts = []struct {
 }{
 	{business.ErrOwnerHasBusiness, CodeBusinessExists, "you already have a business", nil},
 	{commands.ErrSlugExhausted, CodeSlugUnavailable, "no free address could be built from that name", nil},
+	{business.ErrImageLimitReached, CodeImageLimit, "you already have the maximum number of photos", map[string]int{"max": domain.MaxImages}},
+	{business.ErrImageExists, CodeImageExists, "that photo is already registered", nil},
 	{business.ErrBranchLimitReached, CodePlanLimitReached, "your plan has no room for another branch", map[string]string{"resource": "branches"}},
 	{business.ErrServiceLimitReached, CodePlanLimitReached, "your plan has no room for another active service", map[string]string{"resource": "services"}},
 	{domain.ErrNotEditable, CodeBusinessDeleted, "this business was deleted and can no longer change", nil},
@@ -89,6 +97,7 @@ var notFound = []struct {
 	{business.ErrBusinessNotFound, CodeBusinessNotFound, "you have not created a business yet"},
 	{business.ErrBranchNotFound, CodeBranchNotFound, "branch not found"},
 	{business.ErrServiceNotFound, CodeServiceNotFound, "service not found"},
+	{business.ErrImageNotFound, CodeImageNotFound, "photo not found"},
 	{business.ErrAddressNotFound, CodeAddressNotFound, "we could not find that address, check it or place the pin by hand"},
 }
 

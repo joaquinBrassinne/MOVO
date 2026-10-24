@@ -44,9 +44,20 @@ func ValidateImageKey(businessID int64, key string) error {
 	}
 
 	for _, r := range name[:dot] {
-		if !(r >= 'a' && r <= 'z') && !(r >= 'A' && r <= 'Z') && !(r >= '0' && r <= '9') && r != '-' && r != '_' {
+		if !isKeyChar(r) {
 			return ErrImageKeyInvalid
 		}
 	}
 	return nil
+}
+
+// isKeyChar accepts the characters of the names PresignImageUpload generates:
+// hex ids, plus letters, digits, "-" and "_" for anything a client may choose.
+func isKeyChar(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		return true
+	default:
+		return r == '-' || r == '_'
+	}
 }

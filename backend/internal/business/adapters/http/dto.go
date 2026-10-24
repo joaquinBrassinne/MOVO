@@ -63,15 +63,29 @@ func toBranchJSON(b domain.Branch, hours []domain.Slot) branchJSON {
 	}
 }
 
+type imageJSON struct {
+	ID       int64  `json:"id"`
+	Position int    `json:"position"`
+	URL      string `json:"url"`
+}
+
 type myBusinessJSON struct {
 	Business businessJSON `json:"business"`
 	Branches []branchJSON `json:"branches"`
+	Images   []imageJSON  `json:"images"`
 }
 
 func toMyBusinessJSON(v queries.MyBusinessView) myBusinessJSON {
-	out := myBusinessJSON{Business: toBusinessJSON(v.Business), Branches: make([]branchJSON, 0, len(v.Branches))}
+	out := myBusinessJSON{
+		Business: toBusinessJSON(v.Business),
+		Branches: make([]branchJSON, 0, len(v.Branches)),
+		Images:   make([]imageJSON, 0, len(v.Images)),
+	}
 	for _, b := range v.Branches {
 		out.Branches = append(out.Branches, toBranchJSON(b.Branch, b.Hours))
+	}
+	for _, img := range v.Images {
+		out.Images = append(out.Images, imageJSON{ID: img.Image.ID, Position: img.Image.Position, URL: img.URL})
 	}
 	return out
 }

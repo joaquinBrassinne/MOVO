@@ -206,3 +206,8 @@ type Geocoder interface {
 	// the request budget is spent and ErrGeocoderUnavailable when the service fails.
 	Geocode(ctx context.Context, query string) (Place, error)
 }
+
+// ImageURLs turns a stored object key into a short-lived URL to show the photo.
+type ImageURLs interface {
+	PresignDownload(ctx context.Context, key string) (string, error)
+}

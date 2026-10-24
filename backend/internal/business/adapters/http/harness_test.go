@@ -68,16 +68,20 @@ func newServer(t *testing.T, limits planLimits) *server {
 	branches := postgres.NewBranches(pool)
 	services := postgres.NewServices(pool)
 	admin := postgres.NewAdmin(pool)
+	images := postgres.NewImages(pool)
 	plan := fixedPlan{limits: limits}
 
 	handlers := businesshttp.New(businesshttp.Deps{
 		Verifier:       s.tokens,
-		MyBusiness:     queries.NewGetMyBusiness(businesses, branches),
+		MyBusiness:     queries.NewGetMyBusiness(businesses, branches, images, s.storage),
 		CreateBusiness: commands.NewCreateBusiness(businesses),
 		UpdateBusiness: commands.NewUpdateBusiness(businesses),
 		SubmitBusiness: commands.NewSubmitBusiness(businesses),
 		PresignImage:   commands.NewPresignImageUpload(businesses, s.storage, nil),
 		Geocode:        commands.NewGeocodeAddress(businesses, s.geocoder),
+		RegisterImage:  commands.NewRegisterImage(businesses, images, s.storage),
+		ReorderImages:  commands.NewReorderImages(businesses, images),
+		RemoveImage:    commands.NewRemoveImage(businesses, images, s.storage),
 		AddBranch:      commands.NewAddBranch(businesses, branches, plan),
 		EditBranch:     commands.NewEditBranch(businesses, branches),
 		RemoveBranch:   commands.NewRemoveBranch(businesses, branches),

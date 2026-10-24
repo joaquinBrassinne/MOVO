@@ -49,6 +49,7 @@ func newBusinessRoutes(
 	branches := businesspostgres.NewBranches(pool)
 	services := businesspostgres.NewServices(pool)
 	admin := businesspostgres.NewAdmin(pool)
+	photos := businesspostgres.NewImages(pool)
 
 	// Pilot businesses get the Pro limits for free; everyone else is on Starter
 	// until subscriptions exist (phase 5). Dropping pilotplan ends the pilot.
@@ -58,12 +59,15 @@ func newBusinessRoutes(
 	handlers := businesshttp.New(businesshttp.Deps{
 		Verifier: verifier,
 
-		MyBusiness:     queries.NewGetMyBusiness(businesses, branches),
+		MyBusiness:     queries.NewGetMyBusiness(businesses, branches, photos, images),
 		CreateBusiness: commands.NewCreateBusiness(businesses),
 		UpdateBusiness: commands.NewUpdateBusiness(businesses),
 		SubmitBusiness: commands.NewSubmitBusiness(businesses),
 		PresignImage:   commands.NewPresignImageUpload(businesses, images, nil),
 		Geocode:        commands.NewGeocodeAddress(businesses, geocoder),
+		RegisterImage:  commands.NewRegisterImage(businesses, photos, images),
+		ReorderImages:  commands.NewReorderImages(businesses, photos),
+		RemoveImage:    commands.NewRemoveImage(businesses, photos, images),
 
 		AddBranch:      commands.NewAddBranch(businesses, branches, entitlements),
 		EditBranch:     commands.NewEditBranch(businesses, branches),

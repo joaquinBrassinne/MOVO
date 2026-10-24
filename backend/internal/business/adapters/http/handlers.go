@@ -32,6 +32,9 @@ type Deps struct {
 	PresignImage   *commands.PresignImageUpload
 
 	Geocode        *commands.GeocodeAddress
+	RegisterImage  *commands.RegisterImage
+	ReorderImages  *commands.ReorderImages
+	RemoveImage    *commands.RemoveImage
 	AddBranch      *commands.AddBranch
 	EditBranch     *commands.EditBranch
 	RemoveBranch   *commands.RemoveBranch
@@ -77,6 +80,7 @@ func (h *Handlers) Mount(r chi.Router) {
 		me.Post("/submit", h.handleSubmit)
 		me.Post("/images/presign", h.handlePresign)
 		me.Post("/geocode", h.handleGeocode)
+		h.mountPhotos(me)
 		h.mountBranches(me)
 		h.mountServices(me)
 	})

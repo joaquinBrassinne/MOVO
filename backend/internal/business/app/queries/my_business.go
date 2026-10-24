@@ -15,21 +15,35 @@ type BranchView struct {
 	Hours  []domain.Slot
 }
 
+// ImageView is a photo with the short-lived URL that shows it.
+type ImageView struct {
+	Image domain.Image
+	URL   string
+}
+
 // MyBusinessView is everything the owner's panel shows about the business.
 type MyBusinessView struct {
 	Business domain.Business
 	Branches []BranchView
+	Images   []ImageView
 }
 
-// GetMyBusiness reads the owner's business with its branches and hours.
+// GetMyBusiness reads the owner's business with its branches, hours and photos.
 type GetMyBusiness struct {
 	businesses business.BusinessRepository
 	branches   business.BranchRepository
+	images     business.ImageRepository
+	urls       business.ImageURLs
 }
 
 // NewGetMyBusiness wires the GetMyBusiness query.
-func NewGetMyBusiness(businesses business.BusinessRepository, branches business.BranchRepository) *GetMyBusiness {
-	return &GetMyBusiness{businesses: businesses, branches: branches}
+func NewGetMyBusiness(
+	businesses business.BusinessRepository,
+	branches business.BranchRepository,
+	images business.ImageRepository,
+	urls business.ImageURLs,
+) *GetMyBusiness {
+	return &GetMyBusiness{businesses: businesses, branches: branches, images: images, urls: urls}
 }
 
 // Handle returns business.ErrBusinessNotFound when the owner has not created the
@@ -52,6 +66,19 @@ func (q *GetMyBusiness) Handle(ctx context.Context, ownerID int64) (MyBusinessVi
 			return MyBusinessView{}, fmt.Errorf("read hours of branch %d: %w", branch.ID, err)
 		}
 		view.Branches = append(view.Branches, BranchView{Branch: branch, Hours: hours})
+	}
+
+	images, err := q.images.List(ctx, b.ID)
+	if err != nil {
+		return MyBusinessView{}, fmt.Errorf("list images: %w", err)
+	}
+	view.Images = make([]ImageView, 0, len(images))
+	for _, img := range images {
+		url, err := q.urls.PresignDownload(ctx, img.ObjectKey)
+		if err != nil {
+			return MyBusinessView{}, fmt.Errorf("sign url of image %d: %w", img.ID, err)
+		}
+		view.Images = append(view.Images, ImageView{Image: img, URL: url})
 	}
 	return view, nil
 }
