@@ -38,6 +38,7 @@ func newBusinessRoutes(
 	verifier httpx.TokenVerifier,
 	plans config.Plans,
 	images business.ImageStorage,
+	geocoder business.Geocoder,
 ) (businessMount, billingMount func(chi.Router), err error) {
 	catalog, err := configcatalog.New(plans)
 	if err != nil {
@@ -62,6 +63,7 @@ func newBusinessRoutes(
 		UpdateBusiness: commands.NewUpdateBusiness(businesses),
 		SubmitBusiness: commands.NewSubmitBusiness(businesses),
 		PresignImage:   commands.NewPresignImageUpload(businesses, images, nil),
+		Geocode:        commands.NewGeocodeAddress(businesses, geocoder),
 
 		AddBranch:      commands.NewAddBranch(businesses, branches, entitlements),
 		EditBranch:     commands.NewEditBranch(businesses, branches),

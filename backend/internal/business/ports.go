@@ -15,12 +15,16 @@ import (
 // Errors the adapters report so the application layer can react without knowing
 // the storage engine.
 var (
-	ErrBusinessNotFound   = errors.New("business: business not found")
-	ErrOwnerHasBusiness   = errors.New("business: owner already has a business")
-	ErrSlugTaken          = errors.New("business: slug is already taken")
-	ErrCategoryNotFound   = errors.New("business: category not found")
-	ErrBranchNotFound     = errors.New("business: branch not found")
-	ErrBranchLimitReached = errors.New("business: branch limit of the plan reached")
+	ErrBusinessNotFound = errors.New("business: business not found")
+	ErrOwnerHasBusiness = errors.New("business: owner already has a business")
+	ErrSlugTaken        = errors.New("business: slug is already taken")
+	ErrCategoryNotFound = errors.New("business: category not found")
+	ErrBranchNotFound   = errors.New("business: branch not found")
+
+	ErrAddressNotFound     = errors.New("business: address could not be located")
+	ErrGeocoderBusy        = errors.New("business: geocoder is busy")
+	ErrGeocoderUnavailable = errors.New("business: geocoder is not available")
+	ErrBranchLimitReached  = errors.New("business: branch limit of the plan reached")
 
 	ErrServiceNotFound     = errors.New("business: service not found")
 	ErrServiceLimitReached = errors.New("business: active service limit of the plan reached")
@@ -160,4 +164,20 @@ type ImageStorage interface {
 type CategoryRepository interface {
 	// List returns every category in catalog order.
 	List(ctx context.Context) ([]domain.Category, error)
+}
+
+// Place is a located address.
+type Place struct {
+	Latitude    float64
+	Longitude   float64
+	DisplayName string
+}
+
+// Geocoder turns a typed address into coordinates. The real service is a public
+// server with a strict usage policy (see docs/sdd.md §12.3), so it sits behind this
+// port and tests use a fake.
+type Geocoder interface {
+	// Geocode returns ErrAddressNotFound when nothing matches, ErrGeocoderBusy when
+	// the request budget is spent and ErrGeocoderUnavailable when the service fails.
+	Geocode(ctx context.Context, query string) (Place, error)
 }

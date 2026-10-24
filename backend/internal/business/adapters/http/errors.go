@@ -18,6 +18,9 @@ const (
 	CodeBusinessNotFound = "business_not_found"
 	CodeBranchNotFound   = "branch_not_found"
 	CodeServiceNotFound  = "service_not_found"
+	CodeAddressNotFound  = "address_not_found"
+	CodeGeocoderBusy     = "geocoder_busy"
+	CodeGeocoderDown     = "geocoder_unavailable"
 	CodeBusinessExists   = "business_exists"
 	CodeSlugUnavailable  = "slug_unavailable"
 	CodePlanLimitReached = "plan_limit_reached"
@@ -86,6 +89,7 @@ var notFound = []struct {
 	{business.ErrBusinessNotFound, CodeBusinessNotFound, "you have not created a business yet"},
 	{business.ErrBranchNotFound, CodeBranchNotFound, "branch not found"},
 	{business.ErrServiceNotFound, CodeServiceNotFound, "service not found"},
+	{business.ErrAddressNotFound, CodeAddressNotFound, "we could not find that address, check it or place the pin by hand"},
 }
 
 // fail maps a use case error to its HTTP answer. Anything unexpected is logged
@@ -103,6 +107,16 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 			httpx.WriteError(w, http.StatusConflict, c.code, c.message, c.details)
 			return
 		}
+	}
+	switch {
+	case errors.Is(err, business.ErrGeocoderBusy):
+		w.Header().Set("Retry-After", "5")
+		httpx.WriteError(w, http.StatusTooManyRequests, CodeGeocoderBusy, "the address search is busy, try again in a few seconds", nil)
+		return
+	case errors.Is(err, business.ErrGeocoderUnavailable):
+		h.log.Warn("geocoder unavailable", "request_id", httpx.RequestID(r.Context()), "error", err)
+		httpx.WriteError(w, http.StatusBadGateway, CodeGeocoderDown, "the address search is not available right now, place the pin by hand", nil)
+		return
 	}
 	for known, field := range validation {
 		if errors.Is(err, known) {

@@ -50,11 +50,12 @@ func (f fixedPlan) For(context.Context, int64) (business.Entitlements, error) { 
 // server is the whole stack over a real database: handlers, use cases and
 // Postgres adapters, with the object storage faked.
 type server struct {
-	t       *testing.T
-	url     string
-	pool    *pgxpool.Pool
-	tokens  tokens
-	storage *storage.Memory
+	t        *testing.T
+	url      string
+	pool     *pgxpool.Pool
+	tokens   tokens
+	storage  *storage.Memory
+	geocoder *fakeGeocoder
 }
 
 func newServer(t *testing.T, limits planLimits) *server {
@@ -62,7 +63,7 @@ func newServer(t *testing.T, limits planLimits) *server {
 
 	pool := dbtest.New(t)
 	businesses := postgres.NewBusinesses(pool)
-	s := &server{t: t, pool: pool, tokens: tokens{}, storage: storage.NewMemory()}
+	s := &server{t: t, pool: pool, tokens: tokens{}, storage: storage.NewMemory(), geocoder: &fakeGeocoder{}}
 
 	branches := postgres.NewBranches(pool)
 	services := postgres.NewServices(pool)
@@ -76,6 +77,7 @@ func newServer(t *testing.T, limits planLimits) *server {
 		UpdateBusiness: commands.NewUpdateBusiness(businesses),
 		SubmitBusiness: commands.NewSubmitBusiness(businesses),
 		PresignImage:   commands.NewPresignImageUpload(businesses, s.storage, nil),
+		Geocode:        commands.NewGeocodeAddress(businesses, s.geocoder),
 		AddBranch:      commands.NewAddBranch(businesses, branches, plan),
 		EditBranch:     commands.NewEditBranch(businesses, branches),
 		RemoveBranch:   commands.NewRemoveBranch(businesses, branches),
@@ -182,3 +184,15 @@ func (r reply) errorField() string {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// fakeGeocoder answers with a fixed place or error and counts the calls.
+type fakeGeocoder struct {
+	place business.Place
+	err   error
+	calls []string
+}
+
+func (f *fakeGeocoder) Geocode(_ context.Context, query string) (business.Place, error) {
+	f.calls = append(f.calls, query)
+	return f.place, f.err
+}

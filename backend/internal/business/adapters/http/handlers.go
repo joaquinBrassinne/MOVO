@@ -31,6 +31,7 @@ type Deps struct {
 	SubmitBusiness *commands.SubmitBusiness
 	PresignImage   *commands.PresignImageUpload
 
+	Geocode        *commands.GeocodeAddress
 	AddBranch      *commands.AddBranch
 	EditBranch     *commands.EditBranch
 	RemoveBranch   *commands.RemoveBranch
@@ -75,6 +76,7 @@ func (h *Handlers) Mount(r chi.Router) {
 		me.Put("/", h.handleUpdate)
 		me.Post("/submit", h.handleSubmit)
 		me.Post("/images/presign", h.handlePresign)
+		me.Post("/geocode", h.handleGeocode)
 		h.mountBranches(me)
 		h.mountServices(me)
 	})

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/joaquinBrassinne/MOVO/internal/business"
 
 	"github.com/joaquinBrassinne/MOVO/internal/identity/adapters/tokens"
 	identitydomain "github.com/joaquinBrassinne/MOVO/internal/identity/domain"
@@ -39,7 +42,7 @@ func newAPIHarness(t *testing.T) *apiHarness {
 		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800},
 	}
 
-	businessMount, billingMount, err := newBusinessRoutes(pool, signer, plans, storage.NewMemory())
+	businessMount, billingMount, err := newBusinessRoutes(pool, signer, plans, storage.NewMemory(), unusedGeocoder{})
 	if err != nil {
 		t.Fatalf("newBusinessRoutes: %v", err)
 	}
@@ -179,4 +182,11 @@ func TestPilotBusinessesGetTheProBranchLimit(t *testing.T) {
 	if status, code := addBranches(pilot, 1); status != http.StatusConflict || code != "plan_limit_reached" {
 		t.Errorf("pilot business, fifth branch = %d %q, want 409", status, code)
 	}
+}
+
+// unusedGeocoder stands in where the test never geocodes: reaching it is a bug.
+type unusedGeocoder struct{}
+
+func (unusedGeocoder) Geocode(context.Context, string) (business.Place, error) {
+	panic("the geocoder must not be called in this test")
 }

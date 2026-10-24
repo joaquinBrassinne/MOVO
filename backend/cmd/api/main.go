@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/joaquinBrassinne/MOVO/internal/business/adapters/nominatim"
 	identityhttp "github.com/joaquinBrassinne/MOVO/internal/identity/adapters/http"
 	"github.com/joaquinBrassinne/MOVO/internal/identity/adapters/postgres"
 	"github.com/joaquinBrassinne/MOVO/internal/identity/adapters/ratelimit"
@@ -77,6 +78,11 @@ func run() error {
 		return err
 	}
 
+	geocoding, err := config.LoadGeocoding(os.Getenv)
+	if err != nil {
+		return err
+	}
+
 	signer, err := tokens.NewSigner(auth.JWTSecret, auth.AccessTokenTTL, nil)
 	if err != nil {
 		return err
@@ -95,7 +101,7 @@ func run() error {
 		}
 	}
 
-	businessMount, billingMount, err := newBusinessRoutes(pool, signer, plans, images)
+	businessMount, billingMount, err := newBusinessRoutes(pool, signer, plans, images, nominatim.New(nominatim.Config{URL: geocoding.URL, UserAgent: geocoding.UserAgent}))
 	if err != nil {
 		pool.Close()
 		return err

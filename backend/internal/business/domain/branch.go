@@ -18,8 +18,8 @@ var (
 
 const (
 	maxBranchNameLen = 100
-	maxAddressLen    = 200
-	maxCityLen       = 100
+	MaxAddressLen    = 200
+	MaxCityLen       = 100
 	maxBookingURLLen = 500
 )
 
@@ -60,11 +60,11 @@ func (b Branch) Update(in NewBranchInput) (Branch, error) {
 		return Branch{}, ErrBranchNameInvalid
 	}
 	address := strings.TrimSpace(in.Address)
-	if address == "" || utf8.RuneCountInString(address) > maxAddressLen {
+	if address == "" || utf8.RuneCountInString(address) > MaxAddressLen {
 		return Branch{}, ErrAddressInvalid
 	}
 	city := strings.TrimSpace(in.City)
-	if city == "" || utf8.RuneCountInString(city) > maxCityLen {
+	if city == "" || utf8.RuneCountInString(city) > MaxCityLen {
 		return Branch{}, ErrCityInvalid
 	}
 	if !validLocation(in.Latitude, in.Longitude) {
