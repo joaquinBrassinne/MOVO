@@ -14,6 +14,7 @@ var (
 	ErrDescriptionInvalid = errors.New("business: description is not valid")
 	ErrCategoryRequired   = errors.New("business: category is required")
 	ErrInvalidTransition  = errors.New("business: status transition is not allowed")
+	ErrNotEditable        = errors.New("business: business can no longer be edited")
 )
 
 const (
@@ -60,6 +61,14 @@ type NewBusinessInput struct {
 	WhatsApp    string
 }
 
+// ProfileInput is what an owner provides to edit the business profile.
+type ProfileInput struct {
+	CategoryID  int64
+	Name        string
+	Description string
+	WhatsApp    string
+}
+
 // NewBusiness validates the input and builds a draft ready to be stored: text is
 // trimmed, the WhatsApp number is normalized and the slug is derived from the
 // name. Making the slug unique is the repository's job (see SlugWithSuffix).
@@ -89,6 +98,28 @@ func NewBusiness(in NewBusinessInput) (Business, error) {
 		WhatsApp:    whatsapp,
 		Status:      StatusDraft,
 	}, nil
+}
+
+// UpdateProfile validates the input and returns the business with the new
+// profile. The slug is kept: public URLs must not change when a name does.
+func (b Business) UpdateProfile(in ProfileInput) (Business, error) {
+	if !b.Editable() {
+		return Business{}, ErrNotEditable
+	}
+	name, description, err := validateProfile(in.Name, in.Description)
+	if err != nil {
+		return Business{}, err
+	}
+	if in.CategoryID <= 0 {
+		return Business{}, ErrCategoryRequired
+	}
+	whatsapp, err := NormalizeWhatsApp(in.WhatsApp)
+	if err != nil {
+		return Business{}, err
+	}
+
+	b.CategoryID, b.Name, b.Description, b.WhatsApp = in.CategoryID, name, description, whatsapp
+	return b, nil
 }
 
 func validateProfile(name, description string) (string, string, error) {

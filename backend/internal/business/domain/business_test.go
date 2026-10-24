@@ -128,3 +128,50 @@ func TestEditableByOwnerOnlyWhileNotDeleted(t *testing.T) {
 		t.Error("a deleted business must not be editable")
 	}
 }
+
+func TestUpdateProfileKeepsSlugAndStatus(t *testing.T) {
+	t.Parallel()
+
+	current := domain.Business{ID: 5, Slug: "old-name", Status: domain.StatusActive, Pilot: true}
+	got, err := current.UpdateProfile(domain.ProfileInput{
+		CategoryID:  2,
+		Name:        " New Name ",
+		Description: "text",
+		WhatsApp:    "+54 9 11 1234-5678",
+	})
+	if err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+	if got.Slug != "old-name" {
+		t.Errorf("slug = %q, want the URL to stay stable", got.Slug)
+	}
+	if got.ID != 5 || got.Status != domain.StatusActive || !got.Pilot {
+		t.Errorf("identity/state changed: id=%d status=%q pilot=%v", got.ID, got.Status, got.Pilot)
+	}
+	if got.Name != "New Name" || got.CategoryID != 2 || got.WhatsApp != "5491112345678" {
+		t.Errorf("profile = %q/%d/%q", got.Name, got.CategoryID, got.WhatsApp)
+	}
+
+	if _, err := current.UpdateProfile(domain.ProfileInput{CategoryID: 2, Name: "", WhatsApp: "5491112345678"}); !errors.Is(err, domain.ErrNameInvalid) {
+		t.Errorf("empty name error = %v, want ErrNameInvalid", err)
+	}
+	if _, err := (domain.Business{Status: domain.StatusDeleted}).UpdateProfile(domain.ProfileInput{CategoryID: 2, Name: "x", WhatsApp: "5491112345678"}); !errors.Is(err, domain.ErrNotEditable) {
+		t.Errorf("deleted business error = %v, want ErrNotEditable", err)
+	}
+}
+
+func TestSetPaymentReference(t *testing.T) {
+	t.Parallel()
+
+	got, err := (domain.Business{}).SetPaymentReference("  OP-123456 ")
+	if err != nil || got.PaymentReference != "OP-123456" {
+		t.Fatalf("SetPaymentReference = %q, %v; want the trimmed value", got.PaymentReference, err)
+	}
+	cleared, err := got.SetPaymentReference("  ")
+	if err != nil || cleared.PaymentReference != "" {
+		t.Errorf("blank reference = %q, %v; want it cleared", cleared.PaymentReference, err)
+	}
+	if _, err := (domain.Business{}).SetPaymentReference(strings.Repeat("9", 101)); !errors.Is(err, domain.ErrPaymentReferenceInvalid) {
+		t.Errorf("long reference error = %v, want ErrPaymentReferenceInvalid", err)
+	}
+}
