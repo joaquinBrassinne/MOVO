@@ -35,6 +35,7 @@ linters:
             - github.com/pressly/goose/v3
             - github.com/testcontainers/testcontainers-go
             - golang.org/x/crypto/argon2
+            - github.com/golang-jwt/jwt/v5
         # §3.3 regla 1: el dominio de cada módulo no importa infraestructura,
         # aunque la regla "backend" autorice esos paquetes para otras capas.
         domain-is-pure:
