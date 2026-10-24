@@ -8,6 +8,7 @@ import { useSession } from "./SessionProvider";
 
 export const SIGN_IN_PATH = "/socios/ingresar";
 export const PANEL_PATH = "/socios/panel";
+export const ONBOARDING_PATH = "/socios/onboarding";
 
 /** Quien ya tiene sesión no necesita ver las vistas de acceso. */
 export function useRedirectIfSignedIn() {
@@ -57,7 +58,8 @@ export function useAccessForm(mode: "login" | "register") {
     const result = await (mode === "login" ? login : register)(email, password);
     if (result.ok) {
       // Se queda en "pending" hasta que la navegación termine: evita un doble envío.
-      router.replace(PANEL_PATH);
+      // Quien acaba de crear la cuenta empieza por el alta del negocio; quien ingresa va al panel.
+      router.replace(mode === "register" ? ONBOARDING_PATH : PANEL_PATH);
       return;
     }
 

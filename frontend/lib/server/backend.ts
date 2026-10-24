@@ -39,3 +39,59 @@ export async function postToBackend(path: string, payload: unknown): Promise<Bac
     return { status: 502, body: UPSTREAM_UNAVAILABLE, retryAfter: null };
   }
 }
+
+// Rutas de la API que el navegador puede usar a través del proxy de app/api/v1. La lista
+// es cerrada a propósito: /auth/* no está, porque ahí viaja el refresh token y solo debe
+// verlo app/api/session (cookie httpOnly).
+const PROXIED = [/^me\//, /^admin\//, /^plans$/, /^categories$/];
+
+/** Cabeceras que el navegador puede mandar a la API; el resto no se reenvía. */
+const FORWARDED_REQUEST_HEADERS = ["authorization", "content-type", "accept"];
+const FORWARDED_RESPONSE_HEADERS = ["content-type", "cache-control", "retry-after"];
+
+const METHODS_WITHOUT_BODY = new Set(["GET", "HEAD", "DELETE"]);
+
+function notFound(): Response {
+  return Response.json(
+    { error: { code: "not_found", message: "resource not found" } },
+    { status: 404 },
+  );
+}
+
+/**
+ * Reenvía una petición del navegador a `/api/v1/<path>` del backend con su token. Solo
+ * pasa lo permitido por PROXIED, sin segmentos raros, y la respuesta vuelve tal cual.
+ */
+export async function proxyToBackend(request: Request, segments: string[]): Promise<Response> {
+  const unsafe = segments.some((s) => s === "" || s === "." || s === ".." || /[\/%]/.test(s));
+  const path = segments.join("/");
+  if (unsafe || !PROXIED.some((allowed) => allowed.test(path))) return notFound();
+
+  const headers = new Headers();
+  for (const name of FORWARDED_REQUEST_HEADERS) {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+
+  try {
+    const upstream = await fetch(`${API_URL}/api/v1/${path}${new URL(request.url).search}`, {
+      method: request.method,
+      headers,
+      body: METHODS_WITHOUT_BODY.has(request.method) ? undefined : await request.arrayBuffer(),
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+
+    const responseHeaders = new Headers();
+    for (const name of FORWARDED_RESPONSE_HEADERS) {
+      const value = upstream.headers.get(name);
+      if (value) responseHeaders.set(name, value);
+    }
+    return new Response(upstream.status === 204 ? null : upstream.body, {
+      status: upstream.status,
+      headers: responseHeaders,
+    });
+  } catch {
+    return Response.json(UPSTREAM_UNAVAILABLE, { status: 502 });
+  }
+}

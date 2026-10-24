@@ -190,6 +190,7 @@ func TestFrontendJobRunsEveryGate(t *testing.T) {
 		"run: npm run lint",
 		"run: npm run format:check",
 		"run: npm run typecheck",
+		"run: npm test",
 		"run: npm run build",
 	} {
 		if !strings.Contains(block, want) {
