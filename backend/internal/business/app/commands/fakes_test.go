@@ -3,6 +3,7 @@ package commands_test
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/joaquinBrassinne/MOVO/internal/business"
 	"github.com/joaquinBrassinne/MOVO/internal/business/domain"
@@ -90,3 +91,8 @@ func (f fixedEntitlements) For(context.Context, int64) (business.Entitlements, e
 }
 
 func unlimited() fixedEntitlements { return fixedEntitlements{} }
+
+func ptrTime() *time.Time {
+	t := time.Now()
+	return &t
+}

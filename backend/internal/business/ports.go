@@ -94,3 +94,28 @@ type ServiceRepository interface {
 	// ReplaceSchedule atomically swaps all the slots (ErrServiceNotFound).
 	ReplaceSchedule(ctx context.Context, businessID, serviceID int64, slots []domain.Slot) error
 }
+
+// ErrStatusConflict means the business changed between reading it and writing the
+// new state, so the action was not applied.
+var ErrStatusConflict = errors.New("business: business was changed by someone else")
+
+// AuditEntry is one line of the audit trail.
+type AuditEntry struct {
+	ActorID  int64
+	Action   string
+	Entity   string
+	EntityID int64
+	Metadata map[string]any
+}
+
+// AdminRepository is what the super admin actions need. It reads businesses by id
+// (the owner-facing BusinessRepository reads them by owner) and writes a state
+// change together with its audit entry.
+type AdminRepository interface {
+	// FindByID returns ErrBusinessNotFound when there is no such business.
+	FindByID(ctx context.Context, id int64) (domain.Business, error)
+	// Apply stores the status, pilot flag and verification of b and appends entry,
+	// in one transaction. expected is the status b had when it was read: when the
+	// stored status differs it returns ErrStatusConflict and writes nothing.
+	Apply(ctx context.Context, b domain.Business, expected domain.Status, entry AuditEntry) error
+}

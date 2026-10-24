@@ -189,3 +189,13 @@ func (b Business) transition(to Status, from ...Status) (Business, error) {
 	}
 	return Business{}, ErrInvalidTransition
 }
+
+// SetPilot marks or unmarks the business as part of the pilot. A deleted
+// business cannot change.
+func (b Business) SetPilot(pilot bool) (Business, error) {
+	if !b.Editable() {
+		return Business{}, ErrNotEditable
+	}
+	b.Pilot = pilot
+	return b, nil
+}

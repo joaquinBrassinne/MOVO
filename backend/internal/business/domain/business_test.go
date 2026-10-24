@@ -175,3 +175,18 @@ func TestSetPaymentReference(t *testing.T) {
 		t.Errorf("long reference error = %v, want ErrPaymentReferenceInvalid", err)
 	}
 }
+
+func TestSetPilot(t *testing.T) {
+	t.Parallel()
+
+	b, err := (domain.Business{Status: domain.StatusActive}).SetPilot(true)
+	if err != nil || !b.Pilot {
+		t.Fatalf("SetPilot(true) = %+v, %v", b, err)
+	}
+	if b, err = b.SetPilot(false); err != nil || b.Pilot {
+		t.Fatalf("SetPilot(false) = %+v, %v", b, err)
+	}
+	if _, err := (domain.Business{Status: domain.StatusDeleted}).SetPilot(true); !errors.Is(err, domain.ErrNotEditable) {
+		t.Errorf("deleted business error = %v, want ErrNotEditable", err)
+	}
+}
