@@ -66,6 +66,7 @@ func newServer(t *testing.T, limits planLimits) *server {
 
 	branches := postgres.NewBranches(pool)
 	services := postgres.NewServices(pool)
+	admin := postgres.NewAdmin(pool)
 	plan := fixedPlan{limits: limits}
 
 	handlers := businesshttp.New(businesshttp.Deps{
@@ -86,6 +87,9 @@ func newServer(t *testing.T, limits planLimits) *server {
 		RemoveService:      commands.NewRemoveService(businesses, services),
 		SetServiceActive:   commands.NewSetServiceActive(businesses, services, plan),
 		SetServiceSchedule: commands.NewSetServiceSchedule(businesses, services),
+
+		ListBusinesses: queries.NewListBusinesses(admin),
+		AdminAction:    commands.NewApplyAdminAction(admin),
 	})
 
 	ts := httptest.NewServer(httpx.NewRouter(nil, nil, handlers.Mount))

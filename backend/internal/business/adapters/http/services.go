@@ -41,7 +41,7 @@ func (h *Handlers) mountServices(me chi.Router) {
 }
 
 func (h *Handlers) handleListServices(w http.ResponseWriter, r *http.Request) {
-	views, err := h.ListServices.Handle(r.Context(), ownerID(r))
+	views, err := h.ListServices.Handle(r.Context(), callerID(r))
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -60,7 +60,7 @@ func (h *Handlers) handleAddService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := h.AddService.Handle(r.Context(), commands.AddServiceInput{OwnerID: ownerID(r), Service: req.input()})
+	created, err := h.AddService.Handle(r.Context(), commands.AddServiceInput{OwnerID: callerID(r), Service: req.input()})
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -78,7 +78,7 @@ func (h *Handlers) handleEditService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.EditService.Handle(r.Context(), commands.EditServiceInput{OwnerID: ownerID(r), ServiceID: id, Service: req.input()})
+	updated, err := h.EditService.Handle(r.Context(), commands.EditServiceInput{OwnerID: callerID(r), ServiceID: id, Service: req.input()})
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -92,7 +92,7 @@ func (h *Handlers) handleRemoveService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.RemoveService.Handle(r.Context(), commands.RemoveServiceInput{OwnerID: ownerID(r), ServiceID: id}); err != nil {
+	if err := h.RemoveService.Handle(r.Context(), commands.RemoveServiceInput{OwnerID: callerID(r), ServiceID: id}); err != nil {
 		h.fail(w, r, err)
 		return
 	}
@@ -109,7 +109,7 @@ func (h *Handlers) handleSetServiceActive(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	updated, err := h.SetServiceActive.Handle(r.Context(), commands.SetServiceActiveInput{OwnerID: ownerID(r), ServiceID: id, Active: req.Active})
+	updated, err := h.SetServiceActive.Handle(r.Context(), commands.SetServiceActiveInput{OwnerID: callerID(r), ServiceID: id, Active: req.Active})
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -132,7 +132,7 @@ func (h *Handlers) handleSetServiceSchedule(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := h.SetServiceSchedule.Handle(r.Context(), commands.SetServiceScheduleInput{OwnerID: ownerID(r), ServiceID: id, Slots: slots}); err != nil {
+	if err := h.SetServiceSchedule.Handle(r.Context(), commands.SetServiceScheduleInput{OwnerID: callerID(r), ServiceID: id, Slots: slots}); err != nil {
 		h.fail(w, r, err)
 		return
 	}

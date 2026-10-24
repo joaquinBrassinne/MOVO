@@ -42,6 +42,9 @@ type Deps struct {
 	RemoveService      *commands.RemoveService
 	SetServiceActive   *commands.SetServiceActive
 	SetServiceSchedule *commands.SetServiceSchedule
+
+	ListBusinesses *queries.ListBusinesses
+	AdminAction    *commands.ApplyAdminAction
 }
 
 // Handlers serves the business endpoints.
@@ -73,6 +76,7 @@ func (h *Handlers) Mount(r chi.Router) {
 		h.mountBranches(me)
 		h.mountServices(me)
 	})
+	h.mountAdmin(r)
 }
 
 type businessRequest struct {
@@ -100,15 +104,15 @@ type presignResponse struct {
 	} `json:"upload"`
 }
 
-// ownerID is the authenticated caller. RequireRole already guaranteed it exists;
+// callerID is the authenticated caller. RequireRole already guaranteed it exists;
 // the id always comes from the token, never from the body or the URL.
-func ownerID(r *http.Request) int64 {
+func callerID(r *http.Request) int64 {
 	principal, _ := httpx.PrincipalFrom(r.Context())
 	return principal.UserID
 }
 
 func (h *Handlers) handleGetMine(w http.ResponseWriter, r *http.Request) {
-	view, err := h.MyBusiness.Handle(r.Context(), ownerID(r))
+	view, err := h.MyBusiness.Handle(r.Context(), callerID(r))
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -123,7 +127,7 @@ func (h *Handlers) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	created, err := h.CreateBusiness.Handle(r.Context(), commands.CreateBusinessInput{
-		OwnerID: ownerID(r), CategoryID: req.CategoryID, Name: req.Name, Description: req.Description, WhatsApp: req.WhatsApp,
+		OwnerID: callerID(r), CategoryID: req.CategoryID, Name: req.Name, Description: req.Description, WhatsApp: req.WhatsApp,
 	})
 	if err != nil {
 		h.fail(w, r, err)
@@ -139,7 +143,7 @@ func (h *Handlers) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updated, err := h.UpdateBusiness.Handle(r.Context(), commands.UpdateBusinessInput{
-		OwnerID: ownerID(r), CategoryID: req.CategoryID, Name: req.Name, Description: req.Description, WhatsApp: req.WhatsApp,
+		OwnerID: callerID(r), CategoryID: req.CategoryID, Name: req.Name, Description: req.Description, WhatsApp: req.WhatsApp,
 	})
 	if err != nil {
 		h.fail(w, r, err)
@@ -154,7 +158,7 @@ func (h *Handlers) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	submitted, err := h.SubmitBusiness.Handle(r.Context(), commands.SubmitBusinessInput{OwnerID: ownerID(r), PaymentReference: req.PaymentReference})
+	submitted, err := h.SubmitBusiness.Handle(r.Context(), commands.SubmitBusinessInput{OwnerID: callerID(r), PaymentReference: req.PaymentReference})
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -168,7 +172,7 @@ func (h *Handlers) handlePresign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	presigned, err := h.PresignImage.Handle(r.Context(), commands.PresignImageUploadInput{OwnerID: ownerID(r), ContentType: req.ContentType, Size: req.Size})
+	presigned, err := h.PresignImage.Handle(r.Context(), commands.PresignImageUploadInput{OwnerID: callerID(r), ContentType: req.ContentType, Size: req.Size})
 	if err != nil {
 		h.fail(w, r, err)
 		return

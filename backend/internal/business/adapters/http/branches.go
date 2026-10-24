@@ -45,7 +45,7 @@ func (h *Handlers) handleAddBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := h.AddBranch.Handle(r.Context(), commands.AddBranchInput{OwnerID: ownerID(r), Branch: req.input()})
+	created, err := h.AddBranch.Handle(r.Context(), commands.AddBranchInput{OwnerID: callerID(r), Branch: req.input()})
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -63,7 +63,7 @@ func (h *Handlers) handleEditBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.EditBranch.Handle(r.Context(), commands.EditBranchInput{OwnerID: ownerID(r), BranchID: id, Branch: req.input()})
+	updated, err := h.EditBranch.Handle(r.Context(), commands.EditBranchInput{OwnerID: callerID(r), BranchID: id, Branch: req.input()})
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -77,7 +77,7 @@ func (h *Handlers) handleRemoveBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.RemoveBranch.Handle(r.Context(), commands.RemoveBranchInput{OwnerID: ownerID(r), BranchID: id}); err != nil {
+	if err := h.RemoveBranch.Handle(r.Context(), commands.RemoveBranchInput{OwnerID: callerID(r), BranchID: id}); err != nil {
 		h.fail(w, r, err)
 		return
 	}
@@ -99,7 +99,7 @@ func (h *Handlers) handleSetHours(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.SetBranchHours.Handle(r.Context(), commands.SetBranchHoursInput{OwnerID: ownerID(r), BranchID: id, Slots: slots}); err != nil {
+	if err := h.SetBranchHours.Handle(r.Context(), commands.SetBranchHoursInput{OwnerID: callerID(r), BranchID: id, Slots: slots}); err != nil {
 		h.fail(w, r, err)
 		return
 	}
