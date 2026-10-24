@@ -9,6 +9,7 @@ import (
 	"errors"
 
 	"github.com/joaquinBrassinne/MOVO/internal/business/domain"
+	"github.com/joaquinBrassinne/MOVO/internal/platform/storage"
 )
 
 // Errors the adapters report so the application layer can react without knowing
@@ -147,4 +148,10 @@ type AdminPage struct {
 // first and then the most recent.
 type AdminDirectory interface {
 	List(ctx context.Context, filter AdminFilter) (AdminPage, error)
+}
+
+// ImageStorage creates the presigned URLs images are uploaded to. The object
+// server behind it is an environment detail (see docs/adr/0002).
+type ImageStorage interface {
+	PresignUpload(ctx context.Context, req storage.UploadRequest) (storage.PresignedUpload, error)
 }

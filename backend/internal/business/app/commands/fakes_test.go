@@ -2,6 +2,7 @@ package commands_test
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"time"
 
@@ -96,3 +97,5 @@ func ptrTime() *time.Time {
 	t := time.Now()
 	return &t
 }
+
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }
