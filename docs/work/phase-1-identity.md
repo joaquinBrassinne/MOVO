@@ -31,6 +31,9 @@ El puerto 5432 lo ocupa otro contenedor (`locos_deporte_db`). MOVO se levanta co
 
 - **1.1** migración `00002_identity.sql` (`users`, `refresh_tokens`) con tests contra Postgres real (`internal/platform/dbtest`, testcontainers-go v0.44.0).
 
+- **1.2** dominio `identity` (`User`, roles, email, política de contraseña, argon2id PHC) y regla depguard que mantiene el dominio puro.
+
+
 ## Pendiente
 
-1.1 a 1.7.
+1.3 a 1.7.

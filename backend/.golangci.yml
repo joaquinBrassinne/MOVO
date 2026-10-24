@@ -34,3 +34,18 @@ linters:
             - github.com/jackc/pgx/v5
             - github.com/pressly/goose/v3
             - github.com/testcontainers/testcontainers-go
+            - golang.org/x/crypto/argon2
+        # §3.3 regla 1: el dominio de cada módulo no importa infraestructura,
+        # aunque la regla "backend" autorice esos paquetes para otras capas.
+        domain-is-pure:
+          files:
+            - "**/internal/*/domain/**"
+            - "!$test"
+          list-mode: lax
+          deny:
+            - pkg: github.com/jackc/pgx
+              desc: domain must not depend on the database driver
+            - pkg: github.com/go-chi/chi
+              desc: domain must not depend on the HTTP router
+            - pkg: github.com/joaquinBrassinne/MOVO/internal/platform
+              desc: domain must not depend on platform infrastructure
