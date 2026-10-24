@@ -34,10 +34,11 @@ El puerto 5432 lo ocupa otro contenedor (`locos_deporte_db`). MOVO se levanta co
 - **1.3** casos de uso `Register`/`Login`/`Refresh`/`Logout`, adaptadores Postgres (rotación atómica con detección de reuso), firmador JWT HS256 y endpoints `/api/v1/auth/*` compuestos en `cmd/api`. `config.LoadAuth` se carga aparte de `config.Load` para no exigir `JWT_SECRET` a `cmd/migrate`.
 - **1.4** `httpx.Authenticate` (Bearer) y `httpx.RequireRole`, con el `Principal` en el contexto.
 - **1.5** limitador de intentos en memoria (`adapters/ratelimit`) detrás del puerto `LoginLimiter`, con tope de claves.
+- **1.6** seed del primer super admin por `SUPER_ADMIN_EMAIL`/`SUPER_ADMIN_PASSWORD` al arrancar la API: idempotente, no pisa cuentas existentes y se niega a tocar el email de un dueño.
 
 ## Pendiente
 
-- 1.6 (super admin por env), 1.7 (frontend) y cierre de fase.
+- 1.7 (frontend) y cierre de fase.
 
 ## Antes de desplegar detrás de un proxy
 

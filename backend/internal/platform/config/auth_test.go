@@ -97,3 +97,38 @@ func TestLoadAuthRejectsNilSource(t *testing.T) {
 		t.Error("LoadAuth(nil) error = nil, want an error")
 	}
 }
+
+func TestLoadAuthSuperAdminSeedIsOptionalButAllOrNothing(t *testing.T) {
+	t.Parallel()
+
+	auth, err := config.LoadAuth(env(map[string]string{"JWT_SECRET": testJWTSecret}))
+	if err != nil || auth.SuperAdminEmail != "" || auth.SuperAdminPassword != "" {
+		t.Fatalf("without the seed LoadAuth = (%+v, %v), want no seed and no error", auth, err)
+	}
+
+	auth, err = config.LoadAuth(env(map[string]string{
+		"JWT_SECRET":           testJWTSecret,
+		"SUPER_ADMIN_EMAIL":    "  root@example.com ",
+		"SUPER_ADMIN_PASSWORD": "a long enough password",
+	}))
+	if err != nil {
+		t.Fatalf("LoadAuth() error = %v, want nil", err)
+	}
+	if auth.SuperAdminEmail != "root@example.com" || auth.SuperAdminPassword != "a long enough password" {
+		t.Errorf("seed = (%q, %q), want the trimmed email and the untouched password", auth.SuperAdminEmail, auth.SuperAdminPassword)
+	}
+
+	for name, values := range map[string]map[string]string{
+		"email only":    {"SUPER_ADMIN_EMAIL": "root@example.com"},
+		"password only": {"SUPER_ADMIN_PASSWORD": "a long enough password"},
+	} {
+		values["JWT_SECRET"] = testJWTSecret
+		_, err := config.LoadAuth(env(values))
+		if err == nil || !strings.Contains(err.Error(), "SUPER_ADMIN_EMAIL") {
+			t.Errorf("%s: LoadAuth() error = %v, want it to ask for both variables", name, err)
+		}
+		if err != nil && strings.Contains(err.Error(), "a long enough password") {
+			t.Errorf("%s: error %q contains the password", name, err)
+		}
+	}
+}

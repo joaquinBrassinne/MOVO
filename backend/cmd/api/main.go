@@ -77,7 +77,30 @@ func run() error {
 		return err
 	}
 
+	if err := seedSuperAdmin(signalCtx, log, pool, auth); err != nil {
+		pool.Close()
+		return err
+	}
+
 	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, httpx.NewRouter(log, pool, identityRoutes), pool.Close)
+}
+
+// seedSuperAdmin creates the first super admin when the environment configures
+// one. A configuration that cannot be honoured stops the process at startup.
+func seedSuperAdmin(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, auth config.Auth) error {
+	if auth.SuperAdminEmail == "" {
+		return nil
+	}
+
+	created, err := commands.NewEnsureSuperAdmin(postgres.NewUsers(pool)).Handle(ctx, auth.SuperAdminEmail, auth.SuperAdminPassword)
+	if err != nil {
+		return fmt.Errorf("seed super admin: %w", err)
+	}
+	if created {
+		log.Info("super admin created")
+	}
+
+	return nil
 }
 
 // newIdentityRoutes composes the identity module: adapters, use cases and HTTP.

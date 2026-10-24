@@ -465,7 +465,7 @@ Convenciones de trabajo:
 - [x] 1.3 Casos de uso Register / Login / Refresh / Logout (M)
 - [x] 1.4 Middleware JWT + middleware de roles (S)
 - [x] 1.5 Límite de intentos de login (en memoria, interfaz lista para Redis) (S)
-- [ ] 1.6 Primer super admin por seed/variables de entorno (S)
+- [x] 1.6 Primer super admin por seed/variables de entorno (S)
 - [ ] 1.7 Frontend: login y registro de dueños, manejo de sesión en hooks (M)
 
 **Vistas:** Login y registro del dueño.

@@ -12,6 +12,9 @@ const (
 	envJWTSecret       = "JWT_SECRET"
 	envAccessTokenTTL  = "ACCESS_TOKEN_TTL"
 	envRefreshTokenTTL = "REFRESH_TOKEN_TTL"
+
+	envSuperAdminEmail    = "SUPER_ADMIN_EMAIL"
+	envSuperAdminPassword = "SUPER_ADMIN_PASSWORD"
 )
 
 const (
@@ -32,6 +35,10 @@ type Auth struct {
 	// RefreshTokenTTL is how long a refresh token stays valid; always longer
 	// than AccessTokenTTL.
 	RefreshTokenTTL time.Duration
+	// SuperAdminEmail and SuperAdminPassword seed the first super admin. Both are
+	// empty, or both are set.
+	SuperAdminEmail    string
+	SuperAdminPassword string
 }
 
 // LoadAuth builds an Auth from get, normally os.Getenv. JWT_SECRET is required
@@ -64,7 +71,21 @@ func LoadAuth(get func(string) string) (Auth, error) {
 			envRefreshTokenTTL, refreshTTL, envAccessTokenTTL, accessTTL)
 	}
 
-	return Auth{JWTSecret: []byte(secret), AccessTokenTTL: accessTTL, RefreshTokenTTL: refreshTTL}, nil
+	// The password is kept as given: trimming would silently change a secret.
+	adminEmail := strings.TrimSpace(get(envSuperAdminEmail))
+	adminPassword := get(envSuperAdminPassword)
+	if (adminEmail == "") != (adminPassword == "") {
+		return Auth{}, fmt.Errorf("config: %s and %s must be set together or both left empty",
+			envSuperAdminEmail, envSuperAdminPassword)
+	}
+
+	return Auth{
+		JWTSecret:          []byte(secret),
+		AccessTokenTTL:     accessTTL,
+		RefreshTokenTTL:    refreshTTL,
+		SuperAdminEmail:    adminEmail,
+		SuperAdminPassword: adminPassword,
+	}, nil
 }
 
 // parsePositiveDuration parses a Go duration such as 15m, or returns fallback
