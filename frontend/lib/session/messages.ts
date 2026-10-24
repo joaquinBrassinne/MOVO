@@ -11,7 +11,7 @@ export type AuthFeedback = {
   /** Mensaje del formulario completo (credenciales, límites, caídas). */
   form?: { title: string; body: string };
   /** Mensajes junto al campo que corresponde. */
-  fields: { email?: string; password?: string };
+  fields: { email?: string; password?: string; confirm?: string };
 };
 
 type Failure = Extract<SessionResult, { ok: false }>;
