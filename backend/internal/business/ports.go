@@ -115,7 +115,36 @@ type AdminRepository interface {
 	// FindByID returns ErrBusinessNotFound when there is no such business.
 	FindByID(ctx context.Context, id int64) (domain.Business, error)
 	// Apply stores the status, pilot flag and verification of b and appends entry,
-	// in one transaction. expected is the status b had when it was read: when the
-	// stored status differs it returns ErrStatusConflict and writes nothing.
-	Apply(ctx context.Context, b domain.Business, expected domain.Status, entry AuditEntry) error
+	// in one transaction. previous is the business as it was read: when the stored
+	// status, pilot flag or verification differ it returns ErrStatusConflict and
+	// writes nothing, so two admins cannot overwrite each other.
+	Apply(ctx context.Context, b, previous domain.Business, entry AuditEntry) error
+}
+
+// AdminFilter selects which businesses the super admin list shows. An empty
+// Status means every business except the deleted ones.
+type AdminFilter struct {
+	Status domain.Status
+	Limit  int
+	Offset int
+}
+
+// AdminRow is one line of the super admin list.
+type AdminRow struct {
+	Business     domain.Business
+	OwnerEmail   string
+	CategoryName string
+	BranchCount  int
+}
+
+// AdminPage is a page of the list with the total of businesses that match.
+type AdminPage struct {
+	Rows  []AdminRow
+	Total int
+}
+
+// AdminDirectory lists businesses for the super admin, those waiting for review
+// first and then the most recent.
+type AdminDirectory interface {
+	List(ctx context.Context, filter AdminFilter) (AdminPage, error)
 }

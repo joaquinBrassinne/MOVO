@@ -62,13 +62,19 @@ RETURNING id, created_at`,
 
 // FindByOwner returns the business of the owner.
 func (r *Businesses) FindByOwner(ctx context.Context, ownerID int64) (domain.Business, error) {
+	return scanBusiness(r.pool.QueryRow(ctx, selectBusiness+` WHERE owner_user_id = $1`, ownerID))
+}
+
+// scanBusiness reads one row of selectBusiness, reporting a missing row as
+// business.ErrBusinessNotFound.
+func scanBusiness(row pgx.Row) (domain.Business, error) {
 	var (
 		b       domain.Business
 		status  string
 		by      *int64
 		payment *string
 	)
-	err := r.pool.QueryRow(ctx, selectBusiness+` WHERE owner_user_id = $1`, ownerID).Scan(
+	err := row.Scan(
 		&b.ID, &b.OwnerID, &b.CategoryID, &b.Name, &b.Slug, &b.Description, &b.WhatsApp, &status,
 		&b.Pilot, &b.VerifiedAt, &by, &payment, &b.CreatedAt,
 	)

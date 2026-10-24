@@ -39,11 +39,11 @@ func (f *fakeAdmin) FindByID(_ context.Context, id int64) (domain.Business, erro
 	return b, nil
 }
 
-func (f *fakeAdmin) Apply(_ context.Context, b domain.Business, expected domain.Status, entry business.AuditEntry) error {
+func (f *fakeAdmin) Apply(_ context.Context, b, previous domain.Business, entry business.AuditEntry) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if f.conflictOnApply || f.byID[b.ID].Status != expected {
+	if stored := f.byID[b.ID]; f.conflictOnApply || stored.Status != previous.Status || stored.Pilot != previous.Pilot || stored.Verified() != previous.Verified() {
 		return business.ErrStatusConflict
 	}
 	f.byID[b.ID] = b

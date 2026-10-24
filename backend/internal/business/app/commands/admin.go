@@ -78,7 +78,7 @@ func (c *ApplyAdminAction) Handle(ctx context.Context, in ApplyAdminActionInput)
 			"verified":    updated.Verified(),
 		},
 	}
-	if err := c.admin.Apply(ctx, updated, current.Status, entry); err != nil {
+	if err := c.admin.Apply(ctx, updated, current, entry); err != nil {
 		return domain.Business{}, fmt.Errorf("apply %s: %w", in.Action, err)
 	}
 	return updated, nil
