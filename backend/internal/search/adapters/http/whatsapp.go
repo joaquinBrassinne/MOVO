@@ -32,7 +32,13 @@ func (h *Handlers) handleWhatsApp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	link, err := h.whatsapp.Handle(r.Context(), branchID, serviceID, r.UserAgent())
+	// A HEAD gets the same answer without a count: previewers use it, people do not.
+	var link string
+	if r.Method == http.MethodHead {
+		link, err = h.whatsapp.Preview(r.Context(), branchID, serviceID)
+	} else {
+		link, err = h.whatsapp.Handle(r.Context(), branchID, serviceID, r.UserAgent())
+	}
 	if errors.Is(err, search.ErrBranchNotFound) {
 		httpx.WriteError(w, http.StatusNotFound, CodeBranchNotFound, "branch not found", nil)
 		return

@@ -41,6 +41,7 @@ func (h *Handlers) Mount(r chi.Router) {
 	r.Get("/home/featured", h.handleFeatured)
 	if h.whatsapp != nil {
 		r.Get("/r/wa/{branch_id}", h.handleWhatsApp)
+		r.Head("/r/wa/{branch_id}", h.handleWhatsApp)
 	}
 }
 

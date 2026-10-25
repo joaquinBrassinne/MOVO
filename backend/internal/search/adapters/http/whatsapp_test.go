@@ -167,3 +167,72 @@ func TestWhatsAppRejectsAMalformedService(t *testing.T) {
 		t.Errorf("clicks = %d for a rejected request, want 0", got)
 	}
 }
+
+func TestWhatsAppRedirectSendsNoReferrer(t *testing.T) {
+	t.Parallel()
+
+	h, pool := newServer(t)
+	branch := addBranch(t, pool, 1, 100)
+
+	rec := clickRedirect(h, fmt.Sprint(branch), browser)
+	if got := rec.Header().Get("Referrer-Policy"); got != "no-referrer" {
+		t.Errorf("Referrer-Policy = %q, want no-referrer", got)
+	}
+}
+
+// TestWhatsAppHeadAnswersTheSameRedirectWithoutCounting pins that link previewers,
+// which ask with HEAD, see where the link goes but do not add a click.
+func TestWhatsAppHeadAnswersTheSameRedirectWithoutCounting(t *testing.T) {
+	t.Parallel()
+
+	h, pool := newServer(t)
+	branch := addBranch(t, pool, 1, 100)
+	path := fmt.Sprint(branch)
+
+	get := clickRedirect(h, path, browser)
+
+	req := httptest.NewRequest(http.MethodHead, "/api/v1/r/wa/"+path, nil)
+	req.Header.Set("User-Agent", browser)
+	head := httptest.NewRecorder()
+	h.ServeHTTP(head, req)
+
+	if head.Code != http.StatusFound || head.Header().Get("Location") != get.Header().Get("Location") {
+		t.Errorf("HEAD: status %d, Location %q; want 302 and the GET's Location %q", head.Code, head.Header().Get("Location"), get.Header().Get("Location"))
+	}
+	if head.Header().Get("Referrer-Policy") != "no-referrer" || head.Header().Get("Cache-Control") != "no-store" {
+		t.Errorf("HEAD headers = %v, want the same policy as GET", head.Header())
+	}
+	if head.Body.Len() != 0 {
+		t.Errorf("HEAD body = %q, want empty", head.Body)
+	}
+	if got := clicks(t, pool, branch); got != 1 {
+		t.Errorf("clicks = %d, want only the GET counted", got)
+	}
+
+	missing := httptest.NewRequest(http.MethodHead, "/api/v1/r/wa/999999", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, missing)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("HEAD of an unknown branch = %d, want 404", rec.Code)
+	}
+}
+
+func TestWhatsAppEscapesAccentsAndEmojiInTheServiceName(t *testing.T) {
+	t.Parallel()
+
+	h, pool := newServer(t)
+	branch := addBranch(t, pool, 1, 100)
+	var business, service int64
+	if err := pool.QueryRow(t.Context(), `SELECT business_id FROM branches WHERE id = $1`, branch).Scan(&business); err != nil {
+		t.Fatalf("business: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `INSERT INTO services (business_id, name) VALUES ($1, 'Pilates Reformer ñandú 🧘') RETURNING id`, business).Scan(&service); err != nil {
+		t.Fatalf("service: %v", err)
+	}
+
+	rec := clickRedirect(h, fmt.Sprintf("%d?service=%d", branch, service), browser)
+	want := "quiero%20reservar%20Pilates%20Reformer%20%C3%B1and%C3%BA%20%F0%9F%A7%98"
+	if got := rec.Header().Get("Location"); rec.Code != http.StatusFound || !strings.HasSuffix(got, want) {
+		t.Errorf("status %d, Location %s; want it to end with %s", rec.Code, got, want)
+	}
+}

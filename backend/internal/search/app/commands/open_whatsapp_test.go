@@ -26,10 +26,14 @@ func TestWhatsAppLinkPrefillsTheMessage(t *testing.T) {
 	withService := studio
 	withService.ServiceID, withService.ServiceName = 9, "Yoga & Pilates"
 
+	accented := studio
+	accented.ServiceID, accented.ServiceName = 10, "Pilates Reformer ñandú 🧘"
+
 	for name, tc := range map[string]struct {
 		contact search.Contact
 		want    string
 	}{
+		"accents and emoji": {accented, "https://wa.me/5493571123456?text=Hola%2C%20vi%20tu%20perfil%20en%20MOVO%20y%20quiero%20reservar%20Pilates%20Reformer%20%C3%B1and%C3%BA%20%F0%9F%A7%98"},
 		"without a service": {studio, "https://wa.me/5493571123456?text=Hola%2C%20vi%20tu%20perfil%20en%20MOVO%20y%20quiero%20hacer%20una%20consulta"},
 		"with a service":    {withService, "https://wa.me/5493571123456?text=Hola%2C%20vi%20tu%20perfil%20en%20MOVO%20y%20quiero%20reservar%20Yoga%20%26%20Pilates"},
 	} {

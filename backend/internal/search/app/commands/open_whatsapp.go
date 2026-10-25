@@ -49,6 +49,16 @@ func (o *OpenWhatsApp) Handle(ctx context.Context, branchID, serviceID int64, us
 	return WhatsAppLink(contact), nil
 }
 
+// Preview returns the same link as Handle without counting anything. Link
+// previewers ask with HEAD to see where a link goes; that is not a click.
+func (o *OpenWhatsApp) Preview(ctx context.Context, branchID, serviceID int64) (string, error) {
+	contact, err := o.contacts.ContactFor(ctx, branchID, serviceID)
+	if err != nil {
+		return "", err
+	}
+	return WhatsAppLink(contact), nil
+}
+
 // WhatsAppLink builds https://wa.me/<number>?text=<message>. The number holds only
 // digits (the business validates it on save), so it needs no escaping.
 func WhatsAppLink(c search.Contact) string {
