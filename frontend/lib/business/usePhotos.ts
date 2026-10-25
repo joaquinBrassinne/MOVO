@@ -4,10 +4,10 @@ import { useState } from "react";
 
 import { presignPhoto, registerPhoto, removePhoto, reorderPhotos, uploadFile } from "./api";
 import { describeFailure, type FormMessage } from "./messages";
-import { MAX_PHOTO_BYTES, MAX_PHOTOS, PHOTO_TYPES, type Photo } from "./types";
+import { MAX_PHOTO_BYTES, PHOTO_TYPES, type Photo } from "./types";
 
 /** Subida, portada y borrado de las fotos del local (paso 4). */
-export function usePhotos(photos: Photo[], onChanged: () => void) {
+export function usePhotos(photos: Photo[], max: number, onChanged: () => void) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<FormMessage | null>(null);
 
@@ -20,7 +20,7 @@ export function usePhotos(photos: Photo[], onChanged: () => void) {
 
     let stored = photos.length;
     for (const file of files) {
-      if (stored >= MAX_PHOTOS) {
+      if (stored >= max) {
         setMessage({ title: "Ya subiste todas las fotos", body: "Borrá alguna para subir otra." });
         break;
       }

@@ -6,7 +6,7 @@ import { CameraIcon, ImageIcon, StarIcon, XIcon } from "@/components/socios/icon
 import { submitBusiness } from "@/lib/business/api";
 import { describeFailure, FIELD_MESSAGES, type FormMessage } from "@/lib/business/messages";
 import { recalledReturnParams } from "@/lib/business/returnParams";
-import { MAX_PHOTOS, PHOTO_TYPES, type Business, type Photo } from "@/lib/business/types";
+import { PHOTO_TYPES, type Business, type Photo } from "@/lib/business/types";
 import { usePhotos } from "@/lib/business/usePhotos";
 
 import { Field, Notice, TextInput } from "./fields";
@@ -15,14 +15,16 @@ import { Shell, StepFooter } from "./Shell";
 interface Props {
   business: Business;
   photos: Photo[];
+  /** Cuántas fotos puede tener el negocio. */
+  maxPhotos: number;
   /** Se llama después de cambiar las fotos o de enviar el negocio, para volver a pedir los datos. */
   onChanged: () => void;
   onBack: () => void;
 }
 
 /** Paso 4: fotos del local y datos del pago en Mercado Pago; al terminar el negocio pasa a revisión. */
-export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
-  const gallery = usePhotos(photos, onChanged);
+export function StepPhotos({ business, photos, maxPhotos, onChanged, onBack }: Props) {
+  const gallery = usePhotos(photos, maxPhotos, onChanged);
   const [email, setEmail] = useState(business.mp_payer_email);
   const [name, setName] = useState(business.mp_payer_name);
   const [pending, setPending] = useState(false);
@@ -79,7 +81,7 @@ export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
               Fotos del local
             </h3>
             <span className="rounded-full bg-movo-sand px-3 py-1 text-xs font-bold">
-              {photos.length} de {MAX_PHOTOS} subidas
+              {photos.length} de {maxPhotos} subidas
             </span>
           </div>
 
@@ -132,7 +134,7 @@ export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
             </ul>
           ) : null}
 
-          {photos.length < MAX_PHOTOS ? (
+          {photos.length < maxPhotos ? (
             <label
               className={`flex cursor-pointer flex-col items-center gap-2 rounded-3xl border-2 border-dashed border-movo-slate/40 px-4 py-8 text-center focus-within:ring-2 focus-within:ring-movo-accent ${
                 gallery.busy ? "opacity-60" : ""
