@@ -36,11 +36,9 @@ ORDER BY floor(ST_Distance(v.location, o.p) / $4::float8), v.featured DESC,
          ST_Distance(v.location, o.p), v.branch_id
 LIMIT $6 OFFSET $7`
 
-// Nearby returns one page of visible branches within q.RadiusM of the point.
+// Nearby returns one page of visible branches within q.RadiusM of the point. The
+// query is validated by the use case, not here, which lets it ask for one extra row.
 func (r *Branches) Nearby(ctx context.Context, q search.Query) ([]search.Branch, error) {
-	if err := q.Validate(); err != nil {
-		return nil, err
-	}
 	rows, err := r.pool.Query(ctx, nearbySQL,
 		q.Lat, q.Lng, float64(q.RadiusM), float64(search.DistanceBandM), q.Category, q.Limit, q.Offset)
 	if err != nil {

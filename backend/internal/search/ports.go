@@ -10,6 +10,13 @@ import (
 // ErrInvalidQuery is returned when the point, radius or paging of a query is out of range.
 var ErrInvalidQuery = errors.New("search: invalid query")
 
+// QueryError names the query field that is out of range. It matches ErrInvalidQuery.
+type QueryError struct{ Field string }
+
+func (e *QueryError) Error() string { return "search: invalid query: " + e.Field }
+
+func (e *QueryError) Is(target error) bool { return target == ErrInvalidQuery }
+
 const (
 	// MaxRadiusM is the widest radius a client may ask for.
 	MaxRadiusM = 50_000
@@ -53,15 +60,19 @@ type BranchFinder interface {
 	Nearby(ctx context.Context, q Query) ([]Branch, error)
 }
 
-// Validate reports ErrInvalidQuery when q cannot be searched.
+// Validate reports a *QueryError when q cannot be searched.
 func (q Query) Validate() error {
 	switch {
-	case q.Lat < -90 || q.Lat > 90, q.Lng < -180 || q.Lng > 180:
-		return ErrInvalidQuery
+	case q.Lat < -90 || q.Lat > 90:
+		return &QueryError{"lat"}
+	case q.Lng < -180 || q.Lng > 180:
+		return &QueryError{"lng"}
 	case q.RadiusM <= 0 || q.RadiusM > MaxRadiusM:
-		return ErrInvalidQuery
-	case q.Limit <= 0 || q.Limit > MaxLimit, q.Offset < 0:
-		return ErrInvalidQuery
+		return &QueryError{"radius_m"}
+	case q.Limit <= 0 || q.Limit > MaxLimit:
+		return &QueryError{"limit"}
+	case q.Offset < 0:
+		return &QueryError{"offset"}
 	}
 	return nil
 }

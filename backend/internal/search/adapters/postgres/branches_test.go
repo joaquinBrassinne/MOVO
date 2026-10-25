@@ -1,7 +1,6 @@
 package postgres_test
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -152,27 +151,5 @@ func TestNearbyPagesAreStable(t *testing.T) {
 	}
 	if got, want := nearby(t, repo, search.Query{Limit: 2, Offset: 2}), []int64{c}; !slices.Equal(got, want) {
 		t.Errorf("page 2 = %v, want %v", got, want)
-	}
-}
-
-func TestNearbyRejectsInvalidQueries(t *testing.T) {
-	t.Parallel()
-
-	repo := postgres.NewBranches(dbtest.New(t))
-	valid := search.Query{Lat: originLat, Lng: originLng, RadiusM: 1_000, Limit: 10}
-	for name, mutate := range map[string]func(*search.Query){
-		"latitude":      func(q *search.Query) { q.Lat = 91 },
-		"longitude":     func(q *search.Query) { q.Lng = -181 },
-		"zero radius":   func(q *search.Query) { q.RadiusM = 0 },
-		"huge radius":   func(q *search.Query) { q.RadiusM = search.MaxRadiusM + 1 },
-		"zero limit":    func(q *search.Query) { q.Limit = 0 },
-		"huge limit":    func(q *search.Query) { q.Limit = search.MaxLimit + 1 },
-		"negative skip": func(q *search.Query) { q.Offset = -1 },
-	} {
-		q := valid
-		mutate(&q)
-		if _, err := repo.Nearby(t.Context(), q); !errors.Is(err, search.ErrInvalidQuery) {
-			t.Errorf("%s: err = %v, want ErrInvalidQuery", name, err)
-		}
 	}
 }
