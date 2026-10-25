@@ -82,7 +82,7 @@ func newServer(t *testing.T, limits planLimits) *server {
 		Geocode:         commands.NewGeocodeAddress(businesses, s.geocoder),
 		RegisterImage:   commands.NewRegisterImage(businesses, images, s.storage, maxPhotos),
 		ReorderImages:   commands.NewReorderImages(businesses, images),
-		RemoveImage:     commands.NewRemoveImage(businesses, images, s.storage),
+		RemoveImage:     commands.NewRemoveImage(businesses, images, s.storage, postgres.NewCleanup(pool), nil),
 		AddBranch:       commands.NewAddBranch(businesses, branches, plan),
 		EditBranch:      commands.NewEditBranch(businesses, branches),
 		RetireBranch:    commands.NewRetireBranch(businesses, branches),

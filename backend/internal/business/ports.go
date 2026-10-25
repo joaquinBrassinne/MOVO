@@ -228,3 +228,14 @@ type Geocoder interface {
 type ImageURLs interface {
 	PresignDownload(ctx context.Context, key string) (string, error)
 }
+
+// ObjectCleanup is the queue of stored objects that must still be deleted. Removing a
+// photo queues its key together with the row, so the delete survives a storage outage.
+type ObjectCleanup interface {
+	// Pending returns up to limit queued keys, the ones tried least recently first.
+	Pending(ctx context.Context, limit int) ([]string, error)
+	// Done drops the key once its object is deleted.
+	Done(ctx context.Context, key string) error
+	// Failed records a failed attempt and why, keeping the key queued.
+	Failed(ctx context.Context, key, reason string) error
+}

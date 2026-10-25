@@ -185,3 +185,53 @@ func TestImagesReorderSwapsPositionsAtomically(t *testing.T) {
 		t.Errorf("a rejected order changed the list to %v", keys(after))
 	}
 }
+
+func TestImagesRemoveQueuesTheObjectUntilItIsDeleted(t *testing.T) {
+	t.Parallel()
+
+	pool, repo, mine, theirs := setupImages(t)
+	cleanup := postgres.NewCleanup(pool)
+	a, _ := repo.Add(t.Context(), mine, "q/a.jpg", 6)
+	b, _ := repo.Add(t.Context(), mine, "q/b.jpg", 6)
+
+	// A removal the repository refuses queues nothing.
+	if _, err := repo.Remove(t.Context(), theirs, a.ID); err == nil {
+		t.Fatal("removal through another business succeeded")
+	}
+	if pending, _ := cleanup.Pending(t.Context(), 10); len(pending) != 0 {
+		t.Fatalf("queued after a refused removal = %v, want none", pending)
+	}
+
+	for _, id := range []int64{a.ID, b.ID} {
+		if _, err := repo.Remove(t.Context(), mine, id); err != nil {
+			t.Fatalf("Remove: %v", err)
+		}
+	}
+	pending, err := cleanup.Pending(t.Context(), 10)
+	if err != nil || !slices.Equal(pending, []string{"q/a.jpg", "q/b.jpg"}) {
+		t.Fatalf("pending = %v, %v; want both keys queued", pending, err)
+	}
+
+	// A failed attempt keeps the key and moves it behind the ones not tried yet.
+	if err := cleanup.Failed(t.Context(), "q/a.jpg", "storage unavailable"); err != nil {
+		t.Fatalf("Failed: %v", err)
+	}
+	var attempts int
+	var reason string
+	if err := pool.QueryRow(t.Context(), `SELECT attempts, last_error FROM object_cleanup WHERE object_key = 'q/a.jpg'`).Scan(&attempts, &reason); err != nil || attempts != 1 || reason != "storage unavailable" {
+		t.Errorf("attempts = %d, reason = %q, %v; want 1 and the reason", attempts, reason, err)
+	}
+	if pending, _ := cleanup.Pending(t.Context(), 1); !slices.Equal(pending, []string{"q/b.jpg"}) {
+		t.Errorf("first pending = %v, want the key never tried", pending)
+	}
+
+	if err := cleanup.Done(t.Context(), "q/a.jpg"); err != nil {
+		t.Fatalf("Done: %v", err)
+	}
+	if err := cleanup.Done(t.Context(), "q/a.jpg"); err != nil {
+		t.Errorf("dropping a key that is gone must not fail: %v", err)
+	}
+	if pending, _ := cleanup.Pending(t.Context(), 10); !slices.Equal(pending, []string{"q/b.jpg"}) {
+		t.Errorf("pending = %v, want only b", pending)
+	}
+}

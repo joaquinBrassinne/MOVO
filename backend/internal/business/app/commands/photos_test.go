@@ -96,7 +96,8 @@ func TestRemoveImageClosesTheGapAndDeletesTheObject(t *testing.T) {
 
 	businesses, _ := twoOwners(t)
 	mine, _ := businesses.FindByOwner(t.Context(), 7)
-	mem, images := storage.NewMemory(), &fakeImages{}
+	mem, cleanup := storage.NewMemory(), &fakeCleanup{}
+	images := &fakeImages{cleanup: cleanup}
 	register := commands.NewRegisterImage(businesses, images, mem, maxPhotos)
 	var ids []int64
 	var keys []string
@@ -109,7 +110,7 @@ func TestRemoveImageClosesTheGapAndDeletesTheObject(t *testing.T) {
 		ids, keys = append(ids, img.ID), append(keys, key)
 	}
 
-	remove := commands.NewRemoveImage(businesses, images, mem)
+	remove := commands.NewRemoveImage(businesses, images, mem, cleanup, nil)
 	if err := remove.Handle(t.Context(), commands.RemoveImageInput{OwnerID: 7, ImageID: ids[0]}); err != nil {
 		t.Fatalf("remove the cover: %v", err)
 	}
@@ -131,13 +132,14 @@ func TestOneOwnerCannotRemoveOrReorderThePhotosOfAnother(t *testing.T) {
 
 	businesses, _ := twoOwners(t)
 	mine, _ := businesses.FindByOwner(t.Context(), 7)
-	mem, images := storage.NewMemory(), &fakeImages{}
+	mem, cleanup := storage.NewMemory(), &fakeCleanup{}
+	images := &fakeImages{cleanup: cleanup}
 	img, err := commands.NewRegisterImage(businesses, images, mem, maxPhotos).Handle(t.Context(), commands.RegisterImageInput{OwnerID: 7, ObjectKey: uploaded(mem, mine.ID, "a")})
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
-	if err := commands.NewRemoveImage(businesses, images, mem).Handle(t.Context(), commands.RemoveImageInput{OwnerID: 8, ImageID: img.ID}); !errors.Is(err, business.ErrImageNotFound) {
+	if err := commands.NewRemoveImage(businesses, images, mem, cleanup, nil).Handle(t.Context(), commands.RemoveImageInput{OwnerID: 8, ImageID: img.ID}); !errors.Is(err, business.ErrImageNotFound) {
 		t.Errorf("foreign removal error = %v, want ErrImageNotFound", err)
 	}
 	if err := commands.NewReorderImages(businesses, images).Handle(t.Context(), commands.ReorderImagesInput{OwnerID: 8, IDs: []int64{img.ID}}); !errors.Is(err, business.ErrImageOrderInvalid) {
@@ -180,5 +182,76 @@ func TestReorderImagesChoosesTheCover(t *testing.T) {
 		if err := reorder.Handle(t.Context(), commands.ReorderImagesInput{OwnerID: 7, IDs: order}); !errors.Is(err, business.ErrImageOrderInvalid) {
 			t.Errorf("%s error = %v, want ErrImageOrderInvalid", name, err)
 		}
+	}
+}
+
+func TestRemoveImageDropsTheQueuedDeleteOnceTheObjectIsGone(t *testing.T) {
+	t.Parallel()
+
+	businesses, _ := twoOwners(t)
+	mine, _ := businesses.FindByOwner(t.Context(), 7)
+	mem, cleanup := storage.NewMemory(), &fakeCleanup{}
+	images := &fakeImages{cleanup: cleanup}
+	img, err := commands.NewRegisterImage(businesses, images, mem, maxPhotos).
+		Handle(t.Context(), commands.RegisterImageInput{OwnerID: 7, ObjectKey: uploaded(mem, mine.ID, "a")})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	if err := commands.NewRemoveImage(businesses, images, mem, cleanup, nil).Handle(t.Context(), commands.RemoveImageInput{OwnerID: 7, ImageID: img.ID}); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	if pending, _ := cleanup.Pending(t.Context(), 10); len(pending) != 0 {
+		t.Errorf("queued deletes = %v, want none once the object is deleted", pending)
+	}
+	if deleted := mem.Deleted(); len(deleted) != 1 || deleted[0] != img.ObjectKey {
+		t.Errorf("deleted objects = %v, want %q", deleted, img.ObjectKey)
+	}
+}
+
+func TestRemoveImageWhenTheStorageFailsKeepsTheDeleteQueuedForRetry(t *testing.T) {
+	t.Parallel()
+
+	businesses, _ := twoOwners(t)
+	mine, _ := businesses.FindByOwner(t.Context(), 7)
+	mem := &flakyStorage{Memory: storage.NewMemory(), down: true}
+	cleanup := &fakeCleanup{}
+	images := &fakeImages{cleanup: cleanup}
+	key := uploaded(mem.Memory, mine.ID, "a")
+	img, err := commands.NewRegisterImage(businesses, images, mem, maxPhotos).
+		Handle(t.Context(), commands.RegisterImageInput{OwnerID: 7, ObjectKey: key})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	// The photo is gone for the owner even though its object could not be deleted.
+	if err := commands.NewRemoveImage(businesses, images, mem, cleanup, nil).Handle(t.Context(), commands.RemoveImageInput{OwnerID: 7, ImageID: img.ID}); err != nil {
+		t.Fatalf("remove with the storage down: %v", err)
+	}
+	if left := images.forBusiness(mine.ID); len(left) != 0 {
+		t.Errorf("photos = %+v, the row must not stay when the object fails to delete", left)
+	}
+	if cleanup.attempts[key] != 1 || cleanup.reasons[key] != "storage unavailable" {
+		t.Fatalf("queue = %v / %v, want the key with one failed attempt and its reason", cleanup.attempts, cleanup.reasons)
+	}
+
+	purge := commands.NewPurgeObjects(mem, cleanup, nil)
+	if deleted, failed, err := purge.Handle(t.Context(), 10); err != nil || deleted != 0 || failed != 1 {
+		t.Fatalf("purge with the storage still down = %d deleted, %d failed, %v; want 0, 1, nil", deleted, failed, err)
+	}
+	if cleanup.attempts[key] != 2 {
+		t.Errorf("attempts = %d, want 2 after the retry", cleanup.attempts[key])
+	}
+
+	mem.down = false
+	if deleted, failed, err := purge.Handle(t.Context(), 10); err != nil || deleted != 1 || failed != 0 {
+		t.Fatalf("purge once the storage is back = %d deleted, %d failed, %v; want 1, 0, nil", deleted, failed, err)
+	}
+	if pending, _ := cleanup.Pending(t.Context(), 10); len(pending) != 0 {
+		t.Errorf("queue = %v, want it empty", pending)
+	}
+	if deleted := mem.Deleted(); len(deleted) != 1 || deleted[0] != key {
+		t.Errorf("deleted objects = %v, want %q", deleted, key)
 	}
 }

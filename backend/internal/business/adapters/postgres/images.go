@@ -141,6 +141,13 @@ func (r *Images) Remove(ctx context.Context, businessID, imageID int64) (domain.
 		return domain.Image{}, fmt.Errorf("postgres: close position gap: %w", err)
 	}
 
+	// The object is queued for deletion in the same transaction: the row and the promise
+	// to delete the object stand or fall together.
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO object_cleanup (object_key) VALUES ($1) ON CONFLICT (object_key) DO NOTHING`, removed.ObjectKey); err != nil {
+		return domain.Image{}, fmt.Errorf("postgres: queue object delete: %w", err)
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return domain.Image{}, fmt.Errorf("postgres: commit: %w", err)
 	}

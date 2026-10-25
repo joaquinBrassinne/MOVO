@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/joaquinBrassinne/MOVO/internal/business"
 	"github.com/joaquinBrassinne/MOVO/internal/business/domain"
@@ -67,16 +68,22 @@ type RemoveImage struct {
 	businesses business.BusinessRepository
 	images     business.ImageRepository
 	storage    business.ImageStorage
+	cleanup    business.ObjectCleanup
+	log        *slog.Logger
 }
 
-// NewRemoveImage wires the RemoveImage use case.
-func NewRemoveImage(businesses business.BusinessRepository, images business.ImageRepository, storage business.ImageStorage) *RemoveImage {
-	return &RemoveImage{businesses: businesses, images: images, storage: storage}
+// NewRemoveImage wires the RemoveImage use case. A nil logger discards logs.
+func NewRemoveImage(businesses business.BusinessRepository, images business.ImageRepository, storage business.ImageStorage, cleanup business.ObjectCleanup, log *slog.Logger) *RemoveImage {
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
+	return &RemoveImage{businesses: businesses, images: images, storage: storage, cleanup: cleanup, log: log}
 }
 
-// Handle removes the registration and then the object. The registration is what
-// the business shows, so it goes first; an object that fails to delete is an
-// orphan that costs nothing but space and a cleanup can collect later.
+// Handle removes the registration, which is what the business shows, and then the
+// object. The repository queues the object's key in the same transaction as the
+// removal, so the photo is gone for good and the delete is never forgotten: if the
+// storage fails now, the key stays queued with the reason and PurgeObjects retries it.
 func (c *RemoveImage) Handle(ctx context.Context, in RemoveImageInput) error {
 	owned, err := editableBusiness(ctx, c.businesses, in.OwnerID)
 	if err != nil {
@@ -87,8 +94,59 @@ func (c *RemoveImage) Handle(ctx context.Context, in RemoveImageInput) error {
 	if err != nil {
 		return fmt.Errorf("remove image: %w", err)
 	}
-	_ = c.storage.Delete(ctx, removed.ObjectKey)
+
+	if err := deleteQueued(ctx, c.storage, c.cleanup, removed.ObjectKey); err != nil {
+		c.log.Warn("photo object not deleted, queued for retry", "key", removed.ObjectKey, "error", err)
+	}
 	return nil
+}
+
+// deleteQueued deletes one queued object and updates its queue entry: dropped on success,
+// marked as failed (and kept) otherwise. It returns the storage error, if any.
+func deleteQueued(ctx context.Context, storage business.ImageStorage, cleanup business.ObjectCleanup, key string) error {
+	if err := storage.Delete(ctx, key); err != nil {
+		// The attempt is recorded best effort: the key is queued either way.
+		_ = cleanup.Failed(ctx, key, err.Error())
+		return err
+	}
+	if err := cleanup.Done(ctx, key); err != nil {
+		return fmt.Errorf("drop queued object: %w", err)
+	}
+	return nil
+}
+
+// PurgeObjects retries the deletes that failed: the objects of removed photos that are
+// still queued. It is meant to run on a schedule (the worker, once it exists).
+type PurgeObjects struct {
+	storage business.ImageStorage
+	cleanup business.ObjectCleanup
+	log     *slog.Logger
+}
+
+// NewPurgeObjects wires the PurgeObjects use case. A nil logger discards logs.
+func NewPurgeObjects(storage business.ImageStorage, cleanup business.ObjectCleanup, log *slog.Logger) *PurgeObjects {
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
+	return &PurgeObjects{storage: storage, cleanup: cleanup, log: log}
+}
+
+// Handle tries up to limit queued deletes and returns how many worked and how many
+// failed again. A failure keeps the key queued; one failing object never stops the rest.
+func (p *PurgeObjects) Handle(ctx context.Context, limit int) (deleted, failed int, err error) {
+	keys, err := p.cleanup.Pending(ctx, limit)
+	if err != nil {
+		return 0, 0, fmt.Errorf("list queued objects: %w", err)
+	}
+	for _, key := range keys {
+		if err := deleteQueued(ctx, p.storage, p.cleanup, key); err != nil {
+			p.log.Warn("queued photo object still not deleted", "key", key, "error", err)
+			failed++
+			continue
+		}
+		deleted++
+	}
+	return deleted, failed, nil
 }
 
 // ReorderImagesInput lists the photos in their new order; the first is the cover.

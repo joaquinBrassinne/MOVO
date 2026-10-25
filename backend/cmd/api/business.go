@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -65,6 +66,7 @@ func (o ownerPlans) PlanOfOwner(ctx context.Context, ownerID int64) (billing.Pla
 // newBusinessRoutes composes the business and billing modules: adapters, use
 // cases and HTTP. It returns the mounts of both.
 func newBusinessRoutes(
+	log *slog.Logger,
 	pool *pgxpool.Pool,
 	verifier httpx.TokenVerifier,
 	plans config.Plans,
@@ -100,7 +102,7 @@ func newBusinessRoutes(
 		Geocode:        commands.NewGeocodeAddress(businesses, geocoder),
 		RegisterImage:  commands.NewRegisterImage(businesses, photos, images, maxImages),
 		ReorderImages:  commands.NewReorderImages(businesses, photos),
-		RemoveImage:    commands.NewRemoveImage(businesses, photos, images),
+		RemoveImage:    commands.NewRemoveImage(businesses, photos, images, businesspostgres.NewCleanup(pool), log),
 
 		AddBranch:       commands.NewAddBranch(businesses, branches, entitlements),
 		EditBranch:      commands.NewEditBranch(businesses, branches),

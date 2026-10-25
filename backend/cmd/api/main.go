@@ -101,7 +101,7 @@ func run() error {
 		}
 	}
 
-	businessMount, billingMount, err := newBusinessRoutes(pool, signer, plans, images, storageCfg.MaxImages, nominatim.New(nominatim.Config{URL: geocoding.URL, UserAgent: geocoding.UserAgent}))
+	businessMount, billingMount, err := newBusinessRoutes(log, pool, signer, plans, images, storageCfg.MaxImages, nominatim.New(nominatim.Config{URL: geocoding.URL, UserAgent: geocoding.UserAgent}))
 	if err != nil {
 		pool.Close()
 		return err
