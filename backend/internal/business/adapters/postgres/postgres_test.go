@@ -337,7 +337,7 @@ func TestCategoriesListTheSeededCatalogInOrder(t *testing.T) {
 		t.Fatalf("List: %v", err)
 	}
 
-	want := []string{"gimnasios", "pilates", "yoga", "entrenadores", "estetica", "natacion", "padel"}
+	want := []string{"gimnasios", "pilates", "yoga", "entrenadores", "estetica", "natacion", "padel", "trekking-outdoor"}
 	if len(got) != len(want) {
 		t.Fatalf("categories = %+v, want %d", got, len(want))
 	}
@@ -346,8 +346,8 @@ func TestCategoriesListTheSeededCatalogInOrder(t *testing.T) {
 			t.Errorf("category %d = %+v, want slug %q", i, got[i], slug)
 		}
 	}
-	if got[6].Name != "Pádel" || got[4].Name != "Estética" {
-		t.Errorf("names = %q, %q; want the accented Spanish names", got[6].Name, got[4].Name)
+	if got[6].Name != "Pádel" || got[4].Name != "Estética" || got[7].Name != "Trekking y outdoor" {
+		t.Errorf("names = %q, %q, %q; want the accented Spanish names", got[6].Name, got[4].Name, got[7].Name)
 	}
 }
 

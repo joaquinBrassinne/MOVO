@@ -8,7 +8,7 @@
 ## 1. Visión y alcance
 
 ### 1.1 Descripción
-Plataforma SaaS (B2B2C) que conecta personas con actividades físicas y de bienestar (gimnasios, pilates, yoga, entrenadores, estética, natación y clubes de pádel). Los establecimientos pagan una suscripción mensual mediante un **plan de suscripción de Mercado Pago (cobro automático)** para aparecer en un mapa y ofrecer cupones de descuento canjeables en el local. Los clientes contactan al local por WhatsApp para reservar clases.
+Plataforma SaaS (B2B2C) que conecta personas con actividades físicas y de bienestar (gimnasios, pilates, yoga, entrenadores, estética, natación, clubes de pádel y guías y empresas de trekking y outdoor: trekking, cabalgatas, kayak, mountain bike y escalada). Los establecimientos pagan una suscripción mensual mediante un **plan de suscripción de Mercado Pago (cobro automático)** para aparecer en un mapa y ofrecer cupones de descuento canjeables en el local. Los clientes contactan al local por WhatsApp para reservar clases.
 
 ### 1.2 Principios del MVP
 1. **Cero proveedores externos de mensajería o pagos.** No se integra la API de Mercado Pago, ni WhatsApp Business, ni email, ni push. El contacto con el local es un enlace `wa.me`.
@@ -175,7 +175,7 @@ Todas las tablas con `id` (UUID v7 o `bigserial`), `created_at`, `updated_at`. M
 | `users` | email (único), password_hash (argon2id), role (`business_admin`/`super_admin`) — solo personal de locales y admins |
 | `refresh_tokens` | user_id, token_hash, expires_at, revoked_at, replaced_by |
 | `customers` | name, phone (WhatsApp, normalizado), created_at — contacto declarado, **sin verificación ni contraseña** |
-| `categories` | slug, name — seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel |
+| `categories` | slug, name — seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel; y `trekking-outdoor` ("Trekking y outdoor"), agregada en una migración aparte. En esa categoría la **sede es el punto de encuentro** de la salida y **cada salida se carga como un servicio** (con sus días y horarios) |
 | `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description (≤ 500 caracteres), whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, mp_payer_email (email con el que pagó en Mercado Pago, obligatorio al enviar a revisión), mp_payer_name (nombre completo del titular, obligatorio, mínimo 3 caracteres), mp_return_params (parámetros de la URL de retorno, solo pista para el admin) |
 | `branches` | business_id, name, address, city, reference (opcional, ≤ 100), `location geography(Point,4326)`, external_booking_url (opcional), rating_avg, rating_count, active — **la búsqueda se hace por sede** |
 | `business_hours` | branch_id, weekday, opens_at, closes_at |
@@ -481,7 +481,7 @@ Convenciones de trabajo:
 ### Fase 2 — Negocios, servicios y onboarding (sin cobro todavía)
 **Objetivo:** que un local pueda existir, completar su perfil y ser aprobado manualmente.
 
-- [x] 2.1 Migraciones `categories` (con seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel), `businesses`, `branches`, `business_hours`, `business_images` (con PostGIS) (S)
+- [x] 2.1 Migraciones `categories` (con seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel; luego se sumó `trekking-outdoor` con la migración 00011, sin tocar el seed original), `businesses`, `branches`, `business_hours`, `business_images` (con PostGIS) (S)
 - [x] 2.2 Dominio `business`: estados, slug, validación y normalización del número de WhatsApp (M)
 - [x] 2.3 Casos de uso: crear/editar mi negocio, agregar/editar sedes y horarios (un dueño = un negocio) (M)
 - [x] 2.4 Puerto `Storage` + adaptador S3 (RustFS en local, R2/B2/S3 en prod) con URL prefirmada y validación; endpoint, región y modo path-style configurables; test de integración (tag `integration`) que sube y baja un objeto con URL prefirmada contra el servidor local (M)
@@ -609,7 +609,7 @@ Convenciones de trabajo:
 - [ ] 8.3 Backups automáticos + prueba de restauración (M)
 - [ ] 8.4 Despliegue en VPS con `docker-compose.prod.yml`, HTTPS y proxy reverso (L)
 - [ ] 8.5 Términos y condiciones (incluyendo reglas de moderación de reseñas), política de privacidad, definición de facturación (S)
-- [ ] 8.6 Runbook: operación manual mensual de pagos (revisar Mercado Pago y registrar pagos), cómo confirmar un alta con los tres chequeos (el mail "nuevo suscriptor" de Mercado Pago tiene el mismo email que declaró el dueño; plan y monto correctos; perfil revisado), cómo restaurar un backup (S)
+- [ ] 8.6 Runbook: operación manual mensual de pagos (revisar Mercado Pago y registrar pagos), cómo confirmar un alta con los tres chequeos (el mail "nuevo suscriptor" de Mercado Pago tiene el mismo email que declaró el dueño; plan y monto correctos; perfil revisado), cómo restaurar un backup; y, para las actividades outdoor (categoría `trekking-outdoor`), confirmar que el guía esté habilitado y tenga seguro antes de activar el alta (S)
 
 **DoD:** sistema en producción, monitoreado y con piloto activo.
 

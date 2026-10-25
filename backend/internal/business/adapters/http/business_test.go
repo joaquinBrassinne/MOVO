@@ -204,8 +204,8 @@ func TestCategoriesArePublicAndCacheable(t *testing.T) {
 
 	got := s.do(http.MethodGet, "/categories", "", nil)
 	list, _ := got.body["categories"].([]any)
-	if got.status != http.StatusOK || len(list) != 7 {
-		t.Fatalf("categories = %d %v, want 7 without any token", got.status, got.body)
+	if got.status != http.StatusOK || len(list) != 8 {
+		t.Fatalf("categories = %d %v, want 8 without any token", got.status, got.body)
 	}
 	if first, _ := list[0].(map[string]any); first["slug"] != "gimnasios" || first["name"] != "Gimnasios" || first["id"] == nil {
 		t.Errorf("first category = %v", first)
