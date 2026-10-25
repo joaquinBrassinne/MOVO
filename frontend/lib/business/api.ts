@@ -7,10 +7,12 @@ import { requestPublic, type ApiResult } from "@/lib/api/request";
 import type {
   BranchInput,
   Business,
+  BranchActivation,
   BusinessInput,
   CategoryList,
   MyBusiness,
   Place,
+  PlanSummary,
   PresignedPhoto,
   RegisteredPhoto,
   Service,
@@ -85,3 +87,7 @@ export async function uploadFile(target: UploadTarget, file: File): Promise<ApiR
     };
   }
 }
+
+export const getMyPlan = () => authed<PlanSummary>("GET", "/me/plan");
+export const setBranchActive = (id: number, active: boolean) =>
+  authed<BranchActivation>("PUT", `${BASE}/branches/${id}/active`, { active });

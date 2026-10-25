@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 
-import { useMyBusiness } from "@/lib/business/hooks";
+import { useBusiness } from "@/lib/business/BusinessProvider";
 import { BUSINESS_STATUS } from "@/lib/business/types";
 import { ONBOARDING_PATH, useRequireSession } from "@/lib/session/hooks";
 
@@ -13,18 +13,18 @@ import { ONBOARDING_PATH, useRequireSession } from "@/lib/session/hooks";
  */
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const session = useRequireSession();
-  const mine = useMyBusiness();
+  const { business } = useBusiness();
   const router = useRouter();
 
   const needsOnboarding =
-    mine.state.status === "missing" ||
-    (mine.state.status === "ready" && mine.state.data.business.status === BUSINESS_STATUS.DRAFT);
+    business.status === "missing" ||
+    (business.status === "ready" && business.data.business.status === BUSINESS_STATUS.DRAFT);
 
   useEffect(() => {
     if (needsOnboarding) router.replace(ONBOARDING_PATH);
   }, [needsOnboarding, router]);
 
-  if (session.status !== "authenticated" || mine.state.status === "loading" || needsOnboarding) {
+  if (session.status !== "authenticated" || business.status === "loading" || needsOnboarding) {
     return null;
   }
   return children;

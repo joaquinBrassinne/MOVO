@@ -14,10 +14,12 @@ interface Props {
   onClose: () => void;
   /** Se llama después de guardar, antes de cerrar. */
   onSaved: () => void;
+  /** Si está, la hoja ofrece borrar el servicio (solo al editar). */
+  onRemove?: () => Promise<void>;
 }
 
 /** Hoja inferior para crear o editar un servicio con sus días y franjas. */
-export function ServiceSheet({ service, onClose, onSaved }: Props) {
+export function ServiceSheet({ service, onClose, onSaved, onRemove }: Props) {
   const form = useServiceForm(service);
   const dialog = useRef<HTMLDialogElement>(null);
   const { fields, form: notice } = form.feedback;
@@ -222,6 +224,21 @@ export function ServiceSheet({ service, onClose, onSaved }: Props) {
           {form.pending ? "Guardando…" : "Guardar"}
           {form.pending ? null : <CheckIcon />}
         </button>
+
+        {onRemove ? (
+          <button
+            type="button"
+            disabled={form.pending}
+            onClick={async () => {
+              if (!window.confirm("¿Eliminar este servicio? No se puede deshacer.")) return;
+              await onRemove();
+              onClose();
+            }}
+            className="h-12 w-full text-sm font-bold text-movo-danger underline underline-offset-4 disabled:opacity-60"
+          >
+            Eliminar servicio
+          </button>
+        ) : null}
       </form>
     </dialog>
   );

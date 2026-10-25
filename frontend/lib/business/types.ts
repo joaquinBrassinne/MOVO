@@ -135,3 +135,23 @@ export interface RegisteredPhoto {
   position: number;
   object_key: string;
 }
+
+export const PLAN = {
+  STARTER: "starter",
+  PRO: "pro",
+} as const;
+
+export type PlanName = (typeof PLAN)[keyof typeof PLAN];
+
+/** El plan del negocio con sus límites. `null` en un límite significa sin tope. */
+export interface PlanSummary {
+  plan: PlanName;
+  price: number;
+  max_branches: number | null;
+  max_active_services: number | null;
+}
+
+export interface BranchActivation {
+  id: number;
+  active: boolean;
+}
