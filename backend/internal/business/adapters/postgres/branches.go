@@ -90,18 +90,6 @@ WHERE id = $1 AND business_id = $2`,
 	return nil
 }
 
-// Delete removes the branch; its hours go with it through ON DELETE CASCADE.
-func (r *Branches) Delete(ctx context.Context, businessID, branchID int64) error {
-	tag, err := r.pool.Exec(ctx, `DELETE FROM branches WHERE id = $1 AND business_id = $2`, branchID, businessID)
-	if err != nil {
-		return fmt.Errorf("postgres: delete branch: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return business.ErrBranchNotFound
-	}
-	return nil
-}
-
 // Hours returns the opening slots of the branch ordered by weekday and start.
 func (r *Branches) Hours(ctx context.Context, businessID, branchID int64) ([]domain.Slot, error) {
 	if _, err := r.Find(ctx, businessID, branchID); err != nil {

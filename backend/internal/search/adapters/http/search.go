@@ -12,6 +12,7 @@ import (
 
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
 	"github.com/joaquinBrassinne/MOVO/internal/search"
+	"github.com/joaquinBrassinne/MOVO/internal/search/app/commands"
 	"github.com/joaquinBrassinne/MOVO/internal/search/app/queries"
 )
 
@@ -22,6 +23,7 @@ const CodeValidationFailed = "validation_failed"
 type Handlers struct {
 	nearby   *queries.NearbyBranches
 	featured *queries.FeaturedBranches
+	whatsapp *commands.OpenWhatsApp
 	log      *slog.Logger
 }
 
@@ -37,6 +39,16 @@ func New(nearby *queries.NearbyBranches, featured *queries.FeaturedBranches, log
 func (h *Handlers) Mount(r chi.Router) {
 	r.Get("/search", h.handleSearch)
 	r.Get("/home/featured", h.handleFeatured)
+	if h.whatsapp != nil {
+		r.Get("/r/wa/{branch_id}", h.handleWhatsApp)
+		r.Head("/r/wa/{branch_id}", h.handleWhatsApp)
+	}
+}
+
+// WithWhatsApp enables GET /r/wa/{branch_id}, the redirect behind the WhatsApp button.
+func (h *Handlers) WithWhatsApp(open *commands.OpenWhatsApp) *Handlers {
+	h.whatsapp = open
+	return h
 }
 
 // branchJSON is the light card the map and the lists need: nothing internal and no

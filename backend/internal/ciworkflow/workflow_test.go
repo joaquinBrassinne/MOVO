@@ -126,7 +126,10 @@ func TestMigrationsJobProvesTheState(t *testing.T) {
 	for _, want := range []string{
 		"run: make migrate-up",
 		"run: make migrate-status",
-		"run: make migrate-down",
+		"make migrate-down",
+		// The revert repeats once per migration file, so adding a migration needs no
+		// edit here; a fixed number of steps went stale and left postgis installed.
+		"for _ in backend/migrations/*.sql",
 		"assert postgis is installed",
 		"assert postgis is gone",
 		"extname = 'postgis'",

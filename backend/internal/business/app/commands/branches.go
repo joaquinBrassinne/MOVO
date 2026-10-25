@@ -136,31 +136,42 @@ func (c *EditBranch) Handle(ctx context.Context, in EditBranchInput) (domain.Bra
 	return updated, nil
 }
 
-// RemoveBranchInput identifies the branch to remove.
-type RemoveBranchInput struct {
+// RetireBranchInput identifies the branch to retire.
+type RetireBranchInput struct {
 	OwnerID  int64
 	BranchID int64
 }
 
-// RemoveBranch deletes a branch of the owner's business.
-type RemoveBranch struct {
+// RetireBranch takes a branch of the owner's business off the map. A branch is never
+// deleted: metrics, redemptions and reviews reference it (SDD 4), so retiring it
+// sets active = false and keeps its history. The owner can show it again with
+// SetBranchActive, which checks the plan.
+type RetireBranch struct {
 	businesses business.BusinessRepository
 	branches   business.BranchRepository
 }
 
-// NewRemoveBranch wires the RemoveBranch use case.
-func NewRemoveBranch(businesses business.BusinessRepository, branches business.BranchRepository) *RemoveBranch {
-	return &RemoveBranch{businesses: businesses, branches: branches}
+// NewRetireBranch wires the RetireBranch use case.
+func NewRetireBranch(businesses business.BusinessRepository, branches business.BranchRepository) *RetireBranch {
+	return &RetireBranch{businesses: businesses, branches: branches}
 }
 
-// Handle removes the branch with its hours.
-func (c *RemoveBranch) Handle(ctx context.Context, in RemoveBranchInput) error {
+// Handle deactivates the branch. Retiring one that is already inactive changes
+// nothing. A branch of another business is business.ErrBranchNotFound.
+func (c *RetireBranch) Handle(ctx context.Context, in RetireBranchInput) error {
 	owned, err := editableBusiness(ctx, c.businesses, in.OwnerID)
 	if err != nil {
 		return err
 	}
-	if err := c.branches.Delete(ctx, owned.ID, in.BranchID); err != nil {
-		return fmt.Errorf("delete branch: %w", err)
+	current, err := c.branches.Find(ctx, owned.ID, in.BranchID)
+	if err != nil {
+		return fmt.Errorf("find branch: %w", err)
+	}
+	if !current.Active {
+		return nil
+	}
+	if err := c.branches.Save(ctx, current.Deactivate()); err != nil {
+		return fmt.Errorf("save branch: %w", err)
 	}
 	return nil
 }

@@ -8,7 +8,7 @@
 ## 1. Visión y alcance
 
 ### 1.1 Descripción
-Plataforma SaaS (B2B2C) que conecta personas con actividades físicas y de bienestar (gimnasios, pilates, yoga, entrenadores, estética, natación y clubes de pádel). Los establecimientos pagan una suscripción mensual mediante un **plan de suscripción de Mercado Pago (cobro automático)** para aparecer en un mapa y ofrecer cupones de descuento canjeables en el local. Los clientes contactan al local por WhatsApp para reservar clases.
+Plataforma SaaS (B2B2C) que conecta personas con actividades físicas y de bienestar (gimnasios, pilates, yoga, entrenadores, estética, natación, clubes de pádel y guías y empresas de trekking y outdoor: trekking, cabalgatas, kayak, mountain bike y escalada). Los establecimientos pagan una suscripción mensual mediante un **plan de suscripción de Mercado Pago (cobro automático)** para aparecer en un mapa y ofrecer cupones de descuento canjeables en el local. Los clientes contactan al local por WhatsApp para reservar clases.
 
 ### 1.2 Principios del MVP
 1. **Cero proveedores externos de mensajería o pagos.** No se integra la API de Mercado Pago, ni WhatsApp Business, ni email, ni push. El contacto con el local es un enlace `wa.me`.
@@ -175,7 +175,7 @@ Todas las tablas con `id` (UUID v7 o `bigserial`), `created_at`, `updated_at`. M
 | `users` | email (único), password_hash (argon2id), role (`business_admin`/`super_admin`) — solo personal de locales y admins |
 | `refresh_tokens` | user_id, token_hash, expires_at, revoked_at, replaced_by |
 | `customers` | name, phone (WhatsApp, normalizado), created_at — contacto declarado, **sin verificación ni contraseña** |
-| `categories` | slug, name — seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel |
+| `categories` | slug, name — seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel; y `trekking-outdoor` ("Trekking y outdoor"), agregada en una migración aparte. En esa categoría la **sede es el punto de encuentro** de la salida y **cada salida se carga como un servicio** (con sus días y horarios) |
 | `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description (≤ 500 caracteres), whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, mp_payer_email (email con el que pagó en Mercado Pago, obligatorio al enviar a revisión), mp_payer_name (nombre completo del titular, obligatorio, mínimo 3 caracteres), mp_return_params (parámetros de la URL de retorno, solo pista para el admin) |
 | `branches` | business_id, name, address, city, reference (opcional, ≤ 100), `location geography(Point,4326)`, external_booking_url (opcional), rating_avg, rating_count, active — **la búsqueda se hace por sede** |
 | `business_hours` | branch_id, weekday, opens_at, closes_at |
@@ -186,18 +186,20 @@ Todas las tablas con `id` (UUID v7 o `bigserial`), `created_at`, `updated_at`. M
 | `benefits` | business_id, type (`percent`/`welcome_gift`), percent (10/15/20), gift_description, active, monthly_limit (configurable por el dueño) |
 | `benefit_codes` | code (único), benefit_id, business_id, customer_id, access_token_hash, status (`pending`/`redeemed`/`expired`), expires_at (= creación + 48 h), redeemed_at, redeemed_branch_id, redeemed_by |
 | `reviews` | branch_id, business_id, benefit_code_id (único), customer_id, rating 1–5, comment (≤ 500, opcional), display_name, show_name, status (`visible`/`reported`/`hidden`), created_at |
-| `metric_daily` | business_id, branch_id, service_id (nullable), date, metric (`profile_view`/`service_view`/`whatsapp_click`), count — contadores agregados, **sin datos personales** |
+| `metric_daily` | business_id, branch_id (nullable), service_id (nullable), date, metric (`profile_view`/`service_view`/`whatsapp_click`), count — contadores agregados, **sin datos personales**. La forma la fija un CHECK: `profile_view` va con `branch_id` y `service_id` nulos (la ficha es por negocio); `whatsapp_click` exige `branch_id` (el servicio es opcional); `service_view` exige ambos. El día se cuenta en hora de Argentina (UTC-3) |
 | `alerts` | business_id, type, payload (jsonb), created_at, read_at |
 | `audit_log` | actor_id, action, entity, entity_id, metadata, created_at |
 
 Los planes **no son una tabla**: se definen por configuración (precio para mostrar, URL del plan de Mercado Pago y límites), ver 4.2 y 7.5.
+
+**Baja lógica.** Las sedes y los negocios no se borran: se dan de baja de forma lógica (`branches.active = false`, `businesses.status = 'deleted'`), porque las métricas, los canjes y las reseñas los referencian y son historial que el local y el admin siguen leyendo. En la base, `metric_daily` apunta a `branches` con `ON DELETE RESTRICT`, así que un `DELETE` físico de una sede con historial falla en lugar de borrar sus contadores en silencio. En la API, `DELETE /me/business/branches/{id}` desactiva la sede (es idempotente y conserva el historial); volver a mostrarla es `PUT …/active`, que revisa el límite del plan.
 
 Índices importantes:
 - `GIST (location)` en `branches`.
 - `UNIQUE (code)` en `benefit_codes`; índice por `(customer_id, status)` y `(business_id, status)`.
 - Índice único parcial para la regla *un cupón pendiente por cliente y local*: `UNIQUE (customer_id, business_id) WHERE status = 'pending'`.
 - `UNIQUE (benefit_code_id)` en `reviews`.
-- `UNIQUE (business_id, branch_id, service_id, date, metric)` en `metric_daily` (upsert con incremento).
+- `UNIQUE NULLS NOT DISTINCT (business_id, branch_id, service_id, date, metric)` en `metric_daily` (upsert con incremento). `NULLS NOT DISTINCT` es necesario: con un `UNIQUE` común, los `NULL` de `branch_id` y `service_id` se considerarían distintos y el upsert crearía una fila nueva por cada vista.
 
 ### 4.1 Regla de visibilidad
 La visibilidad **se calcula al leer**, no se guarda. Una vista SQL (`visible_branches`) expone las sedes visibles: un local aparece en la búsqueda pública si y solo si:
@@ -240,7 +242,7 @@ Reglas de implementación:
   - **Búsquedas:** el orden es por tramo de distancia (ej. cada 2 km), luego destacado, luego distancia exacta; así un Pro lejano no le gana a un local muy cercano.
   - **Mapa:** marcador distintivo para el pin destacado.
 - **Perfil verificado (MVP):** lo marca el super admin a mano (`verified_at`, `verified_by`) después de comprobar la identidad por su cuenta (en persona o videollamada). La subida del DNI es post-MVP. El sello se puede revocar.
-- **Botón de WhatsApp:** el dueño carga su número al registrarse. El botón pasa por `GET /r/wa/{branch_id}?service=`, que incrementa el contador `whatsapp_click` y redirige a `https://wa.me/<número>?text=<mensaje prearmado>` (ej. "Hola, vi tu perfil en MOVO y quiero reservar Yoga"). El número no se expone en la API pública.
+- **Botón de WhatsApp:** el dueño carga su número al registrarse. El botón pasa por `GET /r/wa/{branch_id}?service=`, que incrementa el contador `whatsapp_click` y redirige a `https://wa.me/<número>?text=<mensaje prearmado>` (ej. "Hola, vi tu perfil en MOVO y quiero reservar Yoga"). El número no se expone en la API pública. En la API la ruta es `/api/v1/r/wa/{branch_id}` y responde `302` con `Cache-Control: no-store`. Solo redirige sedes visibles (si no, `404`); un `service` que no es del local, está inactivo o es de otra sede no es un error: se usa el mensaje genérico ("…quiero hacer una consulta") y el clic se cuenta sin servicio. Los bots se redirigen pero no se cuentan, y un fallo del contador nunca impide la redirección. `HEAD` devuelve el mismo `302` sin contar (los previsualizadores de enlaces lo usan) y la respuesta lleva `Referrer-Policy: no-referrer`.
 - **Soporte prioritario:** es principalmente un proceso (canal y tiempos de respuesta definidos); en el sistema se refleja con una marca de prioridad en la bandeja del admin.
 
 ### 4.3 Métricas
@@ -254,6 +256,7 @@ Principio: **contar, no seguir**. No se guardan IP, user-agent ni identificadore
 - **Pro, "Inteligencia comercial" (incluye todo Starter):**
   5. **Tasas de conversión** (vistas → cupones, cupones → canjes) con tendencia contra el período anterior y desglose por sede y actividad. No hay "embudo" como función aparte.
   6. **Una alerta: "Cupones sin canjear"** (la tasa de canje de los últimos 30 días queda bajo un umbral, con una cantidad mínima de cupones generados). Se muestra en el panel, como máximo una por semana.
+- **Las vistas de perfil son por negocio.** La ficha `/locales/[slug]` es del negocio, así que `profile_view` se guarda sin sede. El desglose por sede de Pro aplica a los clics a WhatsApp, las vistas de servicio y los canjes (`redeemed_branch_id`). La tasa "vistas → cupones" se calcula solo a nivel negocio; "cupones → canjes" sí admite desglose por sede.
 - **Post-MVP:** benchmarking anónimo de zona (solo con ≥ 5 locales activos por categoría y zona; solo medianas y percentiles) y las alertas "Alta demanda" y "Franjas con poca demanda". La demanda por actividad se mide con los contadores de servicio; MOVO no conoce ocupación ni capacidad.
 - Los contadores se registran **desde la Fase 3** para tener historial cuando se construya el panel.
 
@@ -478,7 +481,7 @@ Convenciones de trabajo:
 ### Fase 2 — Negocios, servicios y onboarding (sin cobro todavía)
 **Objetivo:** que un local pueda existir, completar su perfil y ser aprobado manualmente.
 
-- [x] 2.1 Migraciones `categories` (con seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel), `businesses`, `branches`, `business_hours`, `business_images` (con PostGIS) (S)
+- [x] 2.1 Migraciones `categories` (con seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel; luego se sumó `trekking-outdoor` con la migración 00011, sin tocar el seed original), `businesses`, `branches`, `business_hours`, `business_images` (con PostGIS) (S)
 - [x] 2.2 Dominio `business`: estados, slug, validación y normalización del número de WhatsApp (M)
 - [x] 2.3 Casos de uso: crear/editar mi negocio, agregar/editar sedes y horarios (un dueño = un negocio) (M)
 - [x] 2.4 Puerto `Storage` + adaptador S3 (RustFS en local, R2/B2/S3 en prod) con URL prefirmada y validación; endpoint, región y modo path-style configurables; test de integración (tag `integration`) que sube y baja un objeto con URL prefirmada contra el servidor local (M)
@@ -503,8 +506,8 @@ Convenciones de trabajo:
 - [x] 3.3 Query y endpoint `/home/featured` con rotación entre locales Pro (S)
 - [x] 3.4 Seed de 10k locales falsos y medición p95 con `EXPLAIN ANALYZE` (S)
 - [x] 3.5 Puerto `Geocoder` con fake, adaptador Nominatim con limitador (1 req/s) + caché y User-Agent identificatorio; tiles configurables por env (M)
-- [ ] 3.6 Contadores `metric_daily` (migración, upsert, filtrado básico de bots, sin datos personales) (M)
-- [ ] 3.7 Endpoint `GET /r/wa/{branch_id}?service=` que cuenta el clic y redirige a `wa.me` con mensaje prearmado (S)
+- [x] 3.6 Contadores `metric_daily` (migración, upsert, filtrado básico de bots, sin datos personales) (M)
+- [x] 3.7 Endpoint `GET /r/wa/{branch_id}?service=` que cuenta el clic y redirige a `wa.me` con mensaje prearmado (S)
 - [ ] 3.8 Frontend: Home y Mapa (React Leaflet, marcadores, geolocalización del navegador) (L)
 - [ ] 3.9 Frontend: ficha SSR del local `/locales/[slug]` con metadatos SEO, servicios, horarios, sello de verificado y botón de WhatsApp (M)
 
@@ -575,9 +578,10 @@ Convenciones de trabajo:
 - [ ] 6.1 Super admin: listados y filtros de locales y suscripciones (M)
 - [ ] 6.2 Reseteo de contraseña asistido (enlace temporal para enviar por WhatsApp) (M)
 - [ ] 6.3 Métricas del super admin: locales activos, cupones generados y canjeados (S)
+- [ ] 6.3b Anti-inflado de métricas: descartar el mismo clic o vista repetido desde la misma IP en una ventana corta, en memoria (interfaz lista para Redis) y sin persistir la IP; se aplica a `profile_view`, `service_view` y `whatsapp_click` antes de mostrar métricas en el panel (S)
 - [ ] 6.4 Métricas esenciales del local (Starter) sobre `metric_daily` y las tablas de cupones (M)
 - [ ] 6.5 Actividades más demandadas (vistas del servicio + clics a WhatsApp por servicio) (S)
-- [ ] 6.6 Tasas de conversión con tendencia y desglose por sede y actividad (Pro) (M)
+- [ ] 6.6 Tasas de conversión con tendencia y desglose por sede y actividad (Pro). Las vistas de perfil son por negocio (§4.3): "vistas → cupones" se calcula solo a nivel negocio; el desglose por sede aplica a clics a WhatsApp, vistas de servicio y canjes (`redeemed_branch_id`) (M)
 - [ ] 6.7 Alerta "Cupones sin canjear" (tarea diaria, umbral y muestra mínima por env, máximo una por semana) + bandeja en el panel (M)
 - [ ] 6.8 Marca de prioridad en la bandeja del admin para locales con soporte prioritario (S)
 - [ ] 6.9 Frontend: Métricas (Starter y Pro con candado), alertas, admin completo (L)
@@ -605,7 +609,7 @@ Convenciones de trabajo:
 - [ ] 8.3 Backups automáticos + prueba de restauración (M)
 - [ ] 8.4 Despliegue en VPS con `docker-compose.prod.yml`, HTTPS y proxy reverso (L)
 - [ ] 8.5 Términos y condiciones (incluyendo reglas de moderación de reseñas), política de privacidad, definición de facturación (S)
-- [ ] 8.6 Runbook: operación manual mensual de pagos (revisar Mercado Pago y registrar pagos), cómo confirmar un alta con los tres chequeos (el mail "nuevo suscriptor" de Mercado Pago tiene el mismo email que declaró el dueño; plan y monto correctos; perfil revisado), cómo restaurar un backup (S)
+- [ ] 8.6 Runbook: operación manual mensual de pagos (revisar Mercado Pago y registrar pagos), cómo confirmar un alta con los tres chequeos (el mail "nuevo suscriptor" de Mercado Pago tiene el mismo email que declaró el dueño; plan y monto correctos; perfil revisado), cómo restaurar un backup; y, para las actividades outdoor (categoría `trekking-outdoor`), confirmar que el guía esté habilitado y tenga seguro antes de activar el alta (S)
 
 **DoD:** sistema en producción, monitoreado y con piloto activo.
 
@@ -637,6 +641,8 @@ Convenciones de trabajo:
 | Los locales no ven valor y no pagan | Piloto gratuito antes de activar cobros, medir canjes y reseñas |
 | Facturación/impuestos de la suscripción | Cobrar recurrentemente requiere inscripción fiscal y facturas: definirlo con un contador antes del lanzamiento (Fase 8) |
 | Datos personales de usuarios | Mínimo dato necesario, política de privacidad, Ley 25.326 |
+| Borrar una sede o un negocio y perder su historial (métricas, canjes, reseñas) | Baja lógica (§4): las sedes se desactivan y los negocios pasan a `deleted`; las claves foráneas del historial son `RESTRICT` donde corresponde, así que un `DELETE` físico falla |
+| Inflar las métricas: `/r/wa` y las vistas son públicos y cuentan en cada GET, y el filtro de bots solo descarta agentes automáticos | Tarea 6.3b: descartar el mismo clic o vista repetido desde la misma IP en una ventana corta, en memoria y sin persistir la IP. Hasta entonces, las métricas se rotulan como "vistas" y "clics", no como personas |
 
 ---
 

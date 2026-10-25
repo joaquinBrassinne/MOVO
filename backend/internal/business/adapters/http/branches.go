@@ -36,7 +36,7 @@ type hoursRequest struct {
 func (h *Handlers) mountBranches(me chi.Router) {
 	me.Post("/branches", h.handleAddBranch)
 	me.Put("/branches/{id}", h.handleEditBranch)
-	me.Delete("/branches/{id}", h.handleRemoveBranch)
+	me.Delete("/branches/{id}", h.handleRetireBranch)
 	me.Put("/branches/{id}/hours", h.handleSetHours)
 	me.Put("/branches/{id}/active", h.handleSetBranchActive)
 }
@@ -73,13 +73,13 @@ func (h *Handlers) handleEditBranch(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, toBranchJSON(updated, nil))
 }
 
-func (h *Handlers) handleRemoveBranch(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) handleRetireBranch(w http.ResponseWriter, r *http.Request) {
 	id, ok := h.pathID(w, r, business.ErrBranchNotFound)
 	if !ok {
 		return
 	}
 
-	if err := h.RemoveBranch.Handle(r.Context(), commands.RemoveBranchInput{OwnerID: callerID(r), BranchID: id}); err != nil {
+	if err := h.RetireBranch.Handle(r.Context(), commands.RetireBranchInput{OwnerID: callerID(r), BranchID: id}); err != nil {
 		h.fail(w, r, err)
 		return
 	}

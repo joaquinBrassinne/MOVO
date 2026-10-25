@@ -64,7 +64,7 @@ func TestCategoriesAreSeeded(t *testing.T) {
 		got = append(got, slug)
 	}
 
-	want := []string{"entrenadores", "estetica", "gimnasios", "natacion", "padel", "pilates", "yoga"}
+	want := []string{"entrenadores", "estetica", "gimnasios", "natacion", "padel", "pilates", "trekking-outdoor", "yoga"}
 	if len(got) != len(want) {
 		t.Fatalf("categories = %v, want %v", got, want)
 	}

@@ -39,8 +39,9 @@ test.describe("Onboarding", () => {
         const onboarding = new OnboardingPage(page);
 
         const radios = page.getByRole("radio");
-        await expect(radios).toHaveCount(7);
+        await expect(radios).toHaveCount(8);
         await expect(page.getByRole("radio", { name: "Pádel" })).toBeVisible();
+        await expect(page.getByRole("radio", { name: "Trekking y outdoor" })).toBeVisible();
 
         await onboarding.businessDescription.fill("hola");
         await expect(page.getByText("4/500")).toBeVisible();

@@ -63,8 +63,6 @@ type BranchRepository interface {
 	Find(ctx context.Context, businessID, branchID int64) (domain.Branch, error)
 	// Save persists the details of an existing branch (ErrBranchNotFound).
 	Save(ctx context.Context, b domain.Branch) error
-	// Delete removes the branch with its hours (ErrBranchNotFound).
-	Delete(ctx context.Context, businessID, branchID int64) error
 	// Hours returns the opening slots of the branch, ordered by weekday and start.
 	Hours(ctx context.Context, businessID, branchID int64) ([]domain.Slot, error)
 	// ReplaceHours atomically swaps all the slots of the branch (ErrBranchNotFound).

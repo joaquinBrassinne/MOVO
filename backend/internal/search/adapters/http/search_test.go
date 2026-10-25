@@ -14,6 +14,7 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
 	searchhttp "github.com/joaquinBrassinne/MOVO/internal/search/adapters/http"
 	searchpostgres "github.com/joaquinBrassinne/MOVO/internal/search/adapters/postgres"
+	"github.com/joaquinBrassinne/MOVO/internal/search/app/commands"
 	"github.com/joaquinBrassinne/MOVO/internal/search/app/queries"
 )
 
@@ -24,12 +25,14 @@ func newServer(t *testing.T) (http.Handler, *pgxpool.Pool) {
 
 	pool := dbtest.New(t)
 	branches := searchpostgres.NewBranches(pool)
-	h := searchhttp.New(queries.NewNearbyBranches(branches), queries.NewFeaturedBranches(branches, nil), nil)
+	record := commands.NewRecordMetric(searchpostgres.NewMetrics(pool), nil)
+	h := searchhttp.New(queries.NewNearbyBranches(branches), queries.NewFeaturedBranches(branches, nil), nil).
+		WithWhatsApp(commands.NewOpenWhatsApp(branches, record, nil))
 	return httpx.NewRouter(nil, nil, h.Mount), pool
 }
 
 // addBranch inserts an active business with one branch distM meters north of the origin.
-func addBranch(t *testing.T, pool *pgxpool.Pool, n int, distM float64) {
+func addBranch(t *testing.T, pool *pgxpool.Pool, n int, distM float64) (branch int64) {
 	t.Helper()
 
 	var owner, business int64
@@ -44,12 +47,13 @@ func addBranch(t *testing.T, pool *pgxpool.Pool, n int, distM float64) {
 		owner, fmt.Sprintf("Studio %d", n), fmt.Sprintf("studio-%d", n)).Scan(&business); err != nil {
 		t.Fatalf("insert business: %v", err)
 	}
-	if _, err := pool.Exec(t.Context(),
+	if err := pool.QueryRow(t.Context(),
 		`INSERT INTO branches (business_id, name, address, city, location)
-		 VALUES ($1, 'Centro', 'Calle 1', 'Río Tercero', ST_SetSRID(ST_MakePoint(-64.11, $2::float8), 4326)::geography)`,
-		business, -32.17+distM/111_000.0); err != nil {
+		 VALUES ($1, 'Centro', 'Calle 1', 'Río Tercero', ST_SetSRID(ST_MakePoint(-64.11, $2::float8), 4326)::geography) RETURNING id`,
+		business, -32.17+distM/111_000.0).Scan(&branch); err != nil {
 		t.Fatalf("insert branch: %v", err)
 	}
+	return branch
 }
 
 func get(h http.Handler, query string) *httptest.ResponseRecorder {
