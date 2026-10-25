@@ -5,23 +5,15 @@ import { useRouter } from "next/navigation";
 import { useState, type SubmitEvent } from "react";
 
 import { BranchLocationFields } from "@/components/business/BranchLocationFields";
+import { HoursEditor } from "@/components/business/HoursEditor";
 import { Notice } from "@/components/onboarding/fields";
 import { ArrowLeftIcon, CheckCircleIcon, ClockIcon } from "@/components/socios/icons";
 import { setBranchHours } from "@/lib/business/api";
 import { useBusiness } from "@/lib/business/BusinessProvider";
-import {
-  copyMondayToWeekdays,
-  firstInvalidDay,
-  toDayHours,
-  toSlots,
-  type DayHours,
-} from "@/lib/business/hours";
+import { firstProblem, toDayHours, toSlots, type DayHours } from "@/lib/business/hours";
 import { describeFailure } from "@/lib/business/messages";
-import { WEEK } from "@/lib/business/schedule";
 import type { Branch } from "@/lib/business/types";
 import { useBranchForm } from "@/lib/business/useBranchForm";
-
-import { Switch } from "./Switch";
 
 const LIST_PATH = "/socios/sedes";
 
@@ -60,25 +52,20 @@ function BranchEditorForm({ existing }: { existing: Branch | null }) {
   const router = useRouter();
   const { reload } = useBusiness();
   const form = useBranchForm(existing, "");
-  // `null` cuando la sede tiene turnos cortados: ese horario no cabe en el formulario.
-  const [days, setDays] = useState<DayHours[] | null>(() => toDayHours(existing?.hours ?? []));
+  const [days, setDays] = useState<DayHours[]>(() => toDayHours(existing?.hours ?? []));
   const [hoursError, setHoursError] = useState<string | null>(null);
   // La sede ya se creó pero sus horarios no se pudieron guardar: no se vuelve a crear.
   const [createdId, setCreatedId] = useState<number | null>(null);
 
-  function updateDay(weekday: number, change: Partial<DayHours>) {
-    setDays(
-      (current) =>
-        current?.map((row) => (row.weekday === weekday ? { ...row, ...change } : row)) ?? null,
-    );
-  }
-
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (days && firstInvalidDay(days) !== null) {
+    const problem = firstProblem(days);
+    if (problem) {
       setHoursError(
-        "Revisá los horarios: en cada día abierto, la hora de cierre va después de la de apertura.",
+        problem.kind === "overlap"
+          ? "Revisá los horarios: hay franjas que se pisan en un mismo día."
+          : "Revisá los horarios: en cada franja, la hora de cierre va después de la de apertura.",
       );
       return;
     }
@@ -87,14 +74,12 @@ function BranchEditorForm({ existing }: { existing: Branch | null }) {
     const id = await form.submit();
     if (id === null) return;
 
-    if (days) {
-      const saved = await setBranchHours(id, toSlots(days));
-      if (!saved.ok) {
-        form.setFeedback(describeFailure(saved));
-        setCreatedId(id);
-        reload();
-        return;
-      }
+    const saved = await setBranchHours(id, toSlots(days));
+    if (!saved.ok) {
+      form.setFeedback(describeFailure(saved));
+      setCreatedId(id);
+      reload();
+      return;
     }
 
     reload();
@@ -142,67 +127,7 @@ function BranchEditorForm({ existing }: { existing: Branch | null }) {
             </div>
           </div>
 
-          {days ? (
-            <>
-              <button
-                type="button"
-                onClick={() =>
-                  setDays((current) => (current ? copyMondayToWeekdays(current) : current))
-                }
-                className="rounded-full bg-movo-sand px-4 py-2 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-movo-accent"
-              >
-                Copiar Lun a Vie
-              </button>
-
-              <ul className="space-y-3">
-                {days.map((row) => {
-                  const name = WEEK.find((d) => d.weekday === row.weekday)?.long ?? "";
-                  return (
-                    <li key={row.weekday} className="flex items-center gap-3">
-                      <Switch
-                        checked={row.open}
-                        label={`${name}: ${row.open ? "abierto" : "cerrado"}`}
-                        onChange={(open) => updateDay(row.weekday, { open })}
-                      />
-                      <span className="w-24 shrink-0 text-sm font-semibold">{name}</span>
-                      {row.open ? (
-                        <span className="flex min-w-0 flex-1 items-center gap-2">
-                          <input
-                            type="time"
-                            aria-label={`${name}: abre`}
-                            value={row.start}
-                            onChange={(event) =>
-                              updateDay(row.weekday, { start: event.target.value })
-                            }
-                            className="h-11 min-w-0 flex-1 rounded-xl bg-movo-sand px-2 text-sm outline-none focus:ring-2 focus:ring-movo-accent"
-                          />
-                          <span className="text-sm text-movo-slate">a</span>
-                          <input
-                            type="time"
-                            aria-label={`${name}: cierra`}
-                            value={row.end}
-                            onChange={(event) =>
-                              updateDay(row.weekday, { end: event.target.value })
-                            }
-                            className="h-11 min-w-0 flex-1 rounded-xl bg-movo-sand px-2 text-sm outline-none focus:ring-2 focus:ring-movo-accent"
-                          />
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-movo-sand px-3 py-1 text-xs font-bold text-movo-slate">
-                          Cerrado
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </>
-          ) : (
-            <p className="rounded-2xl bg-movo-sand p-4 text-sm text-movo-slate">
-              Esta sede tiene turnos cortados, así que por ahora sus horarios no se pueden editar
-              desde acá. Los demás datos sí.
-            </p>
-          )}
+          <HoursEditor days={days} onChange={setDays} />
 
           {hoursError ? <Notice title="Horarios incorrectos" body={hoursError} /> : null}
         </section>

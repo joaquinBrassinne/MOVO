@@ -257,7 +257,11 @@ test.describe("Owner panel", () => {
         await page.getByRole("switch", { name: "Lunes: cerrado" }).click();
         await page.getByLabel("Lunes: abre").fill("08:00");
         await page.getByLabel("Lunes: cierra").fill("20:00");
-        await page.getByRole("button", { name: "Copiar Lun a Vie" }).click();
+        await page.getByRole("button", { name: "Copiar Lunes a otros días" }).click();
+        for (const name of ["Martes", "Miércoles", "Jueves", "Viernes"]) {
+          await page.getByRole("checkbox", { name }).check();
+        }
+        await page.getByRole("button", { name: "Aplicar" }).click();
         await expect(page.getByRole("switch", { name: "Viernes: abierto" })).toBeVisible();
         await expect(page.getByLabel("Viernes: cierra")).toHaveValue("20:00");
         await expect(page.getByRole("switch", { name: "Sábado: cerrado" })).toBeVisible();
