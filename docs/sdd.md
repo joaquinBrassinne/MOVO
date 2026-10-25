@@ -176,11 +176,11 @@ Todas las tablas con `id` (UUID v7 o `bigserial`), `created_at`, `updated_at`. M
 | `refresh_tokens` | user_id, token_hash, expires_at, revoked_at, replaced_by |
 | `customers` | name, phone (WhatsApp, normalizado), created_at — contacto declarado, **sin verificación ni contraseña** |
 | `categories` | slug, name — seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel |
-| `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description, whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, payment_reference |
-| `branches` | business_id, name, address, city, `location geography(Point,4326)`, external_booking_url (opcional), rating_avg, rating_count, active — **la búsqueda se hace por sede** |
+| `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description (≤ 500 caracteres), whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, payment_reference |
+| `branches` | business_id, name, address, city, reference (opcional, ≤ 100), `location geography(Point,4326)`, external_booking_url (opcional), rating_avg, rating_count, active — **la búsqueda se hace por sede** |
 | `business_hours` | branch_id, weekday, opens_at, closes_at |
 | `business_images` | business_id, object_key, position |
-| `services` | business_id, branch_id (opcional), name, description, active — lo que el negocio ofrece (clase de yoga, alquiler de cancha, etc.) |
+| `services` | business_id, branch_id (opcional), name, description, price (opcional, pesos enteros; sin duración porque el MVP no tiene agenda), active — lo que el negocio ofrece (clase de yoga, alquiler de cancha, etc.) |
 | `service_schedules` | service_id, weekday, starts_at, ends_at |
 | `subscriptions` | business_id, plan (`starter`/`pro`), paid_until, payment_reference, confirmed_by, confirmed_at, notes |
 | `benefits` | business_id, type (`percent`/`welcome_gift`), percent (10/15/20), gift_description, active, monthly_limit (configurable por el dueño) |
@@ -476,16 +476,17 @@ Convenciones de trabajo:
 ### Fase 2 — Negocios, servicios y onboarding (sin cobro todavía)
 **Objetivo:** que un local pueda existir, completar su perfil y ser aprobado manualmente.
 
-- [ ] 2.1 Migraciones `categories` (con seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel), `businesses`, `branches`, `business_hours`, `business_images` (con PostGIS) (S)
-- [ ] 2.2 Dominio `business`: estados, slug, validación y normalización del número de WhatsApp (M)
-- [ ] 2.3 Casos de uso: crear/editar mi negocio, agregar/editar sedes y horarios (un dueño = un negocio) (M)
-- [ ] 2.4 Puerto `Storage` + adaptador S3 (RustFS en local, R2/B2/S3 en prod) con URL prefirmada y validación; endpoint, región y modo path-style configurables; test de integración (tag `integration`) que sube y baja un objeto con URL prefirmada contra el servidor local (M)
-- [ ] 2.5 Puerto `PlanCatalog` + `ConfigPlanCatalog` (env), value object `Entitlements` y política de downgrade sin borrar datos (M)
-- [ ] 2.6 Migraciones y dominio de `services` y `service_schedules` (CRUD, activar/desactivar, límites del plan) (M)
-- [ ] 2.7 Super admin: aprobar / pausar / reactivar / baja lógica, marcar verificado, marcar piloto + `audit_log` (M)
-- [ ] 2.8 Frontend `/onboarding`: crear cuenta y completar datos, WhatsApp, sede con pin en el mapa, fotos y número de operación opcional; estado "en revisión" (L)
-- [ ] 2.9 Frontend: Servicios y horarios y Sedes, con contador del límite del plan (M)
-- [ ] 2.10 Frontend super admin: lista de locales y acciones (M)
+- [x] 2.1 Migraciones `categories` (con seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel), `businesses`, `branches`, `business_hours`, `business_images` (con PostGIS) (S)
+- [x] 2.2 Dominio `business`: estados, slug, validación y normalización del número de WhatsApp (M)
+- [x] 2.3 Casos de uso: crear/editar mi negocio, agregar/editar sedes y horarios (un dueño = un negocio) (M)
+- [x] 2.4 Puerto `Storage` + adaptador S3 (RustFS en local, R2/B2/S3 en prod) con URL prefirmada y validación; endpoint, región y modo path-style configurables; test de integración (tag `integration`) que sube y baja un objeto con URL prefirmada contra el servidor local (M)
+- [x] 2.5 Puerto `PlanCatalog` + `ConfigPlanCatalog` (env), value object `Entitlements` y política de downgrade sin borrar datos (M)
+- [x] 2.6 Migraciones y dominio de `services` y `service_schedules` (CRUD, activar/desactivar, límites del plan) (M)
+- [x] 2.7 Super admin: aprobar / pausar / reactivar / baja lógica, marcar verificado, marcar piloto + `audit_log` (M)
+- [x] 2.7b Capa HTTP de la fase: endpoints `/me/business...`, `/admin/businesses...` y `/plans`, con rol por grupo de rutas, y cableado en `cmd/api` (M)
+- [x] 2.8 Frontend `/onboarding`: crear cuenta y completar datos, WhatsApp, sede con pin en el mapa, fotos y número de operación opcional; estado "en revisión" (L)
+- [x] 2.9 Frontend: Servicios y horarios y Sedes, con contador del límite del plan (M)
+- [x] 2.10 Frontend super admin: lista de locales y acciones (M)
 
 **Vistas:** Onboarding, Servicios y horarios, Sedes, Super admin → Locales.
 **DoD:** un dueño crea su local, el admin lo activa y lo marca verificado, y queda en estado `active`.

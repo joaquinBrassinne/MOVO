@@ -16,6 +16,14 @@
   --color-movo-ink: #23213f;
   --color-movo-error: #ff9aa2;
   --color-movo-error-bg: #4e4560;
+
+  /* Onboarding y panel del dueño: valores tomados de los diseños de la Fase 2. */
+  --color-movo-cream: #faf6f3;
+  --color-movo-sand: #f2edeb;
+  --color-movo-slate: #6f6d83;
+  --color-movo-gold: #7c5d00;
+  --color-movo-danger: #c62828;
+  --color-movo-ok: #1f9d55;
 }
 
 @theme inline {

@@ -26,7 +26,7 @@ GOLANGCI_LINT         ?= golangci-lint
 TESTFLAGS ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help env up down ps logs wait-db migrate migrate-up migrate-down migrate-status fmt fmt-check tidy lint test build
+.PHONY: help env up down ps logs wait-db migrate migrate-up migrate-down migrate-status run-api fmtfmt-check tidy lint test build
 
 # --- Entorno ----------------------------------------------------------------
 
@@ -68,6 +68,11 @@ migrate-down: env ## Revierte la última migración aplicada
 
 migrate-status: env ## Muestra qué migraciones están aplicadas
 	@$(MAKE) --no-print-directory migrate CMD=status
+
+# --- Servicios ---------------------------------------------------------------
+
+run-api: env ## Levanta la API cargando .env (go run no lo lee solo)
+	@set -a; . ./.env; set +a; cd $(BACKEND) && $(GO) run ./cmd/api
 
 # --- Ayuda -------------------------------------------------------------------
 
