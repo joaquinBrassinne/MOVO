@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"maps"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -60,6 +61,11 @@ func Migrations() fs.FS {
 	return migrations.FS
 }
 
+// gooseMu serializes Migrate: goose keeps its base filesystem and dialect in
+// package globals, so concurrent calls (parallel integration tests, each with its
+// own database) would race on them.
+var gooseMu sync.Mutex
+
 // Migrate runs one goose command (up, down, status or version) against pool
 // using the embedded migrations. An unsupported command is reported before the
 // database is touched.
@@ -69,6 +75,9 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, command string) error {
 		return fmt.Errorf("db: unknown migration command %q, want one of %v",
 			command, slices.Sorted(maps.Keys(migrationCommands)))
 	}
+
+	gooseMu.Lock()
+	defer gooseMu.Unlock()
 
 	goose.SetBaseFS(migrations.FS)
 	if err := goose.SetDialect("postgres"); err != nil {
