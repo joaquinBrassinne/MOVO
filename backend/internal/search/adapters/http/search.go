@@ -24,6 +24,7 @@ type Handlers struct {
 	nearby   *queries.NearbyBranches
 	featured *queries.FeaturedBranches
 	whatsapp *commands.OpenWhatsApp
+	profile  *queries.BusinessProfile
 	log      *slog.Logger
 }
 
@@ -35,10 +36,13 @@ func New(nearby *queries.NearbyBranches, featured *queries.FeaturedBranches, log
 	return &Handlers{nearby: nearby, featured: featured, log: log}
 }
 
-// Mount registers GET /search and GET /home/featured. Both are public and take no identity.
+// Mount registers GET /search, GET /home/featured and, when enabled, GET /businesses/{slug}. All are public and take no identity.
 func (h *Handlers) Mount(r chi.Router) {
 	r.Get("/search", h.handleSearch)
 	r.Get("/home/featured", h.handleFeatured)
+	if h.profile != nil {
+		r.Get("/businesses/{slug}", h.handleProfile)
+	}
 	if h.whatsapp != nil {
 		r.Get("/r/wa/{branch_id}", h.handleWhatsApp)
 		r.Head("/r/wa/{branch_id}", h.handleWhatsApp)

@@ -339,7 +339,7 @@ El vencimiento se evalúa por `expires_at` al leer; una tarea diaria marca como 
 | GET | `/plans` | público | Planes con precio y URL de contratación |
 | GET | `/search/businesses` | público | Búsqueda geoespacial |
 | GET | `/home/featured` | público | Destacados cerca tuyo |
-| GET | `/businesses/{slug}` | público | Ficha del local |
+| GET | `/businesses/{slug}` | público | Ficha del local (solo sedes públicas y servicios activos; 404 `business_not_found` si no es público; sin número de WhatsApp) |
 | GET | `/r/wa/{branch_id}` | público | Cuenta el clic y redirige a WhatsApp |
 | POST/PUT | `/me/business` | business_admin | Crear/editar mi negocio |
 | POST/PUT/DELETE | `/me/business/branches` | business_admin | Sedes (según límite del plan) |
@@ -508,6 +508,7 @@ Convenciones de trabajo:
 - [x] 3.5 Puerto `Geocoder` con fake, adaptador Nominatim con limitador (1 req/s) + caché y User-Agent identificatorio; tiles configurables por env (M)
 - [x] 3.6 Contadores `metric_daily` (migración, upsert, filtrado básico de bots, sin datos personales) (M)
 - [x] 3.7 Endpoint `GET /r/wa/{branch_id}?service=` que cuenta el clic y redirige a `wa.me` con mensaje prearmado (S)
+- [x] 3.8b Endpoint público `GET /businesses/{slug}`: ficha con sedes y horarios públicos, servicios activos con su agenda, fotos (URLs prefirmadas) y sello de verificado; sin el número de WhatsApp (S)
 - [ ] 3.8 Frontend: Home y Mapa (React Leaflet, marcadores, geolocalización del navegador) (L)
 - [ ] 3.9 Frontend: ficha SSR del local `/locales/[slug]` con metadatos SEO, servicios, horarios, sello de verificado y botón de WhatsApp (M)
 

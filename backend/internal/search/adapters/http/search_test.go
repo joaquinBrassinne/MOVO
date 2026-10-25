@@ -12,6 +12,7 @@ import (
 
 	"github.com/joaquinBrassinne/MOVO/internal/platform/dbtest"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
+	"github.com/joaquinBrassinne/MOVO/internal/platform/storage"
 	searchhttp "github.com/joaquinBrassinne/MOVO/internal/search/adapters/http"
 	searchpostgres "github.com/joaquinBrassinne/MOVO/internal/search/adapters/postgres"
 	"github.com/joaquinBrassinne/MOVO/internal/search/app/commands"
@@ -27,7 +28,8 @@ func newServer(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	branches := searchpostgres.NewBranches(pool)
 	record := commands.NewRecordMetric(searchpostgres.NewMetrics(pool), nil)
 	h := searchhttp.New(queries.NewNearbyBranches(branches), queries.NewFeaturedBranches(branches, nil), nil).
-		WithWhatsApp(commands.NewOpenWhatsApp(branches, record, nil))
+		WithWhatsApp(commands.NewOpenWhatsApp(branches, record, nil)).
+		WithProfile(queries.NewBusinessProfile(branches, storage.NewMemory()))
 	return httpx.NewRouter(nil, nil, h.Mount), pool
 }
 
