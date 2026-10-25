@@ -167,3 +167,56 @@ func TestProfileOfABusinessThatIsNotPublicIsNotFound(t *testing.T) {
 		})
 	}
 }
+
+func TestProfileSaysWhetherEachBranchIsOpenNow(t *testing.T) {
+	t.Parallel()
+
+	h, pool := newServer(t)
+	branch := addBranch(t, pool, 1, 1_000)
+	var empty int64
+	if err := pool.QueryRow(t.Context(),
+		`INSERT INTO branches (business_id, name, address, city, location)
+		 SELECT business_id, 'Sin horarios', 'Calle 3', 'Río Tercero', location FROM branches WHERE id = $1 RETURNING id`,
+		branch).Scan(&empty); err != nil {
+		t.Fatalf("insert branch: %v", err)
+	}
+	// A slot every day for the whole morning and afternoon: whenever the test runs
+	// the branch is either open or opens later, and either way the answer is there.
+	for day := 0; day <= 6; day++ {
+		exec(t, pool, `INSERT INTO business_hours (branch_id, weekday, opens_at, closes_at) VALUES ($1, $2, '09:00', '12:00')`, branch, day)
+	}
+
+	rec := getProfile(h, "studio-1")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	var body struct {
+		Branches []struct {
+			BranchID int64 `json:"branch_id"`
+			OpenNow  struct {
+				Open         bool    `json:"open"`
+				ClosesAt     *string `json:"closes_at"`
+				OpensAt      *string `json:"opens_at"`
+				OpensWeekday *int    `json:"opens_weekday"`
+			} `json:"open_now"`
+		} `json:"branches"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, b := range body.Branches {
+		switch b.BranchID {
+		case branch:
+			if b.OpenNow.Open && (b.OpenNow.ClosesAt == nil || b.OpenNow.OpensAt != nil) {
+				t.Errorf("open branch = %+v, want closes_at only", b.OpenNow)
+			}
+			if !b.OpenNow.Open && (b.OpenNow.OpensAt == nil || b.OpenNow.OpensWeekday == nil || b.OpenNow.ClosesAt != nil) {
+				t.Errorf("closed branch = %+v, want opens_at and opens_weekday", b.OpenNow)
+			}
+		case empty:
+			if b.OpenNow.Open || b.OpenNow.OpensAt != nil || b.OpenNow.ClosesAt != nil || b.OpenNow.OpensWeekday != nil {
+				t.Errorf("branch without hours = %+v, want closed with no next opening", b.OpenNow)
+			}
+		}
+	}
+}

@@ -29,7 +29,7 @@ func newServer(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	record := commands.NewRecordMetric(searchpostgres.NewMetrics(pool), nil)
 	h := searchhttp.New(queries.NewNearbyBranches(branches), queries.NewFeaturedBranches(branches, nil), nil).
 		WithWhatsApp(commands.NewOpenWhatsApp(branches, record, nil)).
-		WithProfile(queries.NewBusinessProfile(branches, storage.NewMemory()))
+		WithProfile(queries.NewBusinessProfile(branches, storage.NewMemory(), nil))
 	return httpx.NewRouter(nil, nil, h.Mount), pool
 }
 

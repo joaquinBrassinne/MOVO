@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/joaquinBrassinne/MOVO/internal/search"
 	"github.com/joaquinBrassinne/MOVO/internal/search/app/queries"
@@ -61,7 +62,7 @@ func TestBusinessProfile(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view, err := queries.NewBusinessProfile(tt.finder, tt.urls).Handle(t.Context(), "studio")
+			view, err := queries.NewBusinessProfile(tt.finder, tt.urls, nil).Handle(t.Context(), "studio")
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tt.wantErr)
 			}
@@ -77,5 +78,37 @@ func TestBusinessProfile(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBusinessProfileReportsEachBranchOpenStatusAtTheClock(t *testing.T) {
+	t.Parallel()
+
+	profile := search.Profile{Branches: []search.ProfileBranch{
+		{BranchID: 1, Hours: []search.Slot{{Weekday: 1, Start: "09:00", End: "13:00"}, {Weekday: 1, Start: "16:00", End: "20:00"}}},
+		{BranchID: 2, Hours: []search.Slot{{Weekday: 2, Start: "08:00", End: "12:00"}}},
+		{BranchID: 3},
+	}}
+	zone, err := time.LoadLocation(search.ZoneName)
+	if err != nil {
+		t.Fatalf("load zone: %v", err)
+	}
+	monday := time.Date(2026, 10, 26, 10, 30, 0, 0, zone)
+
+	view, err := queries.NewBusinessProfile(fakeProfiles{profile: profile}, fakeURLs{}, func() time.Time { return monday }).
+		Handle(t.Context(), "studio")
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	want := map[int64]search.OpenStatus{
+		1: {Open: true, ClosesAt: "13:00"},
+		2: {HasNext: true, OpensAt: "08:00", OpensWeekday: 2},
+		3: {},
+	}
+	for id, status := range want {
+		if got := view.OpenNow[id]; got != status {
+			t.Errorf("branch %d status = %+v, want %+v", id, got, status)
+		}
 	}
 }

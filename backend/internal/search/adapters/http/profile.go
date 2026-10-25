@@ -27,16 +27,17 @@ type slotJSON struct {
 }
 
 type profileBranchJSON struct {
-	BranchID    int64      `json:"branch_id"`
-	Name        string     `json:"name"`
-	Address     string     `json:"address"`
-	City        string     `json:"city"`
-	Reference   string     `json:"reference"`
-	Lat         float64    `json:"lat"`
-	Lng         float64    `json:"lng"`
-	RatingAvg   float64    `json:"rating_avg"`
-	RatingCount int        `json:"rating_count"`
-	Hours       []slotJSON `json:"hours"`
+	BranchID    int64       `json:"branch_id"`
+	Name        string      `json:"name"`
+	Address     string      `json:"address"`
+	City        string      `json:"city"`
+	Reference   string      `json:"reference"`
+	Lat         float64     `json:"lat"`
+	Lng         float64     `json:"lng"`
+	RatingAvg   float64     `json:"rating_avg"`
+	RatingCount int         `json:"rating_count"`
+	Hours       []slotJSON  `json:"hours"`
+	OpenNow     openNowJSON `json:"open_now"`
 }
 
 type profileServiceJSON struct {
@@ -92,6 +93,7 @@ func profileBody(v queries.ProfileView) profileJSON {
 		out.Branches = append(out.Branches, profileBranchJSON{
 			BranchID: b.BranchID, Name: b.Name, Address: b.Address, City: b.City, Reference: b.Reference,
 			Lat: b.Lat, Lng: b.Lng, RatingAvg: b.RatingAvg, RatingCount: b.RatingCount, Hours: slots(b.Hours),
+			OpenNow: openNow(v.OpenNow[b.BranchID]),
 		})
 	}
 	for _, s := range v.Services {
@@ -113,4 +115,24 @@ func slots(in []search.Slot) []slotJSON {
 		out = append(out, slotJSON{Weekday: s.Weekday, Start: s.Start, End: s.End})
 	}
 	return out
+}
+
+// openNowJSON says whether the branch is open at the time of the request, in the
+// Córdoba zone. Open: closes_at is when the stretch ends. Closed: opens_at and
+// opens_weekday say when it opens next, and are null when there are no slots.
+type openNowJSON struct {
+	Open         bool    `json:"open"`
+	ClosesAt     *string `json:"closes_at"`
+	OpensAt      *string `json:"opens_at"`
+	OpensWeekday *int    `json:"opens_weekday"`
+}
+
+func openNow(s search.OpenStatus) openNowJSON {
+	switch {
+	case s.Open:
+		return openNowJSON{Open: true, ClosesAt: &s.ClosesAt}
+	case s.HasNext:
+		return openNowJSON{OpensAt: &s.OpensAt, OpensWeekday: &s.OpensWeekday}
+	}
+	return openNowJSON{}
 }
