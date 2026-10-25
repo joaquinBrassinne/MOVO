@@ -689,6 +689,7 @@ Convenciones de trabajo:
 6. Reserva con estados o agenda con cupos, si el piloto lo justifica.
 7. Favoritos del cliente.
 8. Captcha o verificación del cliente, si aparece abuso.
+9. Sede principal: hoy ninguna sede se distingue de las demás ("principal + 1" en 12.2 es solo una forma de contar). Hay que poder marcar cuál es la sede principal de cada local (por ejemplo `branches.is_primary`, una sola por negocio) y usarla donde se necesite una sede única, como la ficha o la tarjeta del Home.
 
 ---
 
