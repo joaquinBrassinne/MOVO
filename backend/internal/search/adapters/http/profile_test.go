@@ -38,8 +38,9 @@ type profileBody struct {
 		Name string `json:"name"`
 	} `json:"category"`
 	Branches []struct {
-		BranchID int64      `json:"branch_id"`
-		Hours    []slotBody `json:"hours"`
+		BranchID   int64      `json:"branch_id"`
+		BookingURL *string    `json:"external_booking_url"`
+		Hours      []slotBody `json:"hours"`
 	} `json:"branches"`
 	Services []struct {
 		ID       int64      `json:"id"`
@@ -70,6 +71,7 @@ func TestProfileShowsOnlyWhatIsPublic(t *testing.T) {
 		t.Fatalf("insert retired branch: %v", err)
 	}
 	exec(t, pool, `INSERT INTO business_hours (branch_id, weekday, opens_at, closes_at) VALUES ($1, 1, '16:00', '20:00'), ($1, 1, '09:00', '13:00')`, branch)
+	exec(t, pool, `UPDATE branches SET external_booking_url = 'https://reservas.example.com/club' WHERE id = $1`, branch)
 	exec(t, pool, `INSERT INTO business_hours (branch_id, weekday, opens_at, closes_at) VALUES ($1, 2, '09:00', '13:00')`, retired)
 	exec(t, pool, `INSERT INTO services (business_id, name, price) VALUES ($1, 'Yoga', 8000)`, business)
 	exec(t, pool, `INSERT INTO services (business_id, name, active) VALUES ($1, 'Pausado', false)`, business)
@@ -89,6 +91,9 @@ func TestProfileShowsOnlyWhatIsPublic(t *testing.T) {
 
 	if body.Name != "Studio 1" || body.Slug != "studio-1" || !body.Verified || body.Category.Slug != "yoga" || body.Category.Name == "" {
 		t.Errorf("header = %+v", body)
+	}
+	if len(body.Branches) == 1 && (body.Branches[0].BookingURL == nil || *body.Branches[0].BookingURL != "https://reservas.example.com/club") {
+		t.Errorf("booking url = %v, want the club system", body.Branches[0].BookingURL)
 	}
 	if len(body.Branches) != 1 || body.Branches[0].BranchID != branch {
 		t.Fatalf("branches = %+v, want only the public one", body.Branches)

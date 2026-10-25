@@ -19,11 +19,13 @@ type Slot struct {
 
 // ProfileBranch is a public branch of the profile with its opening hours.
 type ProfileBranch struct {
-	BranchID    int64
-	Name        string
-	Address     string
-	City        string
-	Reference   string
+	BranchID  int64
+	Name      string
+	Address   string
+	City      string
+	Reference string
+	// BookingURL is the club's own booking system, empty when it has none.
+	BookingURL  string
 	Lat, Lng    float64
 	RatingAvg   float64
 	RatingCount int

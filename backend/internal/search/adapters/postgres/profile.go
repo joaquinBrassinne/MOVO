@@ -16,12 +16,13 @@ const (
 	profileBranchesSQL = `
 SELECT v.business_id, v.business_name, v.business_slug, b.description, c.slug, c.name,
        v.verified_at IS NOT NULL,
-       v.branch_id, v.branch_name, v.address, v.city, v.reference,
+       v.branch_id, v.branch_name, v.address, v.city, v.reference, COALESCE(br.external_booking_url, ''),
        ST_Y(v.location::geometry), ST_X(v.location::geometry),
        v.rating_avg::float8, v.rating_count
 FROM visible_branches v
 JOIN businesses b ON b.id = v.business_id
 JOIN categories c ON c.id = b.category_id
+JOIN branches br ON br.id = v.branch_id
 WHERE v.business_slug = $1
 ORDER BY v.branch_id`
 
@@ -83,7 +84,7 @@ func readProfileBranches(ctx context.Context, tx pgx.Tx, slug string) (search.Pr
 	for rows.Next() {
 		var b search.ProfileBranch
 		if err := rows.Scan(&p.BusinessID, &p.Name, &p.Slug, &p.Description, &p.CategorySlug, &p.CategoryName,
-			&p.Verified, &b.BranchID, &b.Name, &b.Address, &b.City, &b.Reference,
+			&p.Verified, &b.BranchID, &b.Name, &b.Address, &b.City, &b.Reference, &b.BookingURL,
 			&b.Lat, &b.Lng, &b.RatingAvg, &b.RatingCount); err != nil {
 			return search.Profile{}, fmt.Errorf("postgres: scan profile branch: %w", err)
 		}

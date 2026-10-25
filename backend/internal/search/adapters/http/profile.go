@@ -32,6 +32,7 @@ type profileBranchJSON struct {
 	Address     string      `json:"address"`
 	City        string      `json:"city"`
 	Reference   string      `json:"reference"`
+	BookingURL  *string     `json:"external_booking_url"`
 	Lat         float64     `json:"lat"`
 	Lng         float64     `json:"lng"`
 	RatingAvg   float64     `json:"rating_avg"`
@@ -91,7 +92,7 @@ func profileBody(v queries.ProfileView) profileJSON {
 	}
 	for _, b := range v.Branches {
 		out.Branches = append(out.Branches, profileBranchJSON{
-			BranchID: b.BranchID, Name: b.Name, Address: b.Address, City: b.City, Reference: b.Reference,
+			BranchID: b.BranchID, Name: b.Name, Address: b.Address, City: b.City, Reference: b.Reference, BookingURL: nilIfEmpty(b.BookingURL),
 			Lat: b.Lat, Lng: b.Lng, RatingAvg: b.RatingAvg, RatingCount: b.RatingCount, Hours: slots(b.Hours),
 			OpenNow: openNow(v.OpenNow[b.BranchID]),
 		})
@@ -135,4 +136,11 @@ func openNow(s search.OpenStatus) openNowJSON {
 		return openNowJSON{OpensAt: &s.OpensAt, OpensWeekday: &s.OpensWeekday}
 	}
 	return openNowJSON{}
+}
+
+func nilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
