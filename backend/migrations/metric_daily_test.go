@@ -48,14 +48,37 @@ func TestMetricDailyShapeFollowsTheMetric(t *testing.T) {
 		{"service view without a branch", "service_view", nil, service, true},
 		{"unknown metric", "page_view", branch, nil, true},
 	} {
-		// A new day per case keeps the unique key out of the way of this test.
-		err := insert(tc.metric, tc.branch, tc.service, i+1)
-		if tc.wantCheck {
-			requireSQLState(t, err, checkViolation)
-		} else if err != nil {
-			t.Errorf("%s: must be allowed: %v", tc.name, err)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			// A new day per case keeps the unique key out of the way of this test.
+			err := insert(tc.metric, tc.branch, tc.service, i+1)
+			if tc.wantCheck {
+				requireSQLState(t, err, checkViolation)
+			} else if err != nil {
+				t.Errorf("must be allowed: %v", err)
+			}
+		})
 	}
+}
+
+// TestMetricDailyRejectsANegativeCount pins that a counter can only hold zero or more.
+func TestMetricDailyRejectsANegativeCount(t *testing.T) {
+	t.Parallel()
+
+	pool := dbtest.New(t)
+	ctx := t.Context()
+	business, err := insertBusiness(ctx, pool, insertOwner(ctx, t, pool, "owner@example.com"), "studio", "5491112345678", "active")
+	if err != nil {
+		t.Fatalf("insert business: %v", err)
+	}
+	insert := func(count int) error {
+		_, err := pool.Exec(ctx, `INSERT INTO metric_daily (business_id, date, metric, count) VALUES ($1, make_date(2026, 3, $2 + 2), 'profile_view', $2)`, business, count)
+		return err
+	}
+
+	if err := insert(0); err != nil {
+		t.Errorf("a zero count must be allowed: %v", err)
+	}
+	requireSQLState(t, insert(-1), checkViolation)
 }
 
 // TestMetricDailyKeyTreatsNullsAsEqual pins that the same counter cannot be inserted
@@ -78,16 +101,18 @@ func TestMetricDailyKeyTreatsNullsAsEqual(t *testing.T) {
 		{"profile view, NULL branch and service", "profile_view", nil},
 		{"click, NULL service", "whatsapp_click", branch},
 	} {
-		insert := func() error {
-			_, err := pool.Exec(ctx,
-				`INSERT INTO metric_daily (business_id, branch_id, date, metric, count)
-				 VALUES ($1, $2, '2026-03-01', $3, 1)`, business, tc.branch, tc.metric)
-			return err
-		}
-		if err := insert(); err != nil {
-			t.Fatalf("%s: first insert: %v", tc.name, err)
-		}
-		requireSQLState(t, insert(), uniqueViolation)
+		t.Run(tc.name, func(t *testing.T) {
+			insert := func() error {
+				_, err := pool.Exec(ctx,
+					`INSERT INTO metric_daily (business_id, branch_id, date, metric, count)
+					 VALUES ($1, $2, '2026-03-01', $3, 1)`, business, tc.branch, tc.metric)
+				return err
+			}
+			if err := insert(); err != nil {
+				t.Fatalf("first insert: %v", err)
+			}
+			requireSQLState(t, insert(), uniqueViolation)
+		})
 	}
 }
 

@@ -111,10 +111,16 @@ func TestWhatsAppRedirectsABotButDoesNotCountIt(t *testing.T) {
 	h, pool := newServer(t)
 	branch := addBranch(t, pool, 1, 100)
 
-	for _, ua := range []string{"WhatsApp/2.24.8.80 A", "Googlebot/2.1", ""} {
-		if rec := clickRedirect(h, fmt.Sprint(branch), ua); rec.Code != http.StatusFound {
-			t.Errorf("agent %q: status = %d, want 302", ua, rec.Code)
-		}
+	for name, ua := range map[string]string{
+		"link preview": "WhatsApp/2.24.8.80 A",
+		"crawler":      "Googlebot/2.1",
+		"no agent":     "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if rec := clickRedirect(h, fmt.Sprint(branch), ua); rec.Code != http.StatusFound {
+				t.Errorf("status = %d, want 302", rec.Code)
+			}
+		})
 	}
 	if got := clicks(t, pool, branch); got != 0 {
 		t.Errorf("clicks = %d, want 0 for bots", got)
@@ -136,12 +142,14 @@ func TestWhatsAppAnswers404ForABranchThatIsNotPublic(t *testing.T) {
 		"not a number":    "abc",
 		"zero":            "0",
 	} {
-		rec := clickRedirect(h, path, browser)
-		var body httpx.ErrorEnvelope
-		_ = json.Unmarshal(rec.Body.Bytes(), &body)
-		if rec.Code != http.StatusNotFound || body.Error.Code != "branch_not_found" || rec.Header().Get("Location") != "" {
-			t.Errorf("%s: status %d, body %s; want 404 branch_not_found and no redirect", name, rec.Code, rec.Body)
-		}
+		t.Run(name, func(t *testing.T) {
+			rec := clickRedirect(h, path, browser)
+			var body httpx.ErrorEnvelope
+			_ = json.Unmarshal(rec.Body.Bytes(), &body)
+			if rec.Code != http.StatusNotFound || body.Error.Code != "branch_not_found" || rec.Header().Get("Location") != "" {
+				t.Errorf("status %d, body %s; want 404 branch_not_found and no redirect", rec.Code, rec.Body)
+			}
+		})
 	}
 	if got := clicks(t, pool, branch); got != 0 {
 		t.Errorf("clicks = %d for a hidden branch, want 0", got)
@@ -155,13 +163,15 @@ func TestWhatsAppRejectsAMalformedService(t *testing.T) {
 	branch := addBranch(t, pool, 1, 100)
 
 	for _, service := range []string{"abc", "0", "-1"} {
-		rec := clickRedirect(h, fmt.Sprintf("%d?service=%s", branch, service), browser)
-		var body httpx.ErrorEnvelope
-		_ = json.Unmarshal(rec.Body.Bytes(), &body)
-		details, _ := body.Error.Details.(map[string]any)
-		if rec.Code != http.StatusUnprocessableEntity || details["field"] != "service" {
-			t.Errorf("service=%s: status %d, body %s; want 422 on service", service, rec.Code, rec.Body)
-		}
+		t.Run("service="+service, func(t *testing.T) {
+			rec := clickRedirect(h, fmt.Sprintf("%d?service=%s", branch, service), browser)
+			var body httpx.ErrorEnvelope
+			_ = json.Unmarshal(rec.Body.Bytes(), &body)
+			details, _ := body.Error.Details.(map[string]any)
+			if rec.Code != http.StatusUnprocessableEntity || details["field"] != "service" {
+				t.Errorf("status %d, body %s; want 422 on service", rec.Code, rec.Body)
+			}
+		})
 	}
 	if got := clicks(t, pool, branch); got != 0 {
 		t.Errorf("clicks = %d for a rejected request, want 0", got)
