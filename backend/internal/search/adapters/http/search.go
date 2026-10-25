@@ -24,6 +24,8 @@ type Handlers struct {
 	nearby   *queries.NearbyBranches
 	featured *queries.FeaturedBranches
 	whatsapp *commands.OpenWhatsApp
+	profile  *queries.BusinessProfile
+	view     *commands.RecordProfileView
 	log      *slog.Logger
 }
 
@@ -35,10 +37,16 @@ func New(nearby *queries.NearbyBranches, featured *queries.FeaturedBranches, log
 	return &Handlers{nearby: nearby, featured: featured, log: log}
 }
 
-// Mount registers GET /search and GET /home/featured. Both are public and take no identity.
+// Mount registers GET /search, GET /home/featured and, when enabled, GET /businesses/{slug}. All are public and take no identity.
 func (h *Handlers) Mount(r chi.Router) {
 	r.Get("/search", h.handleSearch)
 	r.Get("/home/featured", h.handleFeatured)
+	if h.profile != nil {
+		r.Get("/businesses/{slug}", h.handleProfile)
+	}
+	if h.view != nil {
+		r.Post("/businesses/{slug}/view", h.handleProfileView)
+	}
 	if h.whatsapp != nil {
 		r.Get("/r/wa/{branch_id}", h.handleWhatsApp)
 		r.Head("/r/wa/{branch_id}", h.handleWhatsApp)
@@ -68,6 +76,8 @@ type branchJSON struct {
 	RatingCount  int     `json:"rating_count"`
 	Verified     bool    `json:"verified"`
 	Featured     bool    `json:"featured"`
+	CategorySlug string  `json:"category_slug"`
+	CategoryName string  `json:"category_name"`
 }
 
 func (h *Handlers) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +127,7 @@ func cards(branches []search.Branch) []branchJSON {
 			BranchName: b.BranchName, Address: b.Address, City: b.City, Reference: b.Reference,
 			Lat: b.Lat, Lng: b.Lng, DistanceM: int(math.Round(b.DistanceM)),
 			RatingAvg: b.RatingAvg, RatingCount: b.RatingCount, Verified: b.Verified, Featured: b.Featured,
+			CategorySlug: b.CategorySlug, CategoryName: b.CategoryName,
 		})
 	}
 	return items

@@ -12,6 +12,7 @@ import (
 
 	"github.com/joaquinBrassinne/MOVO/internal/platform/dbtest"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
+	"github.com/joaquinBrassinne/MOVO/internal/platform/storage"
 	searchhttp "github.com/joaquinBrassinne/MOVO/internal/search/adapters/http"
 	searchpostgres "github.com/joaquinBrassinne/MOVO/internal/search/adapters/postgres"
 	"github.com/joaquinBrassinne/MOVO/internal/search/app/commands"
@@ -27,7 +28,9 @@ func newServer(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	branches := searchpostgres.NewBranches(pool)
 	record := commands.NewRecordMetric(searchpostgres.NewMetrics(pool), nil)
 	h := searchhttp.New(queries.NewNearbyBranches(branches), queries.NewFeaturedBranches(branches, nil), nil).
-		WithWhatsApp(commands.NewOpenWhatsApp(branches, record, nil))
+		WithWhatsApp(commands.NewOpenWhatsApp(branches, record, nil)).
+		WithProfile(queries.NewBusinessProfile(branches, storage.NewMemory(), nil)).
+		WithProfileView(commands.NewRecordProfileView(branches, record, nil))
 	return httpx.NewRouter(nil, nil, h.Mount), pool
 }
 
@@ -83,7 +86,7 @@ func TestSearchReturnsALightCardPerBranch(t *testing.T) {
 		t.Fatalf("results = %v, next = %v; want one result and no next page", body.Results, body.NextOffset)
 	}
 	card := body.Results[0]
-	if card["business_name"] != "Studio 1" || card["business_slug"] != "studio-1" || card["verified"] != true {
+	if card["business_name"] != "Studio 1" || card["business_slug"] != "studio-1" || card["verified"] != true || card["category_slug"] != "yoga" || card["category_name"] != "Yoga" {
 		t.Errorf("card = %v", card)
 	}
 	if d, _ := card["distance_m"].(float64); d < 990 || d > 1_010 {

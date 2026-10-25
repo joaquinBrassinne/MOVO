@@ -282,8 +282,8 @@ func TestBranchesHoursAreReplacedAtomically(t *testing.T) {
 	// A batch the database rejects (the same slot twice) must roll back, keeping
 	// the previous schedule instead of leaving the branch with none.
 	bad := []domain.Slot{{Weekday: 2, Start: 600, End: 700}, {Weekday: 2, Start: 600, End: 700}}
-	if err := repo.ReplaceHours(t.Context(), mine, branch.ID, bad); err == nil {
-		t.Fatal("ReplaceHours accepted a duplicated slot")
+	if err := repo.ReplaceHours(t.Context(), mine, branch.ID, bad); !errors.Is(err, domain.ErrSlotsOverlap) {
+		t.Fatalf("ReplaceHours of a duplicated slot = %v, want ErrSlotsOverlap", err)
 	}
 	if kept, _ := repo.Hours(t.Context(), mine, branch.ID); len(kept) != 3 {
 		t.Errorf("hours after a failed replace = %v, want the previous 3", kept)

@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/joaquinBrassinne/MOVO/internal/search"
 	searchhttp "github.com/joaquinBrassinne/MOVO/internal/search/adapters/http"
 	searchpostgres "github.com/joaquinBrassinne/MOVO/internal/search/adapters/postgres"
 	"github.com/joaquinBrassinne/MOVO/internal/search/app/commands"
@@ -13,9 +14,11 @@ import (
 )
 
 // newSearchRoutes composes the search module: adapters, use cases and HTTP.
-func newSearchRoutes(log *slog.Logger, pool *pgxpool.Pool) func(chi.Router) {
+func newSearchRoutes(log *slog.Logger, pool *pgxpool.Pool, images search.ImageURLs) func(chi.Router) {
 	branches := searchpostgres.NewBranches(pool)
 	record := commands.NewRecordMetric(searchpostgres.NewMetrics(pool), nil)
 	return searchhttp.New(queries.NewNearbyBranches(branches), queries.NewFeaturedBranches(branches, nil), log).
-		WithWhatsApp(commands.NewOpenWhatsApp(branches, record, log)).Mount
+		WithWhatsApp(commands.NewOpenWhatsApp(branches, record, log)).
+		WithProfile(queries.NewBusinessProfile(branches, images, nil)).
+		WithProfileView(commands.NewRecordProfileView(branches, record, log)).Mount
 }

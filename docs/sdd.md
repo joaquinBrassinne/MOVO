@@ -256,6 +256,7 @@ Principio: **contar, no seguir**. No se guardan IP, user-agent ni identificadore
 - **Pro, "Inteligencia comercial" (incluye todo Starter):**
   5. **Tasas de conversión** (vistas → cupones, cupones → canjes) con tendencia contra el período anterior y desglose por sede y actividad. No hay "embudo" como función aparte.
   6. **Una alerta: "Cupones sin canjear"** (la tasa de canje de los últimos 30 días queda bajo un umbral, con una cantidad mínima de cupones generados). Se muestra en el panel, como máximo una por semana.
+- **Cómo se cuenta una vista de perfil.** `GET /businesses/{slug}` no cuenta nada: lo llama también el render del servidor (rastreadores y vistas previas de enlaces). La ficha, ya cargada en el navegador, avisa con `POST /businesses/{slug}/view` desde un componente de cliente, una sola vez por carga (`navigator.sendBeacon` o `fetch` con `keepalive`). El endpoint responde siempre `204` sin cuerpo y sin cookies, también cuando el negocio no existe o no es visible (así no revela qué locales existen), suma `profile_view` con `branch_id` nulo e ignora los bots por user-agent.
 - **Las vistas de perfil son por negocio.** La ficha `/locales/[slug]` es del negocio, así que `profile_view` se guarda sin sede. El desglose por sede de Pro aplica a los clics a WhatsApp, las vistas de servicio y los canjes (`redeemed_branch_id`). La tasa "vistas → cupones" se calcula solo a nivel negocio; "cupones → canjes" sí admite desglose por sede.
 - **Post-MVP:** benchmarking anónimo de zona (solo con ≥ 5 locales activos por categoría y zona; solo medianas y percentiles) y las alertas "Alta demanda" y "Franjas con poca demanda". La demanda por actividad se mide con los contadores de servicio; MOVO no conoce ocupación ni capacidad.
 - Los contadores se registran **desde la Fase 3** para tener historial cuando se construya el panel.
@@ -289,6 +290,13 @@ WHERE code = $2
 RETURNING id;
 ```
 Si no devuelve filas → inválido, vencido, ya canjeado o de otro local. Un solo `UPDATE` atómico evita doble canje por concurrencia.
+
+**Canje con QR escaneado dentro de la app.** El cupón se puede canjear escaneando su QR sin salir del panel, y el ingreso manual del código sigue siempre disponible.
+1. El QR del cupón contiene **únicamente el código** (o una URL de la pantalla "Canjear" con el código precargado), sin datos personales: ni nombre, ni teléfono, ni identificadores del cliente.
+2. En "Canjear" hay un botón **"Escanear QR"** que abre la cámara dentro del panel (`getUserMedia`). Si la cámara no está disponible o el permiso se niega, el dueño escribe el código a mano.
+3. **Escanear no canjea.** Tanto el código escaneado como el escrito muestran primero una **vista previa** (nombre del cliente, beneficio, vencimiento y estado) leída con `GET /me/business/codes/{code}`, y el dueño confirma con **"Confirmar canje"**.
+4. La autoridad del canje no cambia: la confirmación llama a `POST /me/business/codes/redeem` y el `UPDATE ... RETURNING` atómico de arriba es lo único que canjea. La vista previa es informativa; entre verla y confirmar el cupón puede haberse canjeado o vencido, y en ese caso el canje responde como siempre (inválido, vencido o ya canjeado).
+5. La vista previa es solo lectura (sin efectos secundarios), devuelve datos únicamente si el cupón es del negocio del token (404 si no, igual que un código inexistente) y nunca incluye el teléfono del cliente.
 
 El vencimiento se evalúa por `expires_at` al leer; una tarea diaria marca como `expired` en bloque los vencidos.
 
@@ -339,7 +347,8 @@ El vencimiento se evalúa por `expires_at` al leer; una tarea diaria marca como 
 | GET | `/plans` | público | Planes con precio y URL de contratación |
 | GET | `/search/businesses` | público | Búsqueda geoespacial |
 | GET | `/home/featured` | público | Destacados cerca tuyo |
-| GET | `/businesses/{slug}` | público | Ficha del local |
+| GET | `/businesses/{slug}` | público | Ficha del local (solo sedes públicas y servicios activos; 404 `business_not_found` si no es público; sin número de WhatsApp; no cuenta vistas) |
+| POST | `/businesses/{slug}/view` | público | Cuenta una vista de la ficha (`profile_view`, sin sede). Siempre `204` sin cuerpo ni cookies, aunque el negocio no sea visible; ignora bots |
 | GET | `/r/wa/{branch_id}` | público | Cuenta el clic y redirige a WhatsApp |
 | POST/PUT | `/me/business` | business_admin | Crear/editar mi negocio |
 | POST/PUT/DELETE | `/me/business/branches` | business_admin | Sedes (según límite del plan) |
@@ -353,6 +362,7 @@ El vencimiento se evalúa por `expires_at` al leer; una tarea diaria marca como 
 | POST | `/access/{token}/reviews` | token del cliente | Dejar reseña |
 | GET | `/branches/{id}/reviews` | público | Reseñas paginadas |
 | POST | `/me/business/reviews/{id}/report` | business_admin | Reportar reseña |
+| GET | `/me/business/codes/{code}` | business_admin | Vista previa del cupón antes de canjear (solo lectura; estado, beneficio, nombre del cliente y vencimiento; 404 si no es de mi negocio; sin teléfono) |
 | POST | `/me/business/codes/redeem` | business_admin | Canjear cupón |
 | * | `/admin/...` | super_admin | Locales, verificación, suscripciones, moderación, reseteo de contraseña |
 
@@ -508,8 +518,9 @@ Convenciones de trabajo:
 - [x] 3.5 Puerto `Geocoder` con fake, adaptador Nominatim con limitador (1 req/s) + caché y User-Agent identificatorio; tiles configurables por env (M)
 - [x] 3.6 Contadores `metric_daily` (migración, upsert, filtrado básico de bots, sin datos personales) (M)
 - [x] 3.7 Endpoint `GET /r/wa/{branch_id}?service=` que cuenta el clic y redirige a `wa.me` con mensaje prearmado (S)
+- [x] 3.8b Endpoint público `GET /businesses/{slug}`: ficha con sedes y horarios públicos, servicios activos con su agenda, fotos (URLs prefirmadas) y sello de verificado; sin el número de WhatsApp (S)
 - [ ] 3.8 Frontend: Home y Mapa (React Leaflet, marcadores, geolocalización del navegador) (L)
-- [ ] 3.9 Frontend: ficha SSR del local `/locales/[slug]` con metadatos SEO, servicios, horarios, sello de verificado y botón de WhatsApp (M)
+- [ ] 3.9 Backend y frontend: `POST /businesses/{slug}/view` (204 sin cuerpo ni cookies, ignora bots y no revela si el negocio es visible; suma `profile_view` con `branch_id` nulo) y la ficha SSR del local `/locales/[slug]` con metadatos SEO, servicios, horarios con "abierto ahora", sello de verificado y botón de WhatsApp; un componente de cliente dispara la vista una sola vez por carga, después de montar (M)
 
 **Vistas:** Home, Mapa, Ficha del local (opcionales: Explorar, Splash).
 **DoD:** búsqueda p95 < 300 ms; la ficha se renderiza del lado del servidor; el botón de WhatsApp abre la conversación y suma el contador.
@@ -525,11 +536,14 @@ Convenciones de trabajo:
 - [ ] 4.4 Comando `GenerateCode`: nombre y WhatsApp, un pendiente por cliente y local, cupo, reintento por colisión, token de acceso (M)
 - [ ] 4.5 Anti-abuso: límite por IP en memoria + normalización de contacto (S)
 - [ ] 4.6 Comando `RedeemCode` atómico + test de concurrencia (M)
+- [ ] 4.6b Query de vista previa `GET /me/business/codes/{code}` (solo lectura, `business_admin`): estado, beneficio, nombre del cliente y vencimiento solo si el cupón es de ese negocio (404 si no), sin teléfono y sin efectos secundarios. Tests: la vista previa no canjea, no filtra datos de otro negocio y no devuelve el teléfono; el canje sigue siendo atómico (el test de concurrencia de 4.6 se mantiene) (S)
 - [ ] 4.7 Query `GET /access/{token}` (S)
 - [ ] 4.8 Vencimiento de cupones al leer y marcado diario en bloque (S)
 - [ ] 4.9 `GET /me/business/activity` (cupones generados, canjes) (S)
-- [ ] 4.10 Frontend del dueño: Beneficios y cupo, Panel de inicio con actividad, Canjear cupón (L)
-- [ ] 4.11 Frontend del cliente: Obtener cupón, Cupón generado, Mis cupones (L)
+- [ ] 4.10 Frontend del dueño: Beneficios y cupo, Panel de inicio con actividad, Canjear cupón con escáner de QR dentro del panel (cámara con `getUserMedia`), ingreso manual siempre disponible y vista previa antes de "Confirmar canje" (L)
+- [ ] 4.11 Frontend del cliente: Obtener cupón, Cupón generado y Mis cupones, con el QR del cupón (solo el código) (L)
+
+> **Dependencias nuevas de frontend (QR):** esta fase suma dos paquetes, un generador de QR (para "Cupón generado" y "Mis cupones") y un lector de QR (para el escáner de "Canjear"). Ninguno se instala sin aprobación explícita del responsable del proyecto y con versión exacta fijada en `frontend/package.json` (sin `^` ni `~`). Para escanear, el navegador exige HTTPS en producción (Fase 8, tarea 8.4); en desarrollo `localhost` alcanza.
 
 **Vistas:** Beneficios y cupo mensual, Panel de inicio, Canjear cupón, Obtener cupón, Cupón generado, Mis cupones.
 **DoD:** test de concurrencia demuestra un único canje; el flujo completo funciona de punta a punta y los intentos de abuso quedan frenados por el límite por IP y el cupo.
@@ -607,7 +621,7 @@ Convenciones de trabajo:
 - [ ] 8.1 Checklist de seguridad (sección 7.1) y `govulncheck`/`npm audit` en CI (M)
 - [ ] 8.2 Observabilidad: métricas y trazas (M)
 - [ ] 8.3 Backups automáticos + prueba de restauración (M)
-- [ ] 8.4 Despliegue en VPS con `docker-compose.prod.yml`, HTTPS y proxy reverso (L)
+- [ ] 8.4 Despliegue en VPS con `docker-compose.prod.yml`, HTTPS y proxy reverso; el escáner de QR del panel necesita HTTPS en producción porque el navegador solo da la cámara en contextos seguros (L)
 - [ ] 8.5 Términos y condiciones (incluyendo reglas de moderación de reseñas), política de privacidad, definición de facturación (S)
 - [ ] 8.6 Runbook: operación manual mensual de pagos (revisar Mercado Pago y registrar pagos), cómo confirmar un alta con los tres chequeos (el mail "nuevo suscriptor" de Mercado Pago tiene el mismo email que declaró el dueño; plan y monto correctos; perfil revisado), cómo restaurar un backup; y, para las actividades outdoor (categoría `trekking-outdoor`), confirmar que el guía esté habilitado y tenga seguro antes de activar el alta (S)
 
@@ -633,6 +647,7 @@ Convenciones de trabajo:
 | Error humano al registrar pagos manualmente y falta de escala | Vista "por vencer", gracia de 7 días, runbook y automatización con webhooks cuando haya ≈15–20 locales |
 | Alguien llega a `/onboarding` sin haber pagado | El negocio queda en `pending_review` y solo el super admin lo activa tras confirmar el pago |
 | Doble canje de cupón | `UPDATE` atómico + test de concurrencia |
+| Captura de pantalla compartida del cupón o de su QR (el código circula como imagen) | El QR lleva solo el código, sin datos personales; la vista previa muestra el nombre del cliente para que el dueño lo confronte antes de confirmar; el canje es de un solo uso y atómico, así que una captura reenviada no se puede canjear dos veces |
 | Abuso de cupones al no haber cuenta ni verificación | Límite por IP, normalización de contacto, un pendiente por cliente y local, cupo mensual; si hay abuso real, agregar captcha o verificación por WhatsApp |
 | Reseñas falsas, autoreseña del dueño y contenido de terceros | Solo con cupón canjeado, límite por IP, moderación del super admin, detección por contacto del dueño y reglas en los términos |
 | Revelar la identidad de un competidor con pocos datos (benchmarking, post-MVP) | Mínimo de 5 locales por categoría y zona; solo medianas y percentiles |

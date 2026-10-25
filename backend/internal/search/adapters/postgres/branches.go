@@ -38,9 +38,10 @@ SELECT v.branch_id, v.business_id, v.business_name, v.business_slug, v.branch_na
        v.address, v.city, v.reference,
        ST_Y(v.location::geometry), ST_X(v.location::geometry),
        ST_Distance(v.location, o.p) AS distance_m,
-       v.rating_avg::float8, v.rating_count, v.verified_at IS NOT NULL, v.featured
+       v.rating_avg::float8, v.rating_count, v.verified_at IS NOT NULL, v.featured, c.slug, c.name
 FROM near n
-JOIN visible_branches v ON v.branch_id = n.id, origin o
+JOIN visible_branches v ON v.branch_id = n.id
+JOIN categories c ON c.id = v.category_id, origin o
 WHERE ($5::text = '' OR v.category_id = (SELECT id FROM categories WHERE slug = $5::text))
 ORDER BY floor(ST_Distance(v.location, o.p) / $4::float8), v.featured DESC,
          ST_Distance(v.location, o.p), v.branch_id
@@ -66,7 +67,7 @@ func collect(rows pgx.Rows) ([]search.Branch, error) {
 		var b search.Branch
 		if err := rows.Scan(&b.BranchID, &b.BusinessID, &b.BusinessName, &b.BusinessSlug, &b.BranchName,
 			&b.Address, &b.City, &b.Reference, &b.Lat, &b.Lng, &b.DistanceM,
-			&b.RatingAvg, &b.RatingCount, &b.Verified, &b.Featured); err != nil {
+			&b.RatingAvg, &b.RatingCount, &b.Verified, &b.Featured, &b.CategorySlug, &b.CategoryName); err != nil {
 			return nil, fmt.Errorf("postgres: scan branch: %w", err)
 		}
 		branches = append(branches, b)
