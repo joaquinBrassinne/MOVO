@@ -10,12 +10,8 @@ import { useEffect } from "react";
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
 import { PlusIcon } from "@/components/socios/icons";
+import { TILES_ATTRIBUTION, TILES_URL } from "@/lib/map";
 import type { MapView, Pin } from "@/lib/business/useBranchForm";
-
-// Los tiles públicos de OSM son para el piloto; en producción la URL cambia por variable.
-const TILES_URL =
-  process.env.NEXT_PUBLIC_MAP_TILES_URL ?? "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
 const CITY_ZOOM = 12;
 const STREET_ZOOM = 17;
@@ -46,7 +42,7 @@ export default function BranchMap({ pin, view, onMove }: Props) {
       scrollWheelZoom={false}
       className="size-full"
     >
-      <TileLayer url={TILES_URL} attribution={ATTRIBUTION} />
+      <TileLayer url={TILES_URL} attribution={TILES_ATTRIBUTION} />
       <FlyTo view={view} zoomIn={pin !== null} />
       <PlaceOnClick onPick={onMove} />
       {pin ? (
