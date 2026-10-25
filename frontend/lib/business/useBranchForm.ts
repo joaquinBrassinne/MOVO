@@ -95,9 +95,9 @@ export function useBranchForm(existing: Branch | null, defaultName = DEFAULT_BRA
     if (pin) showPin(pin);
   }
 
-  /** Valida, guarda (crea o actualiza) y dice si se pudo. */
-  async function submit(): Promise<boolean> {
-    if (pending) return false;
+  /** Valida, guarda (crea o actualiza) y devuelve el id de la sede, o `null` si no se pudo. */
+  async function submit(): Promise<number | null> {
+    if (pending) return null;
 
     const fields: Record<string, string> = {};
     if (name.trim() === "") fields.name = "Ingresá el nombre de la sede";
@@ -109,7 +109,7 @@ export function useBranchForm(existing: Branch | null, defaultName = DEFAULT_BRA
     }
     if (Object.keys(fields).length > 0 || pin === null) {
       setFeedback({ fields });
-      return false;
+      return null;
     }
 
     setPending(true);
@@ -127,9 +127,9 @@ export function useBranchForm(existing: Branch | null, defaultName = DEFAULT_BRA
     const result = await (existing ? editBranch(existing.id, input) : addBranch(input));
     setPending(false);
 
-    if (result.ok) return true;
+    if (result.ok) return result.data.id;
     setFeedback(describeFailure(result));
-    return false;
+    return null;
   }
 
   return {
@@ -149,6 +149,7 @@ export function useBranchForm(existing: Branch | null, defaultName = DEFAULT_BRA
     searching,
     pending,
     feedback,
+    setFeedback,
     search,
     locateMe,
     recenter,

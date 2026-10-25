@@ -23,7 +23,7 @@ export function StepBranch({ branch, onSaved, onNext, onBack }: Props) {
 
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (await form.submit()) {
+    if ((await form.submit()) !== null) {
       onSaved();
       onNext();
     }
