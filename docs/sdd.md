@@ -176,13 +176,13 @@ Todas las tablas con `id` (UUID v7 o `bigserial`), `created_at`, `updated_at`. M
 | `refresh_tokens` | user_id, token_hash, expires_at, revoked_at, replaced_by |
 | `customers` | name, phone (WhatsApp, normalizado), created_at — contacto declarado, **sin verificación ni contraseña** |
 | `categories` | slug, name — seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel |
-| `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description (≤ 500 caracteres), whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, payment_reference |
+| `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description (≤ 500 caracteres), whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, mp_payer_email (email con el que pagó en Mercado Pago, obligatorio al enviar a revisión), mp_payer_name (nombre completo del titular, obligatorio, mínimo 3 caracteres), mp_return_params (parámetros de la URL de retorno, solo pista para el admin) |
 | `branches` | business_id, name, address, city, reference (opcional, ≤ 100), `location geography(Point,4326)`, external_booking_url (opcional), rating_avg, rating_count, active — **la búsqueda se hace por sede** |
 | `business_hours` | branch_id, weekday, opens_at, closes_at |
 | `business_images` | business_id, object_key, position |
 | `services` | business_id, branch_id (opcional), name, description, price (opcional, pesos enteros; sin duración porque el MVP no tiene agenda), active — lo que el negocio ofrece (clase de yoga, alquiler de cancha, etc.) |
 | `service_schedules` | service_id, weekday, starts_at, ends_at |
-| `subscriptions` | business_id, plan (`starter`/`pro`), paid_until, payment_reference, confirmed_by, confirmed_at, notes |
+| `subscriptions` | business_id, plan (`starter`/`pro`, lo fija el super admin al confirmar el pago, nunca el dueño), paid_until (vigencia inicial que elige el admin al activar), mp_subscription_ref (opcional: referencia de la suscripción en el panel de Mercado Pago, la que figura en el mail "nuevo suscriptor"), confirmed_by, confirmed_at, notes |
 | `benefits` | business_id, type (`percent`/`welcome_gift`), percent (10/15/20), gift_description, active, monthly_limit (configurable por el dueño) |
 | `benefit_codes` | code (único), benefit_id, business_id, customer_id, access_token_hash, status (`pending`/`redeemed`/`expired`), expires_at (= creación + 48 h), redeemed_at, redeemed_branch_id, redeemed_by |
 | `reviews` | branch_id, business_id, benefit_code_id (único), customer_id, rating 1–5, comment (≤ 500, opcional), display_name, show_name, status (`visible`/`reported`/`hidden`), created_at |
@@ -297,9 +297,9 @@ El vencimiento se evalúa por `expires_at` al leer; una tarea diaria marca como 
 1. La landing muestra los planes con botones "Contratar Starter" y "Contratar Pro". Cada botón abre el **link del plan de suscripción de Mercado Pago** (`MP_STARTER_URL`, `MP_PRO_URL`).
 2. El dueño abre el link una vez, elige el medio de pago y autoriza: **Mercado Pago cobra automáticamente cada mes**.
 3. Tras pagar, Mercado Pago redirige a `/onboarding` (a verificar en la configuración del plan; si no se pudiera, el admin envía el enlace de `/onboarding` por WhatsApp al confirmar el pago).
-4. En `/onboarding` el dueño crea su cuenta, carga su número de WhatsApp y completa sus datos (negocio, sede con pin en el mapa, servicios, horarios, fotos). Puede indicar opcionalmente el **número de operación** del comprobante (`payment_reference`). Cualquier parámetro que Mercado Pago agregue a la URL de retorno se guarda solo como ayuda; **nunca es prueba de pago**.
+4. En `/onboarding` el dueño crea su cuenta, carga su número de WhatsApp y completa sus datos (negocio, sede con pin en el mapa, servicios, horarios, fotos). Mercado Pago no entrega comprobante ni número de operación al pagador, así que en el último paso declara, obligatorios, el **email con el que pagó** (`mp_payer_email`) y el **nombre completo del titular** (`mp_payer_name`). El onboarding **no pregunta qué plan pagó**. Si la URL de retorno trae un parámetro `plan`, y cualquier otro que Mercado Pago agregue, se guarda solo como pista visible para el admin (`mp_return_params`); **nunca es un dato confiable ni prueba de pago**. El super admin cruza el email y el nombre declarados con el mail "nuevo suscriptor" de Mercado Pago y **fija el plan al activar**.
 5. El negocio queda en `pending_review`.
-6. El super admin **confirma el pago en su cuenta de Mercado Pago** y activa el negocio (crea la `subscription` con `paid_until`).
+6. Al cobrador, Mercado Pago le envía el mail "¡Tienes un nuevo suscriptor en <plan>!" con nombre completo, email, plan, monto y frecuencia del suscriptor y un enlace a "Detalles de la suscripción": **ese mail funciona como alerta** de que hay un alta para revisar. Con los tres chequeos hechos (mail con el mismo email, plan y monto correctos, perfil revisado), el super admin activa el negocio: elige el plan y la vigencia inicial y se crea la `subscription` con `paid_until`.
 7. **Cada mes** el super admin revisa en Mercado Pago qué locales cobraron y presiona "Registrar pago", que extiende `paid_until`. Si un cobro falla o el dueño cancela, el local sigue visible durante la gracia (7 días) y luego deja de aparecer.
 8. El panel muestra los locales "por vencer" (7 días) y arma un enlace `wa.me` con un recordatorio prearmado para el dueño.
 9. Cambio de plan, cancelación y actualización de precios por inflación son acciones manuales del super admin (el precio se actualiza en el plan de Mercado Pago y en la configuración).
@@ -364,7 +364,7 @@ Convenciones: errores en el sobre JSON único de §7.2 (`code`, `message`, `deta
 - Validación de uploads (tipo MIME real, tamaño máx.), URLs prefirmadas con expiración corta.
 - Clientes sin cuenta: tokens de acceso aleatorios de ≥ 128 bits guardados hasheados, con expiración; rate limit en endpoints públicos que escriben.
 - El número de WhatsApp del dueño no se expone en la API pública (solo en el redirect).
-- Confirmación de pagos solo por el super admin; nada que llegue por URL de retorno se toma como prueba de pago.
+- Confirmación de pagos solo por el super admin; nada que llegue por URL de retorno se toma como prueba de pago ni define el plan.
 - CORS restrictivo, cabeceras de seguridad, secretos solo por variables de entorno, nada en el repo.
 - Dependencias auditadas (`govulncheck`, `npm audit`) en CI.
 - Tratamiento de datos personales conforme a la **Ley 25.326** (política de privacidad, mínimo dato necesario).
@@ -484,9 +484,9 @@ Convenciones de trabajo:
 - [x] 2.6 Migraciones y dominio de `services` y `service_schedules` (CRUD, activar/desactivar, límites del plan) (M)
 - [x] 2.7 Super admin: aprobar / pausar / reactivar / baja lógica, marcar verificado, marcar piloto + `audit_log` (M)
 - [x] 2.7b Capa HTTP de la fase: endpoints `/me/business...`, `/admin/businesses...` y `/plans`, con rol por grupo de rutas, y cableado en `cmd/api` (M)
-- [x] 2.8 Frontend `/onboarding`: crear cuenta y completar datos, WhatsApp, sede con pin en el mapa, fotos y número de operación opcional; estado "en revisión" (L)
+- [x] 2.8 Frontend `/onboarding`: crear cuenta y completar datos, WhatsApp, sede con pin en el mapa, fotos y, en el paso 4, email y nombre completo del titular en Mercado Pago (obligatorios; sin número de operación ni comprobante); estado "en revisión" (L)
 - [x] 2.9 Frontend: Servicios y horarios y Sedes, con contador del límite del plan (M)
-- [x] 2.10 Frontend super admin: lista de locales y acciones (M)
+- [x] 2.10 Frontend super admin: lista de locales y acciones; en el cajón, email y nombre declarados, pista de plan si existe y checklist de confirmación ("Mail de Mercado Pago con el mismo email", "Plan y monto correctos", "Perfil revisado") (M)
 
 **Vistas:** Onboarding, Servicios y horarios, Sedes, Super admin → Locales.
 **DoD:** un dueño crea su local, el admin lo activa y lo marca verificado, y queda en estado `active`.
@@ -557,7 +557,7 @@ Convenciones de trabajo:
 - [ ] 5.2 Dominio `billing`: vigencia, gracia y estados derivados (M)
 - [ ] 5.3 Configuración de planes por env y endpoint público `GET /plans` con precio y URL de contratación (S)
 - [ ] 5.4 Vista SQL `visible_branches` con la regla de visibilidad y tests (activo, en gracia, vencido, piloto) (M)
-- [ ] 5.5 Super admin: confirmar pago, registrar pago mensual, suspender, cambiar de plan + `audit_log` (M)
+- [ ] 5.5 Super admin: confirmar pago (el admin elige el plan y la vigencia inicial; el plan nunca sale del onboarding ni de la URL de retorno), registrar pago mensual, suspender, cambiar de plan + `audit_log` (M)
 - [ ] 5.6 Vista "por vencer en 7 días" y enlace `wa.me` de recordatorio (S)
 - [ ] 5.7 Aplicar límites del plan al cambiarlo (downgrade sin borrar datos) (M)
 - [ ] 5.8 Frontend: landing con planes y botones de Mercado Pago, Plan y suscripción del dueño (vigencia y aviso de gracia), Super admin → Suscripciones (L)
@@ -603,7 +603,7 @@ Convenciones de trabajo:
 - [ ] 8.3 Backups automáticos + prueba de restauración (M)
 - [ ] 8.4 Despliegue en VPS con `docker-compose.prod.yml`, HTTPS y proxy reverso (L)
 - [ ] 8.5 Términos y condiciones (incluyendo reglas de moderación de reseñas), política de privacidad, definición de facturación (S)
-- [ ] 8.6 Runbook: operación manual mensual de pagos (revisar Mercado Pago y registrar pagos), cómo confirmar un alta, cómo restaurar un backup (S)
+- [ ] 8.6 Runbook: operación manual mensual de pagos (revisar Mercado Pago y registrar pagos), cómo confirmar un alta con los tres chequeos (el mail "nuevo suscriptor" de Mercado Pago tiene el mismo email que declaró el dueño; plan y monto correctos; perfil revisado), cómo restaurar un backup (S)
 
 **DoD:** sistema en producción, monitoreado y con piloto activo.
 

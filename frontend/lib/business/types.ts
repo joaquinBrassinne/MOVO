@@ -41,8 +41,19 @@ export interface Business {
   status: BusinessStatus;
   pilot: boolean;
   verified: boolean;
-  payment_reference: string;
+  /** Email y nombre con los que el dueño dice haber pagado en Mercado Pago. */
+  mp_payer_email: string;
+  mp_payer_name: string;
+  /** Plan que sugería la URL de retorno; solo una pista, el admin fija el plan. */
+  mp_plan_hint: string;
   created_at: string;
+}
+
+/** Lo que el dueño declara al enviar el negocio a revisión. */
+export interface PayerInput {
+  email: string;
+  name: string;
+  returnParams: Record<string, string>;
 }
 
 export interface Branch {

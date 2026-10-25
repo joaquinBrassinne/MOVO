@@ -241,3 +241,9 @@ func TestBranchVisibilityToggleRespectsThePlan(t *testing.T) {
 		t.Errorf("unknown field = %d, want 400", got.status)
 	}
 }
+
+// payerBody is the submit body: the Mercado Pago email and name the owner declares,
+// plus whatever the return URL carried.
+func payerBody(email, name string, returnParams map[string]string) map[string]any {
+	return map[string]any{"mp_payer_email": email, "mp_payer_name": name, "mp_return_params": returnParams}
+}

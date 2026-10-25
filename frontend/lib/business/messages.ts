@@ -18,7 +18,7 @@ export interface Failure {
   error: { code: string; message: string; details?: unknown };
 }
 
-const FIELD_MESSAGES: Record<string, string> = {
+export const FIELD_MESSAGES: Record<string, string> = {
   name: "Ingresá un nombre",
   category_id: "Elegí una categoría",
   description: "La descripción tiene demasiados caracteres (máximo 500)",
@@ -27,7 +27,8 @@ const FIELD_MESSAGES: Record<string, string> = {
   city: "Ingresá la ciudad",
   location: "Marcá la ubicación en el mapa",
   booking_url: "Ingresá un link que empiece con https://",
-  payment_reference: "El número de operación es demasiado largo",
+  mp_payer_email: "Ingresá el email con el que pagaste en Mercado Pago",
+  mp_payer_name: "Ingresá tu nombre completo, como figura en Mercado Pago",
   content_type: "Usá una foto JPG, PNG o WebP",
   size: "La foto debe pesar hasta 5 MB",
   price: "Ingresá un precio válido en pesos",

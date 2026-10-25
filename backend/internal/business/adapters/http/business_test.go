@@ -153,8 +153,8 @@ func TestOwnerEditsAndSubmitsTheBusiness(t *testing.T) {
 		t.Fatalf("update = %d %v, want the new name with the same slug", updated.status, updated.body)
 	}
 
-	submitted := s.do(http.MethodPost, "/me/business/submit", owner, map[string]any{"payment_reference": "OP-123"})
-	if submitted.status != http.StatusOK || submitted.body["status"] != "pending_review" || submitted.body["payment_reference"] != "OP-123" {
+	submitted := s.do(http.MethodPost, "/me/business/submit", owner, payerBody("ana@example.com", "Ana Pérez", map[string]string{"plan": "starter"}))
+	if submitted.status != http.StatusOK || submitted.body["status"] != "pending_review" || submitted.body["mp_payer_email"] != "ana@example.com" || submitted.body["mp_plan_hint"] != "starter" {
 		t.Fatalf("submit = %d %v", submitted.status, submitted.body)
 	}
 
@@ -212,5 +212,37 @@ func TestCategoriesArePublicAndCacheable(t *testing.T) {
 	}
 	if cc := got.header.Get("Cache-Control"); cc != "public, max-age=300" {
 		t.Errorf("Cache-Control = %q", cc)
+	}
+}
+
+func TestSubmitRequiresTheMercadoPagoPayer(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		body  map[string]any
+		field string
+	}{
+		{"no body", map[string]any{}, "mp_payer_email"},
+		{"email without domain", payerBody("ana", "Ana Pérez", nil), "mp_payer_email"},
+		{"email with a display name", payerBody("Ana <ana@example.com>", "Ana Pérez", nil), "mp_payer_email"},
+		{"no name", payerBody("ana@example.com", "", nil), "mp_payer_name"},
+		{"name too short", payerBody("ana@example.com", "Al", nil), "mp_payer_name"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := newServer(t, planLimits{})
+			owner := ownerWithBusiness(s, "owner@example.com")
+
+			got := s.do(http.MethodPost, "/me/business/submit", owner, tt.body)
+			if got.status != http.StatusUnprocessableEntity || got.errorCode() != "validation_failed" {
+				t.Fatalf("submit = %d %v, want 422 validation_failed", got.status, got.body)
+			}
+			if mine := s.do(http.MethodGet, "/me/business", owner, nil); mine.body["business"].(map[string]any)["status"] != "draft" {
+				t.Errorf("a rejected submit must leave the business a draft: %v", mine.body)
+			}
+		})
 	}
 }

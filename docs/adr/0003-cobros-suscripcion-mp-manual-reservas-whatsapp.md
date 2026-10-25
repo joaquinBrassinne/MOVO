@@ -15,7 +15,7 @@ Para el piloto inicial en Almafuerte y Río Tercero (5 a 10 locales activos), la
 1. **Planes de suscripción de Mercado Pago sin integración de API:**
    - Se crean planes de suscripción preaprobados en la plataforma de Mercado Pago (links configurados por variables de entorno `MP_STARTER_URL` y `MP_PRO_URL`).
    - El dueño del local abre el enlace una sola vez y autoriza el débito automático mensual que gestiona Mercado Pago.
-   - Mercado Pago redirige a `/onboarding` donde el dueño completa sus datos e ingresa opcionalmente el número de operación (`payment_reference`) como referencia informativa (nunca como prueba de pago).
+   - Mercado Pago redirige a `/onboarding` donde el dueño completa sus datos y declara el email y el nombre completo con los que pagó (`mp_payer_email`, `mp_payer_name`), porque Mercado Pago no entrega comprobante ni número de operación al pagador. Son una referencia informativa (nunca prueba de pago) y el plan no se pregunta: lo fija el super admin al confirmar, según el mail "nuevo suscriptor" que recibe de Mercado Pago.
    - **Registro manual:** El super admin valida el cobro en su panel de Mercado Pago y activa el negocio fijando `paid_until`. Cada mes, revisa cobros y ejecuta "Registrar pago" en el panel de administración de MOVO para extender la vigencia.
    - Si un pago no ingresa, opera un período de gracia de 7 días antes de ocultar el local en la búsqueda.
 2. **Reservas y contacto delegados a WhatsApp:**
@@ -33,7 +33,7 @@ Para el piloto inicial en Almafuerte y Río Tercero (5 a 10 locales activos), la
   - Conversión más rápida para los usuarios finales, sin fricción de registro ni confirmación de turnos dentro de la app.
 - **Negativas / Costos:**
   - Dependencia de un proceso operativo manual mensual por parte del super admin.
-  - Riesgo de error humano al registrar pagos o al tipiar números de comprobante.
+  - Riesgo de error humano al registrar pagos o al cruzar el email y el nombre declarados con el mail de Mercado Pago.
   - Pérdida de trazabilidad fina dentro del sistema sobre cancelaciones o desuscripciones en Mercado Pago hasta la revisión mensual.
 
 ## Cuándo automatizar con webhooks (Trigger de transición)

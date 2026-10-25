@@ -133,11 +133,11 @@ func TestSubmitBusiness(t *testing.T) {
 	}
 	submit := commands.NewSubmitBusiness(store)
 
-	got, err := submit.Handle(t.Context(), commands.SubmitBusinessInput{OwnerID: 7, PaymentReference: " OP-1 "})
+	got, err := submit.Handle(t.Context(), commands.SubmitBusinessInput{OwnerID: 7, PayerEmail: " ana@example.com ", PayerName: " Ana Pérez "})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if got.Status != domain.StatusPendingReview || got.PaymentReference != "OP-1" {
+	if got.Status != domain.StatusPendingReview || got.MPPayerEmail != "ana@example.com" || got.MPPayerName != "Ana Pérez" {
 		t.Errorf("business = %+v", got)
 	}
 
@@ -146,5 +146,29 @@ func TestSubmitBusiness(t *testing.T) {
 	}
 	if _, err := submit.Handle(t.Context(), commands.SubmitBusinessInput{OwnerID: 99}); !errors.Is(err, business.ErrBusinessNotFound) {
 		t.Errorf("owner without business error = %v, want ErrBusinessNotFound", err)
+	}
+}
+
+func TestSubmitBusinessNeedsThePayerAndKeepsTheDraftOtherwise(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeBusinesses(1)
+	if _, err := commands.NewCreateBusiness(store).Handle(t.Context(), createInput(7, "Studio")); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	submit := commands.NewSubmitBusiness(store)
+
+	if _, err := submit.Handle(t.Context(), commands.SubmitBusinessInput{OwnerID: 7, PayerName: "Ana Pérez"}); !errors.Is(err, domain.ErrPayerEmailInvalid) {
+		t.Fatalf("no email error = %v, want ErrPayerEmailInvalid", err)
+	}
+	if _, err := submit.Handle(t.Context(), commands.SubmitBusinessInput{OwnerID: 7, PayerEmail: "ana@example.com"}); !errors.Is(err, domain.ErrPayerNameInvalid) {
+		t.Fatalf("no name error = %v, want ErrPayerNameInvalid", err)
+	}
+
+	got, err := submit.Handle(t.Context(), commands.SubmitBusinessInput{
+		OwnerID: 7, PayerEmail: "ana@example.com", PayerName: "Ana Pérez", MPReturnParams: map[string]string{"plan": "pro"},
+	})
+	if err != nil || got.PlanHint() != "pro" {
+		t.Errorf("submit after the fixes = %+v, %v; want it accepted with the plan hint", got, err)
 	}
 }

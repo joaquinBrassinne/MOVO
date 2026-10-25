@@ -102,7 +102,15 @@ test.describe("Admin locales", () => {
         `${BRANCH.booking}`,
       );
       await expect(panel).toContainText(`${BUSINESS.category} · 2 de 2 servicios activos`);
-      await expect(panel).toContainText("#98451238472");
+      await expect(panel).toContainText("Email en Mercado Pago: ana@example.com");
+      await expect(panel).toContainText("Nombre del titular: Ana Pérez");
+      for (const check of [
+        "Mail de Mercado Pago con el mismo email",
+        "Plan y monto correctos",
+        "Perfil revisado",
+      ]) {
+        await panel.getByLabel(check).check();
+      }
       await expect(panel).toContainText("Todavía no hay acciones registradas.");
       await expect(
         panel.getByRole("button", { name: "Aprobar comercio y publicar" }),

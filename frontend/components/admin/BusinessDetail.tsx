@@ -205,17 +205,30 @@ export function BusinessDetail({ id, onClose, onChanged }: Props) {
       </Section>
 
       <Section title="Pago declarado">
-        {business.payment_reference ? (
-          <p className="text-sm">
-            Operación de Mercado Pago:{" "}
-            <strong className="font-display text-base">#{business.payment_reference}</strong>
-          </p>
+        {business.mp_payer_email ? (
+          <dl className="space-y-1 text-sm">
+            <div>
+              <dt className="inline text-movo-slate">Email en Mercado Pago: </dt>
+              <dd className="inline font-semibold break-all">{business.mp_payer_email}</dd>
+            </div>
+            <div>
+              <dt className="inline text-movo-slate">Nombre del titular: </dt>
+              <dd className="inline font-semibold">{business.mp_payer_name}</dd>
+            </div>
+          </dl>
         ) : (
-          <p className="text-sm text-movo-slate">El dueño no cargó un número de operación.</p>
+          <p className="text-sm text-movo-slate">El dueño todavía no declaró su pago.</p>
         )}
-        <p className="text-xs text-movo-slate">
-          Compará el número con el pago recibido en tu cuenta de Mercado Pago antes de aprobar.
-        </p>
+        {business.mp_plan_hint ? (
+          <p className="text-sm">
+            Pista de plan en la URL de retorno:{" "}
+            <strong className="font-display text-base">{business.mp_plan_hint}</strong>
+            <span className="block text-xs text-movo-slate">
+              Es solo una pista: el plan se fija según el mail y el panel de Mercado Pago.
+            </span>
+          </p>
+        ) : null}
+        <ConfirmationChecklist key={business.id} />
       </Section>
 
       <Section title="Historial de auditoría">
@@ -244,6 +257,42 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <h3 className="text-xs font-bold tracking-wide text-movo-slate uppercase">{title}</h3>
       <div className="space-y-3 rounded-2xl bg-movo-cream p-4">{children}</div>
     </section>
+  );
+}
+
+const CONFIRMATION_CHECKS = [
+  "Mail de Mercado Pago con el mismo email",
+  "Plan y monto correctos",
+  "Perfil revisado",
+] as const;
+
+/** Los tres chequeos antes de aprobar. Es una ayuda de pantalla: no se guarda ni bloquea la acción. */
+function ConfirmationChecklist() {
+  const [done, setDone] = useState<ReadonlySet<string>>(new Set());
+
+  function toggle(label: string) {
+    setDone((current) => {
+      const next = new Set(current);
+      if (!next.delete(label)) next.add(label);
+      return next;
+    });
+  }
+
+  return (
+    <fieldset className="space-y-2 border-t border-movo-slate/20 pt-3">
+      <legend className="text-xs font-bold text-movo-slate">Antes de aprobar</legend>
+      {CONFIRMATION_CHECKS.map((label) => (
+        <label key={label} className="flex items-center gap-3 text-sm font-semibold">
+          <input
+            type="checkbox"
+            checked={done.has(label)}
+            onChange={() => toggle(label)}
+            className="size-5 accent-movo-ink"
+          />
+          {label}
+        </label>
+      ))}
+    </fieldset>
   );
 }
 

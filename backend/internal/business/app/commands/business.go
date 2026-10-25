@@ -110,8 +110,10 @@ func (c *UpdateBusiness) Handle(ctx context.Context, in UpdateBusinessInput) (do
 
 // SubmitBusinessInput asks for the manual review.
 type SubmitBusinessInput struct {
-	OwnerID          int64
-	PaymentReference string
+	OwnerID        int64
+	PayerEmail     string
+	PayerName      string
+	MPReturnParams map[string]string
 }
 
 // SubmitBusiness sends the owner's draft business to review.
@@ -124,8 +126,9 @@ func NewSubmitBusiness(businesses business.BusinessRepository) *SubmitBusiness {
 	return &SubmitBusiness{businesses: businesses}
 }
 
-// Handle moves the business from draft to pending_review, recording the optional
-// operation number. A business that is not a draft yields domain.ErrInvalidTransition.
+// Handle moves the business from draft to pending_review, recording the Mercado Pago
+// email and name the owner declares. A business that is not a draft yields
+// domain.ErrInvalidTransition; a missing or invalid declaration leaves it a draft.
 func (c *SubmitBusiness) Handle(ctx context.Context, in SubmitBusinessInput) (domain.Business, error) {
 	current, err := c.businesses.FindByOwner(ctx, in.OwnerID)
 	if err != nil {
@@ -136,9 +139,10 @@ func (c *SubmitBusiness) Handle(ctx context.Context, in SubmitBusinessInput) (do
 	if err != nil {
 		return domain.Business{}, err
 	}
-	if submitted, err = submitted.SetPaymentReference(in.PaymentReference); err != nil {
+	if submitted, err = submitted.DeclarePayer(in.PayerEmail, in.PayerName); err != nil {
 		return domain.Business{}, err
 	}
+	submitted = submitted.RecordReturnParams(in.MPReturnParams)
 
 	if err := c.businesses.Save(ctx, submitted); err != nil {
 		return domain.Business{}, fmt.Errorf("save business: %w", err)

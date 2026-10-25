@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { useMyBusiness } from "@/lib/business/hooks";
+import { rememberReturnParams } from "@/lib/business/returnParams";
 import { BUSINESS_STATUS, type MyBusiness } from "@/lib/business/types";
 import { PANEL_PATH, useRequireSession } from "@/lib/session/hooks";
 
@@ -29,6 +30,12 @@ export function OnboardingFlow() {
   const business = mine.state.status === "ready" ? mine.state.data.business : null;
   const approved =
     business?.status === BUSINESS_STATUS.ACTIVE || business?.status === BUSINESS_STATUS.PAUSED;
+
+  // Mercado Pago vuelve acá con parámetros en la URL; se guardan ahora porque el envío
+  // ocurre pasos después y el ingreso puede cambiar la URL antes.
+  useEffect(() => {
+    rememberReturnParams(window.location.search);
+  }, []);
 
   useEffect(() => {
     if (approved) router.replace(PANEL_PATH);

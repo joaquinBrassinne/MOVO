@@ -396,14 +396,19 @@ test.describe("Onboarding", () => {
     );
 
     test(
-      "Sends the business to review with the payment reference",
+      "Sends the business to review with the Mercado Pago payer",
       { tag: ["@critical", "@e2e", "@onboarding", "@ONBOARD-E2E-021"] },
       async ({ page }) => {
         const onboarding = new OnboardingPage(page);
         await onboarding.next.click();
         await onboarding.expectStep(4);
 
-        await onboarding.paymentReference.fill("98451238472");
+        await onboarding.submitForReview.click();
+        await expect(page.getByText("Ingresá el email con el que pagaste")).toBeVisible();
+        await expect(page.getByText("Ingresá tu nombre completo")).toBeVisible();
+
+        await onboarding.payerEmail.fill("ana@example.com");
+        await onboarding.payerName.fill("Ana Pérez");
         await onboarding.submitForReview.click();
 
         await expect(

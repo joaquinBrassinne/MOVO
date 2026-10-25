@@ -79,7 +79,7 @@ WHERE id = $1 AND status = $6 AND pilot = $7 AND (verified_at IS NOT NULL) = $8`
 
 const adminSelect = `
 SELECT b.id, b.owner_user_id, b.category_id, b.name, b.slug, b.description, b.whatsapp_number, b.status,
-       b.pilot, b.verified_at, b.verified_by, b.payment_reference, b.created_at,
+       b.pilot, b.verified_at, b.verified_by, b.mp_payer_email, b.mp_payer_name, b.mp_return_params, b.created_at,
        u.email, c.name, (SELECT count(*) FROM branches br WHERE br.business_id = b.id)
 FROM businesses b
 JOIN users u ON u.id = b.owner_user_id
@@ -92,15 +92,15 @@ type scanner interface {
 
 func scanAdminRow(row scanner) (business.AdminRow, error) {
 	var (
-		r   business.AdminRow
-		st  string
-		by  *int64
-		pay *string
+		r     business.AdminRow
+		st    string
+		by    *int64
+		payer payerColumns
 	)
 	err := row.Scan(
 		&r.Business.ID, &r.Business.OwnerID, &r.Business.CategoryID, &r.Business.Name, &r.Business.Slug,
 		&r.Business.Description, &r.Business.WhatsApp, &st, &r.Business.Pilot, &r.Business.VerifiedAt,
-		&by, &pay, &r.Business.CreatedAt, &r.OwnerEmail, &r.CategoryName, &r.BranchCount,
+		&by, &payer.email, &payer.name, &payer.params, &r.Business.CreatedAt, &r.OwnerEmail, &r.CategoryName, &r.BranchCount,
 	)
 	if err != nil {
 		return business.AdminRow{}, err
@@ -110,9 +110,7 @@ func scanAdminRow(row scanner) (business.AdminRow, error) {
 	if by != nil {
 		r.Business.VerifiedBy = *by
 	}
-	if pay != nil {
-		r.Business.PaymentReference = *pay
-	}
+	payer.applyTo(&r.Business)
 	return r, nil
 }
 

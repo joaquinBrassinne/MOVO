@@ -23,7 +23,8 @@ export class OnboardingPage extends BasePage {
 
   // Paso 4
   readonly fileInput: Locator;
-  readonly paymentReference: Locator;
+  readonly payerEmail: Locator;
+  readonly payerName: Locator;
   readonly submitForReview: Locator;
 
   constructor(page: Page) {
@@ -44,7 +45,8 @@ export class OnboardingPage extends BasePage {
     this.coordinates = page.getByText(/^Lat -?\d+\.\d{4} · Lng -?\d+\.\d{4}$/);
 
     this.fileInput = page.locator('input[type="file"]');
-    this.paymentReference = page.getByLabel("Número de operación");
+    this.payerEmail = page.getByLabel("Email con el que pagaste en Mercado Pago");
+    this.payerName = page.getByLabel("Nombre completo del titular");
     this.submitForReview = page.getByRole("button", { name: "Enviar a revisión" });
   }
 

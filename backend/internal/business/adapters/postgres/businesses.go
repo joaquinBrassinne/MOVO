@@ -3,6 +3,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -21,7 +22,7 @@ const (
 
 const selectBusiness = `
 SELECT id, owner_user_id, category_id, name, slug, description, whatsapp_number, status,
-       pilot, verified_at, verified_by, payment_reference, created_at
+       pilot, verified_at, verified_by, mp_payer_email, mp_payer_name, mp_return_params, created_at
 FROM businesses`
 
 // Businesses implements business.BusinessRepository.
@@ -69,14 +70,14 @@ func (r *Businesses) FindByOwner(ctx context.Context, ownerID int64) (domain.Bus
 // business.ErrBusinessNotFound.
 func scanBusiness(row pgx.Row) (domain.Business, error) {
 	var (
-		b       domain.Business
-		status  string
-		by      *int64
-		payment *string
+		b      domain.Business
+		status string
+		by     *int64
+		payer  payerColumns
 	)
 	err := row.Scan(
 		&b.ID, &b.OwnerID, &b.CategoryID, &b.Name, &b.Slug, &b.Description, &b.WhatsApp, &status,
-		&b.Pilot, &b.VerifiedAt, &by, &payment, &b.CreatedAt,
+		&b.Pilot, &b.VerifiedAt, &by, &payer.email, &payer.name, &payer.params, &b.CreatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Business{}, business.ErrBusinessNotFound
@@ -90,21 +91,23 @@ func scanBusiness(row pgx.Row) (domain.Business, error) {
 	if by != nil {
 		b.VerifiedBy = *by
 	}
-	if payment != nil {
-		b.PaymentReference = *payment
-	}
+	payer.applyTo(&b)
 	return b, nil
 }
 
-// Save persists the profile, status and payment reference of b. The slug and
+// Save persists the profile, status and declared payer of b. The slug and
 // the owner are deliberately not part of the UPDATE.
 func (r *Businesses) Save(ctx context.Context, b domain.Business) error {
+	params, err := encodeReturnParams(b.MPReturnParams)
+	if err != nil {
+		return err
+	}
 	tag, err := r.pool.Exec(ctx, `
 UPDATE businesses
 SET category_id = $2, name = $3, description = $4, whatsapp_number = $5, status = $6,
-    payment_reference = NULLIF($7, ''), updated_at = now()
+    mp_payer_email = NULLIF($7, ''), mp_payer_name = NULLIF($8, ''), mp_return_params = $9, updated_at = now()
 WHERE id = $1`,
-		b.ID, b.CategoryID, b.Name, b.Description, b.WhatsApp, string(b.Status), b.PaymentReference)
+		b.ID, b.CategoryID, b.Name, b.Description, b.WhatsApp, string(b.Status), b.MPPayerEmail, b.MPPayerName, params)
 
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == foreignKeyViolation && pgErr.ConstraintName == "businesses_category_id_fkey" {
@@ -131,4 +134,34 @@ func (r *Businesses) IsPilot(ctx context.Context, businessID int64) (bool, error
 		return false, fmt.Errorf("postgres: select pilot flag: %w", err)
 	}
 	return pilot, nil
+}
+
+// payerColumns holds the nullable columns with what the owner declared about the
+// Mercado Pago payment.
+type payerColumns struct {
+	email  *string
+	name   *string
+	params map[string]string
+}
+
+func (p payerColumns) applyTo(b *domain.Business) {
+	if p.email != nil {
+		b.MPPayerEmail = *p.email
+	}
+	if p.name != nil {
+		b.MPPayerName = *p.name
+	}
+	b.MPReturnParams = p.params
+}
+
+// encodeReturnParams turns the hint parameters into the jsonb value, NULL when empty.
+func encodeReturnParams(params map[string]string) ([]byte, error) {
+	if len(params) == 0 {
+		return nil, nil
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: encode return params: %w", err)
+	}
+	return raw, nil
 }
