@@ -54,9 +54,9 @@ interface InputProps {
   error?: string;
   disabled?: boolean;
   placeholder?: string;
-  type?: "text" | "url" | "tel" | "time";
+  type?: "text" | "url" | "tel" | "time" | "email";
   autoComplete?: string;
-  inputMode?: "text" | "tel" | "numeric" | "url";
+  inputMode?: "text" | "tel" | "numeric" | "url" | "email";
   maxLength?: number;
 }
 

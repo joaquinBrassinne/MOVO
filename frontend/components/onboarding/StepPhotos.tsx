@@ -5,6 +5,7 @@ import { useState, type SubmitEvent } from "react";
 import { CameraIcon, ImageIcon, StarIcon, XIcon } from "@/components/socios/icons";
 import { submitBusiness } from "@/lib/business/api";
 import { describeFailure, type FormMessage } from "@/lib/business/messages";
+import { recalledReturnParams } from "@/lib/business/returnParams";
 import { MAX_PHOTOS, PHOTO_TYPES, type Business, type Photo } from "@/lib/business/types";
 import { usePhotos } from "@/lib/business/usePhotos";
 
@@ -19,13 +20,15 @@ interface Props {
   onBack: () => void;
 }
 
-/** Paso 4: fotos del local y número de operación; al terminar el negocio pasa a revisión. */
+/** Paso 4: fotos del local y datos del pago en Mercado Pago; al terminar el negocio pasa a revisión. */
 export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
   const gallery = usePhotos(photos, onChanged);
-  const [reference, setReference] = useState(business.payment_reference);
+  const [email, setEmail] = useState(business.mp_payer_email);
+  const [name, setName] = useState(business.mp_payer_name);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<FormMessage | null>(null);
-  const [referenceError, setReferenceError] = useState<string | undefined>();
+  const [emailError, setEmailError] = useState<string | undefined>();
+  const [nameError, setNameError] = useState<string | undefined>();
 
   const [cover, ...others] = photos;
 
@@ -35,9 +38,10 @@ export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
 
     setPending(true);
     setMessage(null);
-    setReferenceError(undefined);
+    setEmailError(undefined);
+    setNameError(undefined);
 
-    const result = await submitBusiness(reference);
+    const result = await submitBusiness({ email, name, returnParams: recalledReturnParams() });
     setPending(false);
 
     if (result.ok) {
@@ -45,7 +49,8 @@ export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
       return;
     }
     const feedback = describeFailure(result);
-    setReferenceError(feedback.fields.payment_reference);
+    setEmailError(feedback.fields.mp_payer_email);
+    setNameError(feedback.fields.mp_payer_name);
     setMessage(feedback.form ?? null);
   }
 
@@ -54,8 +59,8 @@ export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
       <section>
         <h2 className="font-display text-4xl font-extrabold">Fotos y pago</h2>
         <p className="mt-2 text-base text-movo-slate">
-          Sumá fotos de tu espacio y, si ya pagaste, el número de operación para que confirmemos tu
-          alta más rápido.
+          Sumá fotos de tu espacio y completá con qué cuenta de Mercado Pago pagaste para que
+          confirmemos tu alta más rápido.
         </p>
       </section>
 
@@ -159,23 +164,42 @@ export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
         </p>
 
         <section className="space-y-4 rounded-3xl bg-white p-5 shadow-sm">
-          <h3 className="font-display text-lg font-bold">Comprobante de pago</h3>
+          <h3 className="font-display text-lg font-bold">Tu pago en Mercado Pago</h3>
+          <p className="text-sm text-movo-slate">Los usamos para confirmar tu pago más rápido.</p>
           <Field
-            id="payment-reference"
-            label="Número de operación"
-            error={referenceError}
-            hint={<span className="text-xs font-semibold text-movo-slate">Opcional</span>}
-            help="Está en el comprobante de Mercado Pago. Nos ayuda a confirmar tu alta más rápido."
+            id="mp-payer-email"
+            label="Email con el que pagaste en Mercado Pago"
+            required
+            error={emailError}
           >
             <TextInput
-              id="payment-reference"
-              value={reference}
-              onChange={setReference}
-              error={referenceError}
+              id="mp-payer-email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              value={email}
+              onChange={setEmail}
+              error={emailError}
               disabled={pending}
-              inputMode="numeric"
+              maxLength={254}
+              placeholder="tu@email.com"
+            />
+          </Field>
+          <Field
+            id="mp-payer-name"
+            label="Nombre completo del titular (como figura en Mercado Pago)"
+            required
+            error={nameError}
+          >
+            <TextInput
+              id="mp-payer-name"
+              autoComplete="name"
+              value={name}
+              onChange={setName}
+              error={nameError}
+              disabled={pending}
               maxLength={100}
-              placeholder="98451238472"
+              placeholder="Ana Pérez"
             />
           </Field>
         </section>

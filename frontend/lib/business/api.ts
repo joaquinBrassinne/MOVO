@@ -11,6 +11,7 @@ import type {
   BusinessInput,
   CategoryList,
   MyBusiness,
+  PayerInput,
   Place,
   PlanSummary,
   PresignedPhoto,
@@ -29,8 +30,12 @@ export const listCategories = () => requestPublic<CategoryList>("/categories");
 export const getMyBusiness = () => authed<MyBusiness>("GET", BASE);
 export const createBusiness = (input: BusinessInput) => authed<Business>("POST", BASE, input);
 export const updateBusiness = (input: BusinessInput) => authed<Business>("PUT", BASE, input);
-export const submitBusiness = (paymentReference: string) =>
-  authed<Business>("POST", `${BASE}/submit`, { payment_reference: paymentReference });
+export const submitBusiness = (payer: PayerInput) =>
+  authed<Business>("POST", `${BASE}/submit`, {
+    mp_payer_email: payer.email,
+    mp_payer_name: payer.name,
+    mp_return_params: payer.returnParams,
+  });
 
 export const geocode = (address: string, city: string) =>
   authed<Place>("POST", `${BASE}/geocode`, { address, city });
