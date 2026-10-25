@@ -110,13 +110,14 @@ jobs:
           | grep -E '^3\.[0-9]+'
       - name: show status
         run: make migrate-status
-      # `down` revierte una migración por vez: una por cada archivo de
-      # backend/migrations (00001 extensiones, 00002 identidad). Al sumar una
-      # migración, se suma un paso acá.
-      - name: revert the identity migration
-        run: make migrate-down
-      - name: revert the extensions migration
-        run: make migrate-down
+      # `down` revierte una migración por vez, así que se repite una vez por cada
+      # archivo de backend/migrations: al sumar una migración no hay que tocar
+      # este paso. Si alguna no revierte, `make` falla y el bucle se corta.
+      - name: revert every migration
+        run: |
+          for _ in backend/migrations/*.sql; do
+            make migrate-down
+          done
       - name: assert postgis is gone
         run: >-
           test -z "$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc
