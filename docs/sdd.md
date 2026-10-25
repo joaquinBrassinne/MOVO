@@ -186,7 +186,7 @@ Todas las tablas con `id` (UUID v7 o `bigserial`), `created_at`, `updated_at`. M
 | `benefits` | business_id, type (`percent`/`welcome_gift`), percent (10/15/20), gift_description, active, monthly_limit (configurable por el dueño) |
 | `benefit_codes` | code (único), benefit_id, business_id, customer_id, access_token_hash, status (`pending`/`redeemed`/`expired`), expires_at (= creación + 48 h), redeemed_at, redeemed_branch_id, redeemed_by |
 | `reviews` | branch_id, business_id, benefit_code_id (único), customer_id, rating 1–5, comment (≤ 500, opcional), display_name, show_name, status (`visible`/`reported`/`hidden`), created_at |
-| `metric_daily` | business_id, branch_id, service_id (nullable), date, metric (`profile_view`/`service_view`/`whatsapp_click`), count — contadores agregados, **sin datos personales** |
+| `metric_daily` | business_id, branch_id (nullable), service_id (nullable), date, metric (`profile_view`/`service_view`/`whatsapp_click`), count — contadores agregados, **sin datos personales**. La forma la fija un CHECK: `profile_view` va con `branch_id` y `service_id` nulos (la ficha es por negocio); `whatsapp_click` exige `branch_id` (el servicio es opcional); `service_view` exige ambos. El día se cuenta en hora de Argentina (UTC-3) |
 | `alerts` | business_id, type, payload (jsonb), created_at, read_at |
 | `audit_log` | actor_id, action, entity, entity_id, metadata, created_at |
 
@@ -197,7 +197,7 @@ Los planes **no son una tabla**: se definen por configuración (precio para most
 - `UNIQUE (code)` en `benefit_codes`; índice por `(customer_id, status)` y `(business_id, status)`.
 - Índice único parcial para la regla *un cupón pendiente por cliente y local*: `UNIQUE (customer_id, business_id) WHERE status = 'pending'`.
 - `UNIQUE (benefit_code_id)` en `reviews`.
-- `UNIQUE (business_id, branch_id, service_id, date, metric)` en `metric_daily` (upsert con incremento).
+- `UNIQUE NULLS NOT DISTINCT (business_id, branch_id, service_id, date, metric)` en `metric_daily` (upsert con incremento). `NULLS NOT DISTINCT` es necesario: con un `UNIQUE` común, los `NULL` de `branch_id` y `service_id` se considerarían distintos y el upsert crearía una fila nueva por cada vista.
 
 ### 4.1 Regla de visibilidad
 La visibilidad **se calcula al leer**, no se guarda. Una vista SQL (`visible_branches`) expone las sedes visibles: un local aparece en la búsqueda pública si y solo si:
@@ -254,6 +254,7 @@ Principio: **contar, no seguir**. No se guardan IP, user-agent ni identificadore
 - **Pro, "Inteligencia comercial" (incluye todo Starter):**
   5. **Tasas de conversión** (vistas → cupones, cupones → canjes) con tendencia contra el período anterior y desglose por sede y actividad. No hay "embudo" como función aparte.
   6. **Una alerta: "Cupones sin canjear"** (la tasa de canje de los últimos 30 días queda bajo un umbral, con una cantidad mínima de cupones generados). Se muestra en el panel, como máximo una por semana.
+- **Las vistas de perfil son por negocio.** La ficha `/locales/[slug]` es del negocio, así que `profile_view` se guarda sin sede. El desglose por sede de Pro aplica a los clics a WhatsApp, las vistas de servicio y los canjes (`redeemed_branch_id`). La tasa "vistas → cupones" se calcula solo a nivel negocio; "cupones → canjes" sí admite desglose por sede.
 - **Post-MVP:** benchmarking anónimo de zona (solo con ≥ 5 locales activos por categoría y zona; solo medianas y percentiles) y las alertas "Alta demanda" y "Franjas con poca demanda". La demanda por actividad se mide con los contadores de servicio; MOVO no conoce ocupación ni capacidad.
 - Los contadores se registran **desde la Fase 3** para tener historial cuando se construya el panel.
 
@@ -503,7 +504,7 @@ Convenciones de trabajo:
 - [x] 3.3 Query y endpoint `/home/featured` con rotación entre locales Pro (S)
 - [x] 3.4 Seed de 10k locales falsos y medición p95 con `EXPLAIN ANALYZE` (S)
 - [x] 3.5 Puerto `Geocoder` con fake, adaptador Nominatim con limitador (1 req/s) + caché y User-Agent identificatorio; tiles configurables por env (M)
-- [ ] 3.6 Contadores `metric_daily` (migración, upsert, filtrado básico de bots, sin datos personales) (M)
+- [x] 3.6 Contadores `metric_daily` (migración, upsert, filtrado básico de bots, sin datos personales) (M)
 - [ ] 3.7 Endpoint `GET /r/wa/{branch_id}?service=` que cuenta el clic y redirige a `wa.me` con mensaje prearmado (S)
 - [ ] 3.8 Frontend: Home y Mapa (React Leaflet, marcadores, geolocalización del navegador) (L)
 - [ ] 3.9 Frontend: ficha SSR del local `/locales/[slug]` con metadatos SEO, servicios, horarios, sello de verificado y botón de WhatsApp (M)
@@ -577,7 +578,7 @@ Convenciones de trabajo:
 - [ ] 6.3 Métricas del super admin: locales activos, cupones generados y canjeados (S)
 - [ ] 6.4 Métricas esenciales del local (Starter) sobre `metric_daily` y las tablas de cupones (M)
 - [ ] 6.5 Actividades más demandadas (vistas del servicio + clics a WhatsApp por servicio) (S)
-- [ ] 6.6 Tasas de conversión con tendencia y desglose por sede y actividad (Pro) (M)
+- [ ] 6.6 Tasas de conversión con tendencia y desglose por sede y actividad (Pro). Las vistas de perfil son por negocio (§4.3): "vistas → cupones" se calcula solo a nivel negocio; el desglose por sede aplica a clics a WhatsApp, vistas de servicio y canjes (`redeemed_branch_id`) (M)
 - [ ] 6.7 Alerta "Cupones sin canjear" (tarea diaria, umbral y muestra mínima por env, máximo una por semana) + bandeja en el panel (M)
 - [ ] 6.8 Marca de prioridad en la bandeja del admin para locales con soporte prioritario (S)
 - [ ] 6.9 Frontend: Métricas (Starter y Pro con candado), alertas, admin completo (L)
