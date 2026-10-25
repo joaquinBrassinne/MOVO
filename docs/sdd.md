@@ -208,6 +208,8 @@ AND (business.pilot = true
 ```
 Con `SUBSCRIPTION_GRACE_DAYS = 7` por defecto.
 
+> **Evolución de la vista.** En la Fase 3 (tarea 3.1) `visible_branches` nace en una versión mínima: sede con `active = true` de un negocio con `status = 'active'`. Durante el piloto (Fases 0 a 4) todo negocio aprobado es visible, y `pilot` y el pago no intervienen. La Fase 5 (tarea 5.4) la extiende con una migración `CREATE OR REPLACE VIEW` que agrega la condición de arriba, sin cambiar las columnas, así que las consultas no cambian.
+
 ### 4.2 Planes y entitlements
 
 Cualquier negocio (comercio o profesional) puede contratar cualquier plan; el tipo de negocio no restringe la elección.
@@ -496,7 +498,7 @@ Convenciones de trabajo:
 ### Fase 3 — Búsqueda, mapa y contacto por WhatsApp
 **Objetivo:** el usuario encuentra locales cercanos y contacta al local.
 
-- [ ] 3.1 Query sobre `visible_branches` con `ST_DWithin`, orden por tramo de distancia → destacado → distancia exacta, y filtros por categoría (M)
+- [ ] 3.1 Crea la versión mínima de `visible_branches` (sede activa de un negocio `active`; sin pilot ni pago) y la query sobre ella con `ST_DWithin`, orden por tramo de distancia → destacado → distancia exacta, y filtros por categoría (M)
 - [ ] 3.2 Endpoint de búsqueda con paginación y DTO liviano (S)
 - [ ] 3.3 Query y endpoint `/home/featured` con rotación entre locales Pro (S)
 - [ ] 3.4 Seed de 10k locales falsos y medición p95 con `EXPLAIN ANALYZE` (S)
@@ -556,7 +558,7 @@ Convenciones de trabajo:
 - [ ] 5.1 Migración `subscriptions` (S)
 - [ ] 5.2 Dominio `billing`: vigencia, gracia y estados derivados (M)
 - [ ] 5.3 Configuración de planes por env y endpoint público `GET /plans` con precio y URL de contratación (S)
-- [ ] 5.4 Vista SQL `visible_branches` con la regla de visibilidad y tests (activo, en gracia, vencido, piloto) (M)
+- [ ] 5.4 Extiende `visible_branches` (creada en 3.1) con una migración nueva (`CREATE OR REPLACE VIEW`) que agrega la condición "pilot o hoy <= paid_until + gracia"; el down restaura la versión mínima. Tests: activo, en gracia, vencido y piloto (M)
 - [ ] 5.5 Super admin: confirmar pago (el admin elige el plan y la vigencia inicial; el plan nunca sale del onboarding ni de la URL de retorno), registrar pago mensual, suspender, cambiar de plan + `audit_log` (M)
 - [ ] 5.6 Vista "por vencer en 7 días" y enlace `wa.me` de recordatorio (S)
 - [ ] 5.7 Aplicar límites del plan al cambiarlo (downgrade sin borrar datos) (M)
