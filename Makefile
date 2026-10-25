@@ -105,5 +105,8 @@ lint: ## Corre golangci-lint sobre el backend
 test: ## Corre los tests del backend (CI agrega TESTFLAGS="-race")
 	cd $(BACKEND) && $(GO) test $(TESTFLAGS) ./...
 
+perf-search: ## Mide la búsqueda con 10k locales falsos (necesita Docker); imprime p95 y EXPLAIN ANALYZE
+	cd $(BACKEND) && $(GO) test -tags perf -run SearchLatency -v -count=1 ./internal/search/adapters/postgres
+
 build: ## Compila los binarios del backend en backend/bin
 	cd $(BACKEND) && $(GO) build -o bin/ ./cmd/...
