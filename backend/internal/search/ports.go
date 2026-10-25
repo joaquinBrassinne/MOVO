@@ -52,6 +52,8 @@ type Branch struct {
 	RatingCount  int
 	Verified     bool
 	Featured     bool
+	CategorySlug string
+	CategoryName string
 }
 
 // BranchFinder lists the visible branches around a point, ordered by distance band,

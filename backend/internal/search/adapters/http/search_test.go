@@ -85,7 +85,7 @@ func TestSearchReturnsALightCardPerBranch(t *testing.T) {
 		t.Fatalf("results = %v, next = %v; want one result and no next page", body.Results, body.NextOffset)
 	}
 	card := body.Results[0]
-	if card["business_name"] != "Studio 1" || card["business_slug"] != "studio-1" || card["verified"] != true {
+	if card["business_name"] != "Studio 1" || card["business_slug"] != "studio-1" || card["verified"] != true || card["category_slug"] != "yoga" || card["category_name"] != "Yoga" {
 		t.Errorf("card = %v", card)
 	}
 	if d, _ := card["distance_m"].(float64); d < 990 || d > 1_010 {

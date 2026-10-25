@@ -72,6 +72,8 @@ type branchJSON struct {
 	RatingCount  int     `json:"rating_count"`
 	Verified     bool    `json:"verified"`
 	Featured     bool    `json:"featured"`
+	CategorySlug string  `json:"category_slug"`
+	CategoryName string  `json:"category_name"`
 }
 
 func (h *Handlers) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -121,6 +123,7 @@ func cards(branches []search.Branch) []branchJSON {
 			BranchName: b.BranchName, Address: b.Address, City: b.City, Reference: b.Reference,
 			Lat: b.Lat, Lng: b.Lng, DistanceM: int(math.Round(b.DistanceM)),
 			RatingAvg: b.RatingAvg, RatingCount: b.RatingCount, Verified: b.Verified, Featured: b.Featured,
+			CategorySlug: b.CategorySlug, CategoryName: b.CategoryName,
 		})
 	}
 	return items
