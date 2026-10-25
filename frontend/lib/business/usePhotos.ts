@@ -4,12 +4,17 @@ import { useState } from "react";
 
 import { presignPhoto, registerPhoto, removePhoto, reorderPhotos, uploadFile } from "./api";
 import { describeFailure, type FormMessage } from "./messages";
-import { MAX_PHOTO_BYTES, MAX_PHOTOS, PHOTO_TYPES, type Photo } from "./types";
+import { coverFirst, moveInOrder } from "./photoOrder";
+import { MAX_PHOTO_BYTES, PHOTO_TYPES, type Photo } from "./types";
 
-/** Subida, portada y borrado de las fotos del local (paso 4). */
-export function usePhotos(photos: Photo[], onChanged: () => void) {
+/** Subida, orden, portada y borrado de las fotos del local (onboarding y panel). */
+export function usePhotos(photos: Photo[], max: number, onChanged: () => void) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<FormMessage | null>(null);
+  // Cuántos archivos de la tanda siguen sin subirse, para mostrar su lugar mientras tanto.
+  const [pending, setPending] = useState(0);
+  // Lo que no llegó a subirse por un error del servidor o de la red: es lo que "Reintentar" repite.
+  const [failed, setFailed] = useState<File[]>([]);
 
   /** Sube los archivos de a uno: pide la URL firmada, sube directo al storage y los registra. */
   async function upload(files: File[]) {
@@ -17,44 +22,60 @@ export function usePhotos(photos: Photo[], onChanged: () => void) {
 
     setBusy(true);
     setMessage(null);
+    setFailed([]);
+    setPending(files.length);
 
     let stored = photos.length;
-    for (const file of files) {
-      if (stored >= MAX_PHOTOS) {
+    for (const [index, file] of files.entries()) {
+      if (stored >= max) {
         setMessage({ title: "Ya subiste todas las fotos", body: "Borrá alguna para subir otra." });
         break;
       }
       const problem = check(file);
       if (problem) {
         setMessage(problem);
+        setPending((n) => n - 1);
         continue;
       }
 
       const failure = await uploadOne(file);
       if (failure) {
         setMessage(failure);
+        // Este archivo y los que faltaban quedan para reintentar.
+        setFailed(files.slice(index).filter((rest) => check(rest) === null));
         break;
       }
       stored += 1;
+      setPending((n) => n - 1);
     }
 
+    setPending(0);
     setBusy(false);
     onChanged();
   }
 
-  /** La portada es la primera foto: elegirla es ponerla al frente del orden. */
-  async function makeCover(id: number) {
-    if (busy) return;
+  /** Repite la subida de lo que falló. */
+  const retry = () => upload(failed);
+
+  async function applyOrder(ids: number[] | null) {
+    if (busy || ids === null) return;
     setBusy(true);
     setMessage(null);
 
-    const ids = [id, ...photos.map((p) => p.id).filter((other) => other !== id)];
     const result = await reorderPhotos(ids);
     if (!result.ok) setMessage(describeFailure(result).form ?? null);
 
     setBusy(false);
     onChanged();
   }
+
+  const ids = photos.map((photo) => photo.id);
+
+  /** La portada es la primera foto: elegirla es ponerla al frente del orden. */
+  const makeCover = (id: number) => applyOrder(coverFirst(ids, id));
+
+  /** Mueve la foto un lugar antes (`-1`) o después (`1`). */
+  const move = (id: number, step: -1 | 1) => applyOrder(moveInOrder(ids, id, step));
 
   async function remove(id: number) {
     if (busy) return;
@@ -68,7 +89,7 @@ export function usePhotos(photos: Photo[], onChanged: () => void) {
     onChanged();
   }
 
-  return { busy, message, upload, makeCover, remove };
+  return { busy, pending, failed, message, upload, retry, makeCover, move, remove };
 }
 
 /** Un mensaje si el archivo no sirve, o `null` si se puede subir. */

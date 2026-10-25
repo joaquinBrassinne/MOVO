@@ -2,12 +2,14 @@
 
 import { useState, type SubmitEvent } from "react";
 
-import { CameraIcon, ImageIcon, StarIcon, XIcon } from "@/components/socios/icons";
+import { ImageIcon, StarIcon } from "@/components/socios/icons";
 import { submitBusiness } from "@/lib/business/api";
 import { describeFailure, FIELD_MESSAGES, type FormMessage } from "@/lib/business/messages";
 import { recalledReturnParams } from "@/lib/business/returnParams";
-import { MAX_PHOTOS, PHOTO_TYPES, type Business, type Photo } from "@/lib/business/types";
+import type { Business, Photo } from "@/lib/business/types";
 import { usePhotos } from "@/lib/business/usePhotos";
+
+import { RemovePhotoButton, UploadTile } from "@/components/business/PhotoParts";
 
 import { Field, Notice, TextInput } from "./fields";
 import { Shell, StepFooter } from "./Shell";
@@ -15,14 +17,16 @@ import { Shell, StepFooter } from "./Shell";
 interface Props {
   business: Business;
   photos: Photo[];
+  /** Cuántas fotos puede tener el negocio. */
+  maxPhotos: number;
   /** Se llama después de cambiar las fotos o de enviar el negocio, para volver a pedir los datos. */
   onChanged: () => void;
   onBack: () => void;
 }
 
 /** Paso 4: fotos del local y datos del pago en Mercado Pago; al terminar el negocio pasa a revisión. */
-export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
-  const gallery = usePhotos(photos, onChanged);
+export function StepPhotos({ business, photos, maxPhotos, onChanged, onBack }: Props) {
+  const gallery = usePhotos(photos, maxPhotos, onChanged);
   const [email, setEmail] = useState(business.mp_payer_email);
   const [name, setName] = useState(business.mp_payer_name);
   const [pending, setPending] = useState(false);
@@ -79,7 +83,7 @@ export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
               Fotos del local
             </h3>
             <span className="rounded-full bg-movo-sand px-3 py-1 text-xs font-bold">
-              {photos.length} de {MAX_PHOTOS} subidas
+              {photos.length} de {maxPhotos} subidas
             </span>
           </div>
 
@@ -96,7 +100,7 @@ export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
                 <StarIcon className="size-3.5" />
                 PORTADA
               </span>
-              <RemoveButton
+              <RemovePhotoButton
                 label="Quitar la portada"
                 onClick={() => void gallery.remove(cover.id)}
                 disabled={gallery.busy}
@@ -114,7 +118,7 @@ export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
                     alt={`Foto ${index + 2} del local`}
                     className="h-32 w-full object-cover"
                   />
-                  <RemoveButton
+                  <RemovePhotoButton
                     label={`Quitar la foto ${index + 2}`}
                     onClick={() => void gallery.remove(photo.id)}
                     disabled={gallery.busy}
@@ -132,32 +136,13 @@ export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
             </ul>
           ) : null}
 
-          {photos.length < MAX_PHOTOS ? (
-            <label
-              className={`flex cursor-pointer flex-col items-center gap-2 rounded-3xl border-2 border-dashed border-movo-slate/40 px-4 py-8 text-center focus-within:ring-2 focus-within:ring-movo-accent ${
-                gallery.busy ? "opacity-60" : ""
-              }`}
-            >
-              <span className="grid size-12 place-items-center rounded-full bg-movo-sand">
-                <CameraIcon />
-              </span>
-              <span className="font-semibold">
-                {gallery.busy ? "Subiendo…" : "+ Agregar más fotos"}
-              </span>
-              <span className="text-sm text-movo-slate">JPG, PNG o WebP hasta 5 MB por foto</span>
-              <input
-                type="file"
-                accept={PHOTO_TYPES.join(",")}
-                multiple
-                disabled={gallery.busy}
-                className="sr-only"
-                onChange={(event) => {
-                  const files = Array.from(event.target.files ?? []);
-                  event.target.value = "";
-                  void gallery.upload(files);
-                }}
-              />
-            </label>
+          {photos.length < maxPhotos ? (
+            <UploadTile
+              busy={gallery.busy}
+              title={gallery.busy ? "Subiendo…" : "+ Agregar más fotos"}
+              hint="JPG, PNG o WebP hasta 5 MB por foto"
+              onFiles={(files) => void gallery.upload(files)}
+            />
           ) : null}
 
           {gallery.message ? (
@@ -221,27 +206,5 @@ export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
         disabled={gallery.busy}
       />
     </Shell>
-  );
-}
-
-function RemoveButton({
-  label,
-  onClick,
-  disabled,
-}: {
-  label: string;
-  onClick: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      disabled={disabled}
-      className="absolute top-2 right-2 grid size-9 place-items-center rounded-full bg-white/90 text-movo-ink outline-none focus-visible:ring-2 focus-visible:ring-movo-accent disabled:opacity-60"
-    >
-      <XIcon className="size-4" />
-    </button>
   );
 }

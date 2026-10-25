@@ -20,11 +20,17 @@ const (
 	envS3PresignTTL   = "S3_PRESIGN_TTL"
 	envS3EnsureBucket = "S3_ENSURE_BUCKET"
 	envS3CORSOrigins  = "S3_CORS_ORIGINS"
+	envMaxImages      = "MAX_BUSINESS_IMAGES"
 )
 
 const (
 	defaultS3Region     = "us-east-1"
 	defaultS3PresignTTL = 10 * time.Minute
+
+	// defaultMaxImages is how many photos a business may show unless MAX_BUSINESS_IMAGES
+	// says otherwise; maxImagesCeiling keeps a typo from turning the page into an album.
+	defaultMaxImages = 10
+	maxImagesCeiling = 30
 )
 
 // Storage holds the settings of the S3-compatible object storage. Only the API
@@ -51,6 +57,8 @@ type Storage struct {
 	// with the presigned URLs. EnsureBucket applies them; in production they are
 	// set in the provider console.
 	CORSOrigins []string
+	// MaxImages is how many photos one business may register.
+	MaxImages int
 }
 
 // LoadStorage builds a Storage from get, normally os.Getenv.
@@ -84,6 +92,11 @@ func LoadStorage(get func(string) string) (Storage, error) {
 		return Storage{}, err
 	}
 
+	maxImages, err := parseMaxImages(get(envMaxImages))
+	if err != nil {
+		return Storage{}, err
+	}
+
 	ttl, err := parsePositiveDuration(envS3PresignTTL, get(envS3PresignTTL), defaultS3PresignTTL)
 	if err != nil {
 		return Storage{}, err
@@ -100,6 +113,7 @@ func LoadStorage(get func(string) string) (Storage, error) {
 
 		EnsureBucket: ensureBucket,
 		CORSOrigins:  splitList(get(envS3CORSOrigins)),
+		MaxImages:    maxImages,
 	}, nil
 }
 
@@ -125,4 +139,18 @@ func splitList(raw string) []string {
 		}
 	}
 	return out
+}
+
+// parseMaxImages reads MAX_BUSINESS_IMAGES: empty means the default, anything else must be
+// a whole number from 1 up to the ceiling.
+func parseMaxImages(raw string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return defaultMaxImages, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 1 || value > maxImagesCeiling {
+		return 0, fmt.Errorf("config: %s %q must be a whole number from 1 to %d", envMaxImages, raw, maxImagesCeiling)
+	}
+	return value, nil
 }

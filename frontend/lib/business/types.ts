@@ -13,7 +13,6 @@ export type BusinessStatus = (typeof BUSINESS_STATUS)[keyof typeof BUSINESS_STAT
 
 /** Límites del negocio que la interfaz necesita conocer (SDD §4.2 y la API). */
 export const MAX_DESCRIPTION_LENGTH = 500;
-export const MAX_PHOTOS = 6;
 export const MAX_REFERENCE_LENGTH = 100;
 export const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 export const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -79,6 +78,8 @@ export interface MyBusiness {
   business: Business;
   branches: Branch[];
   images: Photo[];
+  /** Cuántas fotos puede tener el negocio (MAX_BUSINESS_IMAGES del servidor). */
+  max_images: number;
 }
 
 export interface Service {

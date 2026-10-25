@@ -2,10 +2,13 @@ package commands_test
 
 import (
 	"context"
+	"errors"
+	"slices"
 	"sync"
 
 	"github.com/joaquinBrassinne/MOVO/internal/business"
 	"github.com/joaquinBrassinne/MOVO/internal/business/domain"
+	"github.com/joaquinBrassinne/MOVO/internal/platform/storage"
 )
 
 // fakeImages is an in-memory ImageRepository with the same rules as the database:
@@ -14,6 +17,8 @@ type fakeImages struct {
 	mu     sync.Mutex
 	nextID int64
 	list   []domain.Image // every business, in insertion order
+	// cleanup, when set, receives the key of every removed photo, as the real repository does.
+	cleanup *fakeCleanup
 }
 
 func (f *fakeImages) forBusiness(businessID int64) []domain.Image {
@@ -62,6 +67,9 @@ func (f *fakeImages) Remove(_ context.Context, businessID, imageID int64) (domai
 					f.list[j].Position--
 				}
 			}
+			if f.cleanup != nil {
+				f.cleanup.queue(img.ObjectKey)
+			}
 			return img, nil
 		}
 	}
@@ -94,4 +102,62 @@ func (f *fakeImages) Reorder(_ context.Context, businessID int64, ids []int64) e
 		}
 	}
 	return nil
+}
+
+// fakeCleanup is the queue of objects waiting to be deleted, in memory.
+type fakeCleanup struct {
+	mu       sync.Mutex
+	attempts map[string]int
+	reasons  map[string]string
+}
+
+func (c *fakeCleanup) queue(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.attempts == nil {
+		c.attempts, c.reasons = map[string]int{}, map[string]string{}
+	}
+	if _, queued := c.attempts[key]; !queued {
+		c.attempts[key] = 0
+	}
+}
+
+func (c *fakeCleanup) Pending(_ context.Context, limit int) ([]string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	keys := make([]string, 0, len(c.attempts))
+	for key := range c.attempts {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys[:min(limit, len(keys))], nil
+}
+
+func (c *fakeCleanup) Done(_ context.Context, key string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.attempts, key)
+	delete(c.reasons, key)
+	return nil
+}
+
+func (c *fakeCleanup) Failed(_ context.Context, key, reason string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.attempts[key]++
+	c.reasons[key] = reason
+	return nil
+}
+
+// flakyStorage is a storage whose deletes fail while down is set.
+type flakyStorage struct {
+	*storage.Memory
+	down bool
+}
+
+func (s *flakyStorage) Delete(ctx context.Context, key string) error {
+	if s.down {
+		return errors.New("storage unavailable")
+	}
+	return s.Memory.Delete(ctx, key)
 }

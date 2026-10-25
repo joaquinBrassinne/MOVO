@@ -10,9 +10,6 @@ import (
 // not an accepted image name.
 var ErrImageKeyInvalid = errors.New("business: image key is not valid")
 
-// MaxImages is how many photos a business may show.
-const MaxImages = 6
-
 const maxImageNameLen = 100
 
 // Image is a photo of a business. Position 0 is the cover.
