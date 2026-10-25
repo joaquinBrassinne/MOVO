@@ -1,6 +1,6 @@
 "use client";
 
-import { CameraIcon, XIcon } from "@/components/socios/icons";
+import { CameraIcon, StarIcon, XIcon } from "@/components/socios/icons";
 import { PHOTO_TYPES } from "@/lib/business/types";
 
 /** La "x" que quita una foto, pegada a su esquina superior derecha. */
@@ -72,5 +72,15 @@ export function UploadTile({
         }}
       />
     </label>
+  );
+}
+
+/** La insignia amarilla de la foto que hace de portada. */
+export function PhotoCoverBadge() {
+  return (
+    <span className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-full bg-movo-accent px-3 py-1 text-xs font-bold text-movo-ink">
+      <StarIcon className="size-3.5" />
+      Portada
+    </span>
   );
 }
