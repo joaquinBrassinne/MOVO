@@ -137,7 +137,11 @@ export function BranchLocationFields({ form, askName = false }: Props) {
       </section>
 
       <section className="overflow-hidden rounded-3xl bg-white shadow-sm">
-        <div className="relative h-72" role="application" aria-label="Mapa para ubicar tu sede">
+        <div
+          className="relative isolate h-72"
+          role="application"
+          aria-label="Mapa para ubicar tu sede"
+        >
           <BranchMap pin={form.pin} view={form.view} onMove={form.movePin} />
           <p className="pointer-events-none absolute top-3 left-1/2 z-[1000] -translate-x-1/2 rounded-full bg-movo-card/90 px-4 py-2 text-xs font-semibold whitespace-nowrap text-white">
             Arrastrá el pin o tocá el mapa para ajustar la entrada
