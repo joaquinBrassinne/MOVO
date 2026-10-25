@@ -87,6 +87,24 @@ export function ServiceSheet({ service, onClose, onSaved }: Props) {
           />
         </Field>
 
+        <Field
+          id="service-price"
+          label="Precio estimado"
+          error={fields.price}
+          hint={<span className="text-xs font-semibold text-movo-slate">Opcional · en pesos</span>}
+        >
+          <TextInput
+            id="service-price"
+            value={form.price}
+            onChange={form.setPrice}
+            error={fields.price}
+            disabled={form.pending}
+            inputMode="numeric"
+            placeholder="5500"
+            maxLength={12}
+          />
+        </Field>
+
         {form.scheduleEditable ? (
           <>
             <Field

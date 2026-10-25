@@ -30,6 +30,8 @@ const FIELD_MESSAGES: Record<string, string> = {
   payment_reference: "El número de operación es demasiado largo",
   content_type: "Usá una foto JPG, PNG o WebP",
   size: "La foto debe pesar hasta 5 MB",
+  price: "Ingresá un precio válido en pesos",
+  reference: "La referencia puede tener hasta 100 caracteres",
 };
 
 const SLOT_MESSAGES: Record<string, string> = {

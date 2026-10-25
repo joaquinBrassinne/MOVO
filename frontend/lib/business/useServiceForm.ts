@@ -5,6 +5,7 @@ import { useState } from "react";
 import { addService, editService, setServiceSchedule } from "./api";
 import { describeFailure, type Feedback } from "./messages";
 import { buildSlots, findOverlap, isValidRange, toRanges, type Range } from "./schedule";
+import { parsePrice } from "./price";
 import type { Service } from "./types";
 
 const EMPTY_DRAFT: Range = { start: "", end: "" };
@@ -17,6 +18,7 @@ export function useServiceForm(existing: Service | null) {
 
   const [name, setName] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
+  const [price, setPrice] = useState(existing?.price ? String(existing.price) : "");
   const [days, setDays] = useState<number[]>(weekly?.days ?? []);
   const [ranges, setRanges] = useState<Range[]>(weekly?.ranges ?? []);
   const [draft, setDraft] = useState<Range>(EMPTY_DRAFT);
@@ -58,6 +60,8 @@ export function useServiceForm(existing: Service | null) {
 
     const fields: Record<string, string> = {};
     if (name.trim() === "") fields.name = "Ingresá el nombre del servicio";
+    const amount = parsePrice(price);
+    if (amount === undefined) fields.price = "Ingresá un precio válido en pesos";
     if (scheduleEditable && ranges.length > 0 && days.length === 0) {
       fields.days = "Elegí al menos un día";
     }
@@ -69,7 +73,12 @@ export function useServiceForm(existing: Service | null) {
     setPending(true);
     setFeedback({ fields: {} });
 
-    const input = { name, description, branch_id: existing?.branch_id ?? null };
+    const input = {
+      name,
+      description,
+      branch_id: existing?.branch_id ?? null,
+      price: amount ?? null,
+    };
     const saved = await (existing ? editService(existing.id, input) : addService(input));
     if (!saved.ok) {
       setPending(false);
@@ -96,6 +105,8 @@ export function useServiceForm(existing: Service | null) {
     setName,
     description,
     setDescription,
+    price,
+    setPrice,
     days,
     toggleDay,
     ranges,

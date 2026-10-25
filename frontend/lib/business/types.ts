@@ -14,6 +14,7 @@ export type BusinessStatus = (typeof BUSINESS_STATUS)[keyof typeof BUSINESS_STAT
 /** Límites del negocio que la interfaz necesita conocer (SDD §4.2 y la API). */
 export const MAX_DESCRIPTION_LENGTH = 500;
 export const MAX_PHOTOS = 6;
+export const MAX_REFERENCE_LENGTH = 100;
 export const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 export const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
@@ -52,6 +53,7 @@ export interface Branch {
   latitude: number;
   longitude: number;
   booking_url: string;
+  reference: string;
   active: boolean;
   hours: Slot[];
 }
@@ -73,6 +75,8 @@ export interface Service {
   branch_id: number | null;
   name: string;
   description: string;
+  /** Precio estimado en pesos enteros; `null` si el dueño no lo cargó. */
+  price: number | null;
   active: boolean;
   schedule: Slot[];
 }
@@ -99,12 +103,14 @@ export interface BranchInput {
   latitude: number;
   longitude: number;
   booking_url: string;
+  reference: string;
 }
 
 export interface ServiceInput {
   name: string;
   description: string;
   branch_id: number | null;
+  price: number | null;
 }
 
 export interface Place {

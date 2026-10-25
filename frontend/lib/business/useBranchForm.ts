@@ -19,12 +19,15 @@ export interface MapView extends Pin {
 /** Buenos Aires: dónde arranca el mapa mientras no hay pin. */
 export const DEFAULT_VIEW: Pin = { latitude: -34.6037, longitude: -58.3816 };
 
-const DEFAULT_BRANCH_NAME = "Sede principal";
+/** El alta del negocio no pregunta el nombre de la primera sede: arranca con este. */
+export const DEFAULT_BRANCH_NAME = "Sede principal";
 
 /** Estado y envío del paso 2: la sede, con su pin en el mapa. */
-export function useBranchForm(existing: Branch | null) {
+export function useBranchForm(existing: Branch | null, defaultName = DEFAULT_BRANCH_NAME) {
+  const [name, setName] = useState(existing?.name ?? defaultName);
   const [address, setAddress] = useState(existing?.address ?? "");
   const [city, setCity] = useState(existing?.city ?? "");
+  const [reference, setReference] = useState(existing?.reference ?? "");
   const [bookingUrl, setBookingUrl] = useState(existing?.booking_url ?? "");
   const [pin, setPin] = useState<Pin | null>(
     existing ? { latitude: existing.latitude, longitude: existing.longitude } : null,
@@ -97,6 +100,7 @@ export function useBranchForm(existing: Branch | null) {
     if (pending) return false;
 
     const fields: Record<string, string> = {};
+    if (name.trim() === "") fields.name = "Ingresá el nombre de la sede";
     if (address.trim() === "") fields.address = "Ingresá la dirección";
     if (city.trim() === "") fields.city = "Ingresá la ciudad";
     if (pin === null) fields.location = "Marcá la ubicación en el mapa";
@@ -112,12 +116,13 @@ export function useBranchForm(existing: Branch | null) {
     setFeedback({ fields: {} });
 
     const input = {
-      name: existing?.name ?? DEFAULT_BRANCH_NAME,
+      name: name.trim(),
       address,
       city,
       latitude: pin.latitude,
       longitude: pin.longitude,
       booking_url: bookingUrl.trim(),
+      reference: reference.trim(),
     };
     const result = await (existing ? editBranch(existing.id, input) : addBranch(input));
     setPending(false);
@@ -133,6 +138,10 @@ export function useBranchForm(existing: Branch | null) {
     city,
     setCity,
     bookingUrl,
+    name,
+    setName,
+    reference,
+    setReference,
     setBookingUrl,
     pin,
     movePin: setPin,
