@@ -43,7 +43,15 @@ export async function postToBackend(path: string, payload: unknown): Promise<Bac
 // Rutas de la API que el navegador puede usar a través del proxy de app/api/v1. La lista
 // es cerrada a propósito: /auth/* no está, porque ahí viaja el refresh token y solo debe
 // verlo app/api/session (cookie httpOnly).
-const PROXIED = [/^me\//, /^admin\//, /^plans$/, /^categories$/];
+const PROXIED = [
+  /^me\//,
+  /^admin\//,
+  /^plans$/,
+  /^categories$/,
+  // Búsqueda pública (Home y Mapa): sin identidad, solo lectura.
+  /^search$/,
+  /^home\/featured$/,
+];
 
 /** Cabeceras que el navegador puede mandar a la API; el resto no se reenvía. */
 const FORWARDED_REQUEST_HEADERS = ["authorization", "content-type", "accept"];
