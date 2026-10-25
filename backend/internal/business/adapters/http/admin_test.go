@@ -46,7 +46,7 @@ func TestOwnerCreatesAndAdminActivatesAndVerifies(t *testing.T) {
 	owner := ownerWithBusiness(s, "owner@example.com")
 	adminID, admin := s.user("root@example.com", "super_admin")
 
-	if got := s.do(http.MethodPost, "/me/business/submit", owner, map[string]any{"payment_reference": "OP-77"}); got.status != http.StatusOK {
+	if got := s.do(http.MethodPost, "/me/business/submit", owner, payerBody("ana@example.com", "Ana Pérez", map[string]string{"plan": "pro", "status": "approved"})); got.status != http.StatusOK {
 		t.Fatalf("submit = %d %v", got.status, got.body)
 	}
 
@@ -56,7 +56,7 @@ func TestOwnerCreatesAndAdminActivatesAndVerifies(t *testing.T) {
 		t.Fatalf("review queue = %d %v", list.status, list.body)
 	}
 	row, _ := rows[0].(map[string]any)
-	if row["owner_email"] != "owner@example.com" || row["category_name"] != "Yoga" || row["payment_reference"] != "OP-77" || row["branch_count"] != float64(0) {
+	if row["owner_email"] != "owner@example.com" || row["category_name"] != "Yoga" || row["mp_payer_email"] != "ana@example.com" || row["mp_payer_name"] != "Ana Pérez" || row["mp_plan_hint"] != "pro" || row["branch_count"] != float64(0) {
 		t.Errorf("row = %v", row)
 	}
 	id := itoa(int64(row["id"].(float64)))
@@ -168,7 +168,7 @@ func TestAdminListSearchesFiltersByCategoryAndCountsByStatus(t *testing.T) {
 	ownerWithBusiness(s, "ana@alma.example")
 
 	other := ownerWithBusiness(s, "bruno@flow.example")
-	s.do(http.MethodPost, "/me/business/submit", other, map[string]any{})
+	s.do(http.MethodPost, "/me/business/submit", other, payerBody("bruno@flow.example", "Bruno Díaz", nil))
 
 	byEmail := s.do(http.MethodGet, "/admin/businesses?q=bruno", root, nil)
 	if rows, _ := byEmail.body["businesses"].([]any); len(rows) != 1 || byEmail.body["total"] != float64(1) {
@@ -206,7 +206,7 @@ func TestAdminDetailShowsBranchesServicesAndHistory(t *testing.T) {
 	s.do(http.MethodPost, "/me/business/services", owner, map[string]any{"name": "Yoga"})
 	off := s.do(http.MethodPost, "/me/business/services", owner, map[string]any{"name": "Pilates"})
 	s.do(http.MethodPut, "/me/business/services/"+serviceID(off)+"/active", owner, map[string]any{"active": false})
-	s.do(http.MethodPost, "/me/business/submit", owner, map[string]any{"payment_reference": "OP-9"})
+	s.do(http.MethodPost, "/me/business/submit", owner, payerBody("owner@example.com", "Olga Owner", nil))
 
 	list := s.do(http.MethodGet, "/admin/businesses", root, nil)
 	id := itoa(int64(list.body["businesses"].([]any)[0].(map[string]any)["id"].(float64)))
@@ -217,7 +217,7 @@ func TestAdminDetailShowsBranchesServicesAndHistory(t *testing.T) {
 	business, _ := got.body["business"].(map[string]any)
 	branches, _ := got.body["branches"].([]any)
 	history, _ := got.body["history"].([]any)
-	if got.status != http.StatusOK || business["owner_email"] != "owner@example.com" || business["payment_reference"] != "OP-9" || business["whatsapp"] == "" {
+	if got.status != http.StatusOK || business["owner_email"] != "owner@example.com" || business["mp_payer_email"] != "owner@example.com" || business["mp_payer_name"] != "Olga Owner" || business["whatsapp"] == "" {
 		t.Fatalf("detail = %d %v", got.status, got.body)
 	}
 	if len(branches) != 1 || got.body["services_total"] != float64(2) || got.body["services_active"] != float64(1) {

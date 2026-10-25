@@ -69,7 +69,7 @@ func TestBusinessesCreateAndFindByOwner(t *testing.T) {
 		t.Fatalf("FindByOwner: %v", err)
 	}
 	if got.ID != created.ID || got.Slug != "yoga-center" || got.Status != domain.StatusDraft ||
-		got.WhatsApp != "5491112345678" || got.Verified() || got.PaymentReference != "" {
+		got.WhatsApp != "5491112345678" || got.Verified() || got.MPPayerEmail != "" || got.MPReturnParams != nil {
 		t.Errorf("business = %+v, want the stored draft", got)
 	}
 
@@ -127,7 +127,8 @@ func TestBusinessesSavePersistsProfileAndStatusButNotSlugOrOwner(t *testing.T) {
 		t.Fatalf("UpdateProfile: %v", err)
 	}
 	changed, _ = changed.Submit()
-	changed, _ = changed.SetPaymentReference("OP-77")
+	changed, _ = changed.DeclarePayer("ana@example.com", "Ana Pérez")
+	changed = changed.RecordReturnParams(map[string]string{"plan": "pro"})
 	changed.Slug = "tampered"
 	changed.OwnerID = 12345
 
@@ -140,7 +141,7 @@ func TestBusinessesSavePersistsProfileAndStatusButNotSlugOrOwner(t *testing.T) {
 		t.Fatalf("FindByOwner: %v", err)
 	}
 	if got.Name != "Renamed" || got.Description != "new" || got.WhatsApp != "5491198765432" ||
-		got.Status != domain.StatusPendingReview || got.PaymentReference != "OP-77" || got.CategoryID != changed.CategoryID {
+		got.Status != domain.StatusPendingReview || got.MPPayerEmail != "ana@example.com" || got.MPPayerName != "Ana Pérez" || got.PlanHint() != "pro" || got.CategoryID != changed.CategoryID {
 		t.Errorf("business = %+v, want the saved fields", got)
 	}
 	if got.Slug != "studio" || got.OwnerID != owner {

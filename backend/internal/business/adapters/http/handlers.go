@@ -98,7 +98,9 @@ type businessRequest struct {
 }
 
 type submitRequest struct {
-	PaymentReference string `json:"payment_reference"`
+	PayerEmail     string            `json:"mp_payer_email"`
+	PayerName      string            `json:"mp_payer_name"`
+	MPReturnParams map[string]string `json:"mp_return_params"`
 }
 
 type presignRequest struct {
@@ -169,7 +171,9 @@ func (h *Handlers) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	submitted, err := h.SubmitBusiness.Handle(r.Context(), commands.SubmitBusinessInput{OwnerID: callerID(r), PaymentReference: req.PaymentReference})
+	submitted, err := h.SubmitBusiness.Handle(r.Context(), commands.SubmitBusinessInput{
+		OwnerID: callerID(r), PayerEmail: req.PayerEmail, PayerName: req.PayerName, MPReturnParams: req.MPReturnParams,
+	})
 	if err != nil {
 		h.fail(w, r, err)
 		return

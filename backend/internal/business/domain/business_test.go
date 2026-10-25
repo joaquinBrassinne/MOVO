@@ -160,19 +160,55 @@ func TestUpdateProfileKeepsSlugAndStatus(t *testing.T) {
 	}
 }
 
-func TestSetPaymentReference(t *testing.T) {
+func TestDeclarePayer(t *testing.T) {
 	t.Parallel()
 
-	got, err := (domain.Business{}).SetPaymentReference("  OP-123456 ")
-	if err != nil || got.PaymentReference != "OP-123456" {
-		t.Fatalf("SetPaymentReference = %q, %v; want the trimmed value", got.PaymentReference, err)
+	got, err := (domain.Business{}).DeclarePayer("  ana@example.com ", "  Ana Pérez ")
+	if err != nil || got.MPPayerEmail != "ana@example.com" || got.MPPayerName != "Ana Pérez" {
+		t.Fatalf("DeclarePayer = %q, %q, %v; want the trimmed values", got.MPPayerEmail, got.MPPayerName, err)
 	}
-	cleared, err := got.SetPaymentReference("  ")
-	if err != nil || cleared.PaymentReference != "" {
-		t.Errorf("blank reference = %q, %v; want it cleared", cleared.PaymentReference, err)
+
+	for _, email := range []string{"", "  ", "ana", "ana@", "@example.com", "ana@example", "Ana <ana@example.com>", "a b@example.com", strings.Repeat("a", 250) + "@example.com"} {
+		if _, err := (domain.Business{}).DeclarePayer(email, "Ana Pérez"); !errors.Is(err, domain.ErrPayerEmailInvalid) {
+			t.Errorf("email %q error = %v, want ErrPayerEmailInvalid", email, err)
+		}
 	}
-	if _, err := (domain.Business{}).SetPaymentReference(strings.Repeat("9", 101)); !errors.Is(err, domain.ErrPaymentReferenceInvalid) {
-		t.Errorf("long reference error = %v, want ErrPaymentReferenceInvalid", err)
+	for _, name := range []string{"", "   ", "Al", " Al ", strings.Repeat("a", 101)} {
+		if _, err := (domain.Business{}).DeclarePayer("ana@example.com", name); !errors.Is(err, domain.ErrPayerNameInvalid) {
+			t.Errorf("name %q error = %v, want ErrPayerNameInvalid", name, err)
+		}
+	}
+	if _, err := (domain.Business{}).DeclarePayer("ana@example.com", "Ana"); err != nil {
+		t.Errorf("a three-letter name error = %v, want none", err)
+	}
+}
+
+func TestRecordReturnParamsKeepsOnlyUsableHints(t *testing.T) {
+	t.Parallel()
+
+	got := (domain.Business{}).RecordReturnParams(map[string]string{
+		"plan":                  " pro ",
+		"preapproval_plan":      "2c93",
+		"":                      "no key",
+		"empty":                 "  ",
+		"long":                  strings.Repeat("v", 201),
+		strings.Repeat("k", 41): "long key",
+	})
+	if len(got.MPReturnParams) != 2 || got.PlanHint() != "pro" || got.MPReturnParams["preapproval_plan"] != "2c93" {
+		t.Errorf("params = %v, want only plan and preapproval_plan", got.MPReturnParams)
+	}
+
+	many := map[string]string{}
+	for i := range 25 {
+		many[strings.Repeat("k", i+1)] = "v"
+	}
+	if n := len((domain.Business{}).RecordReturnParams(many).MPReturnParams); n != 10 {
+		t.Errorf("kept %d params, want at most 10", n)
+	}
+
+	none := (domain.Business{}).RecordReturnParams(nil)
+	if none.MPReturnParams != nil || none.PlanHint() != "" {
+		t.Errorf("no params = %v / %q, want nothing", none.MPReturnParams, none.PlanHint())
 	}
 }
 

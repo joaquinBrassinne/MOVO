@@ -37,19 +37,21 @@ const (
 
 // Business is the single business of an owner.
 type Business struct {
-	ID               int64
-	OwnerID          int64
-	CategoryID       int64
-	Name             string
-	Slug             string
-	Description      string
-	WhatsApp         string
-	Status           Status
-	Pilot            bool
-	VerifiedAt       *time.Time
-	VerifiedBy       int64
-	PaymentReference string
-	CreatedAt        time.Time
+	ID             int64
+	OwnerID        int64
+	CategoryID     int64
+	Name           string
+	Slug           string
+	Description    string
+	WhatsApp       string
+	Status         Status
+	Pilot          bool
+	VerifiedAt     *time.Time
+	VerifiedBy     int64
+	MPPayerEmail   string
+	MPPayerName    string
+	MPReturnParams map[string]string
+	CreatedAt      time.Time
 }
 
 // NewBusinessInput is what an owner provides to create a business.

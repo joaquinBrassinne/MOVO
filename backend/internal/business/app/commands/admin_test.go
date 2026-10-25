@@ -3,6 +3,7 @@ package commands_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -114,7 +115,7 @@ func TestAdminActionRejectionsWriteNothing(t *testing.T) {
 			if _, err := adminHandle(t, store, tt.action); !errors.Is(err, tt.want) {
 				t.Fatalf("error = %v, want %v", err, tt.want)
 			}
-			if len(store.audit) != 0 || store.byID[1] != tt.b {
+			if len(store.audit) != 0 || !reflect.DeepEqual(store.byID[1], tt.b) {
 				t.Errorf("a rejected action must write nothing: audit %v, business %+v", store.audit, store.byID[1])
 			}
 		})

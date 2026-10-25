@@ -45,7 +45,7 @@ type BusinessRepository interface {
 	// FindByOwner returns ErrBusinessNotFound when the owner has no business. The
 	// owner id always comes from the session, never from the request body.
 	FindByOwner(ctx context.Context, ownerID int64) (domain.Business, error)
-	// Save persists the mutable fields (profile, status, payment reference).
+	// Save persists the mutable fields (profile, status, declared payer).
 	// The slug and the owner never change. It returns ErrBusinessNotFound and
 	// ErrCategoryNotFound.
 	Save(ctx context.Context, b domain.Business) error
