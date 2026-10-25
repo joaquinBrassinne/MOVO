@@ -40,3 +40,16 @@ Que un local pueda existir, completar su perfil y ser aprobado manualmente (sin 
 - `.env.example` con las variables nuevas; `docs/openapi.yaml` (no existe, ni para identity); `make ci` no existe aunque `CLAUDE.md` lo menciona.
 - Aplicar la política de downgrade (`Entitlements.*ToDeactivate`) cuando cambie el plan (fase 5) y un caso de uso para reactivar sedes inactivas por downgrade.
 - Fases futuras: ficha pública (fase 3), "Canjear" (fase 4), upgrade a Pro (fase 5), tag de git de la fase.
+
+## Pruebas E2E (Playwright)
+- `cd frontend && npm run e2e` (requiere `make up`: Postgres y RustFS). Cada corrida crea la base `movo_e2e` desde cero, migra, compila la API (`backend/bin/api-e2e`), levanta un Nominatim falso y `next dev -p 3100`; no toca la base de desarrollo. El bucket es `movo-e2e`.
+- 59 tests en 5 specs que son una secuencia sobre la misma base (van de a uno y en orden): `01-access`, `02-onboarding`, `03-admin`, `04-panel`, `05-removal`. Un spec suelto no corre solo.
+- No debe haber otro `next dev` abierto en `frontend/` (comparte `.next`).
+- No corren en CI todavía (necesitan Docker, Go y el navegador).
+
+## Hallazgos de las E2E
+- El mapa del alta se pintaba encima de la barra inferior: arreglado con `isolate`; el test `ONBOARD-E2E-010` falla sin ese cambio.
+- El texto "Ingresá un link que empiece con https://" no coincide con la regla: web y API aceptan `http://`. Pendiente decidir si se exige https o se cambia el texto.
+- Intermitencia sin causa confirmada: una vez de cuatro corridas completas, una navegación completa a `/socios/sedes/99999` justo después de ingresar terminó en la pantalla de ingreso. No se pudo reproducir en 45 intentos de sonda.
+- La API no deduplica fotos por contenido (la clave es única por subida); el máximo es 6.
+- `next dev` imprime un error de "instant navigation" para `/socios/panel` (segmento descartado); no rompe nada, pero conviene mirarlo.
