@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { Logo } from "@/components/Logo";
 import { ArrowLeftIcon, ArrowRightIcon, UserIcon } from "@/components/socios/icons";
 
 export const STEPS = [
@@ -24,9 +25,7 @@ export function Shell({ step, children }: ShellProps) {
     <div className="flex min-h-dvh flex-col bg-movo-cream font-sans text-movo-ink">
       <header className="sticky top-0 z-20 bg-movo-page text-white">
         <div className="mx-auto flex h-20 w-full max-w-md items-center justify-between px-5">
-          <span className="font-display text-2xl font-extrabold tracking-wider text-movo-accent">
-            MOVO
-          </span>
+          <Logo className="h-9" />
           <h1 className="font-display text-lg font-bold">
             Paso {step} De {STEPS.length}: {current.label}
           </h1>

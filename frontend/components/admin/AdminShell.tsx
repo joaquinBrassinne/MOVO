@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import { Logo } from "@/components/Logo";
 import { LogOutIcon, StoreIcon } from "@/components/socios/icons";
 import { useSession } from "@/lib/session/SessionProvider";
 
@@ -17,9 +18,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-dvh flex-col bg-movo-cream font-sans text-movo-ink lg:flex-row">
       <aside className="flex shrink-0 flex-col bg-movo-page text-white lg:w-64">
         <div className="flex items-center gap-3 px-6 py-5">
-          <span className="font-display text-2xl font-extrabold tracking-wider text-movo-accent">
-            MOVO
-          </span>
+          <Logo className="h-9" />
           <span className="rounded-full bg-movo-card px-3 py-1 text-xs font-bold tracking-wide text-movo-accent">
             SUPER ADMIN
           </span>

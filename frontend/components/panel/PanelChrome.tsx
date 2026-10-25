@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
+import { Logo } from "@/components/Logo";
 import { GridIcon, LogOutIcon, SearchIcon, StoreIcon, UserIcon } from "@/components/socios/icons";
 import { useBusiness } from "@/lib/business/BusinessProvider";
 import { useSession } from "@/lib/session/SessionProvider";
@@ -33,9 +34,7 @@ export function PanelChrome({ children }: { children: ReactNode }) {
     <div className="flex min-h-dvh flex-col bg-movo-cream font-sans text-movo-ink">
       <header className="sticky top-0 z-30 bg-movo-page text-white">
         <div className="mx-auto flex h-20 w-full max-w-md items-center justify-between gap-3 px-5">
-          <span className="font-display text-2xl font-extrabold tracking-wider text-movo-accent">
-            MOVO
-          </span>
+          <Logo className="h-9" />
           <div className="min-w-0 flex-1 text-right">
             <h1 className="truncate font-display text-lg leading-tight font-bold">
               {titleOf(pathname)}

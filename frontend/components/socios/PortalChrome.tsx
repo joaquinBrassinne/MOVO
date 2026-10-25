@@ -1,9 +1,8 @@
 import type { ReactNode } from "react";
 
-/**
- * Marco del portal de socios: fondo, ondas decorativas y encabezado.
- * El logotipo es texto hasta que haya un archivo de marca (ver docs/work/phase-1-identity.md).
- */
+import { Logo } from "@/components/Logo";
+
+/** Marco del portal de socios: fondo, ondas decorativas y encabezado. */
 export function PortalChrome({ children }: { children: ReactNode }) {
   return (
     <div className="relative isolate min-h-dvh overflow-hidden bg-movo-page font-sans text-white">
@@ -11,9 +10,7 @@ export function PortalChrome({ children }: { children: ReactNode }) {
 
       <header className="mx-auto flex w-full max-w-md items-center justify-between px-6 pt-6">
         <div className="flex items-baseline gap-4">
-          <span className="font-display text-3xl font-extrabold tracking-wider text-movo-accent">
-            MOVO
-          </span>
+          <Logo className="h-11" />
           <span className="text-sm font-semibold tracking-[0.2em] text-movo-accent">SOCIOS</span>
         </div>
         <span className="inline-flex items-center gap-2 rounded-full bg-movo-tabs px-3 py-1.5 text-sm font-semibold">
