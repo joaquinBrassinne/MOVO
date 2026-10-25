@@ -4,7 +4,7 @@ import { useState, type SubmitEvent } from "react";
 
 import { CameraIcon, ImageIcon, StarIcon, XIcon } from "@/components/socios/icons";
 import { submitBusiness } from "@/lib/business/api";
-import { describeFailure, type FormMessage } from "@/lib/business/messages";
+import { describeFailure, FIELD_MESSAGES, type FormMessage } from "@/lib/business/messages";
 import { recalledReturnParams } from "@/lib/business/returnParams";
 import { MAX_PHOTOS, PHOTO_TYPES, type Business, type Photo } from "@/lib/business/types";
 import { usePhotos } from "@/lib/business/usePhotos";
@@ -35,6 +35,13 @@ export function StepPhotos({ business, photos, onChanged, onBack }: Props) {
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending || gallery.busy) return;
+
+    // La API informa un solo error por vez: así los dos campos vacíos se marcan juntos.
+    if (!email.trim() || !name.trim()) {
+      setEmailError(email.trim() ? undefined : FIELD_MESSAGES.mp_payer_email);
+      setNameError(name.trim() ? undefined : FIELD_MESSAGES.mp_payer_name);
+      return;
+    }
 
     setPending(true);
     setMessage(null);

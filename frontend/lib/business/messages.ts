@@ -18,7 +18,7 @@ export interface Failure {
   error: { code: string; message: string; details?: unknown };
 }
 
-const FIELD_MESSAGES: Record<string, string> = {
+export const FIELD_MESSAGES: Record<string, string> = {
   name: "Ingresá un nombre",
   category_id: "Elegí una categoría",
   description: "La descripción tiene demasiados caracteres (máximo 500)",
