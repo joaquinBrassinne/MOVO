@@ -501,7 +501,7 @@ Convenciones de trabajo:
 - [x] 3.1 Crea la versión mínima de `visible_branches` (sede activa de un negocio `active`; sin pilot ni pago) y la query sobre ella con `ST_DWithin`, orden por tramo de distancia → destacado → distancia exacta, y filtros por categoría (M)
 - [x] 3.2 Endpoint de búsqueda con paginación y DTO liviano (S)
 - [x] 3.3 Query y endpoint `/home/featured` con rotación entre locales Pro (S)
-- [ ] 3.4 Seed de 10k locales falsos y medición p95 con `EXPLAIN ANALYZE` (S)
+- [x] 3.4 Seed de 10k locales falsos y medición p95 con `EXPLAIN ANALYZE` (S)
 - [ ] 3.5 Puerto `Geocoder` con fake, adaptador Nominatim con limitador (1 req/s) + caché y User-Agent identificatorio; tiles configurables por env (M)
 - [ ] 3.6 Contadores `metric_daily` (migración, upsert, filtrado básico de bots, sin datos personales) (M)
 - [ ] 3.7 Endpoint `GET /r/wa/{branch_id}?service=` que cuenta el clic y redirige a `wa.me` con mensaje prearmado (S)

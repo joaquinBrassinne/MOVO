@@ -23,16 +23,25 @@ func NewBranches(pool *pgxpool.Pool) *Branches {
 
 // nearbySQL orders by distance band, then featured, then exact distance. branch_id
 // breaks ties so pages are stable. $5 is a category slug, empty for all categories.
+//
+// The spatial filter runs first over branches alone, in a materialized CTE, and the
+// result is joined to visible_branches by id. Filtering through the view directly
+// lets the planner join with a business seq scan per branch whenever PostGIS
+// underestimates the matches of a wide radius (5 s at 30 km and more over 10k
+// businesses); this shape stays on primary-key lookups. Visibility still comes
+// only from the view: the CTE is a candidate set, not a decision.
 const nearbySQL = `
-WITH origin AS (SELECT ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography AS p)
+WITH origin AS (SELECT ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography AS p),
+     near AS MATERIALIZED (
+         SELECT br.id FROM branches br, origin o WHERE ST_DWithin(br.location, o.p, $3::float8))
 SELECT v.branch_id, v.business_id, v.business_name, v.business_slug, v.branch_name,
        v.address, v.city, v.reference,
        ST_Y(v.location::geometry), ST_X(v.location::geometry),
        ST_Distance(v.location, o.p) AS distance_m,
        v.rating_avg::float8, v.rating_count, v.verified_at IS NOT NULL, v.featured
-FROM visible_branches v, origin o
-WHERE ST_DWithin(v.location, o.p, $3::float8)
-  AND ($5::text = '' OR v.category_id = (SELECT id FROM categories WHERE slug = $5::text))
+FROM near n
+JOIN visible_branches v ON v.branch_id = n.id, origin o
+WHERE ($5::text = '' OR v.category_id = (SELECT id FROM categories WHERE slug = $5::text))
 ORDER BY floor(ST_Distance(v.location, o.p) / $4::float8), v.featured DESC,
          ST_Distance(v.location, o.p), v.branch_id
 LIMIT $6 OFFSET $7`
