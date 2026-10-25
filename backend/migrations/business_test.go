@@ -9,7 +9,10 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/platform/dbtest"
 )
 
-const foreignKeyViolation = "23503"
+const (
+	foreignKeyViolation = "23503"
+	exclusionViolation  = "23P01"
+)
 
 func insertOwner(ctx context.Context, t *testing.T, pool *pgxpool.Pool, email string) int64 {
 	t.Helper()
@@ -194,7 +197,11 @@ func TestBranchesAndImagesFollowTheirBusiness(t *testing.T) {
 	}
 	requireSQLState(t, hours(7, "09:00", "13:00"), checkViolation)
 	requireSQLState(t, hours(2, "13:00", "09:00"), checkViolation)
-	requireSQLState(t, hours(1, "09:00", "10:00"), uniqueViolation)
+	requireSQLState(t, hours(1, "09:00", "10:00"), exclusionViolation)
+	requireSQLState(t, hours(1, "12:00", "17:00"), exclusionViolation)
+	if err := hours(1, "13:00", "16:00"); err != nil {
+		t.Fatalf("a slot that starts where another ends must be allowed: %v", err)
+	}
 
 	image := func(key string, position int) error {
 		_, err := pool.Exec(ctx,

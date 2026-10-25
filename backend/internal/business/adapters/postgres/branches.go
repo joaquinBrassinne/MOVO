@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/joaquinBrassinne/MOVO/internal/business"
@@ -154,6 +155,11 @@ func (r *Branches) ReplaceHours(ctx context.Context, businessID, branchID int64,
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO business_hours (branch_id, weekday, opens_at, closes_at) VALUES ($1, $2, $3, $4)`,
 			branchID, s.Weekday, s.Start.String(), s.End.String()); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == exclusionViolation {
+				// Two writers racing past the domain check: the database has the last word.
+				return domain.ErrSlotsOverlap
+			}
 			return fmt.Errorf("postgres: insert slot: %w", err)
 		}
 	}

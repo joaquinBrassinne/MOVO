@@ -17,6 +17,7 @@ import (
 
 const (
 	uniqueViolation     = "23505"
+	exclusionViolation  = "23P01"
 	foreignKeyViolation = "23503"
 )
 
