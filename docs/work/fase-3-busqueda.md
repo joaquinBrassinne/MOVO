@@ -50,7 +50,7 @@ Equivalente de `make ci` (el target no existe): `make fmt-check lint build`, `go
 3.1 a 3.9 y 3.8b hechas. Se sumaron en el camino: baja lógica de sedes (§4), categoría `trekking-outdoor`, 2.11 (horarios cortados), `POST /businesses/{slug}/view` y `make seed-dev`.
 
 ### Sin verificar o con límites conocidos
-- Los e2e del panel (`e2e/04-panel`) no corren en esta máquina: el login agota el tiempo con y sin los cambios de la fase. El spec nuevo `e2e/06-search` sí pasa.
+- Los e2e corren completos (67 tests: acceso, onboarding, admin, panel, baja y búsqueda). El timeout de login que se vio antes era del entorno local (servidores de desarrollo ocupando los puertos), no del código.
 - La ficha de un local inexistente responde `200` con `noindex` y no `404` (streaming con Cache Components).
 - La ficha cachea la lectura un minuto, así que "abierto ahora" puede ir hasta un minuto atrasado.
 - Falta un spec e2e de la ficha (el render es del servidor y los mocks del navegador no lo cubren).
