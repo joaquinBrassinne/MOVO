@@ -51,11 +51,24 @@ const PROXIED = [
   // Búsqueda pública (Home y Mapa): sin identidad, solo lectura.
   /^search$/,
   /^home\/featured$/,
+  // La ficha del local: el aviso de vista (POST) y el botón de WhatsApp, que cuenta el clic
+  // y redirige a wa.me. La respuesta del botón es una redirección que el navegador sigue.
+  /^businesses\/[a-z0-9-]+\/view$/,
+  /^r\/wa\/\d+$/,
 ];
 
-/** Cabeceras que el navegador puede mandar a la API; el resto no se reenvía. */
-const FORWARDED_REQUEST_HEADERS = ["authorization", "content-type", "accept"];
-const FORWARDED_RESPONSE_HEADERS = ["content-type", "cache-control", "retry-after"];
+/**
+ * Cabeceras que el navegador puede mandar a la API; el resto no se reenvía. El user-agent
+ * viaja para que el backend descarte bots en las vistas y los clics: sin él vería al proxy.
+ */
+const FORWARDED_REQUEST_HEADERS = ["authorization", "content-type", "accept", "user-agent"];
+const FORWARDED_RESPONSE_HEADERS = [
+  "content-type",
+  "cache-control",
+  "retry-after",
+  "location",
+  "referrer-policy",
+];
 
 const METHODS_WITHOUT_BODY = new Set(["GET", "HEAD", "DELETE"]);
 
@@ -87,6 +100,8 @@ export async function proxyToBackend(request: Request, segments: string[]): Prom
       headers,
       body: METHODS_WITHOUT_BODY.has(request.method) ? undefined : await request.arrayBuffer(),
       cache: "no-store",
+      // Una redirección (el botón de WhatsApp) la sigue el navegador, no el proxy.
+      redirect: "manual",
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
 
