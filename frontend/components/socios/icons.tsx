@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 type IconProps = { className?: string };
 
-function Svg({ children, className = "size-5" }: IconProps & { children: ReactNode }) {
+export function Svg({ children, className = "size-5" }: IconProps & { children: ReactNode }) {
   return (
     <svg
       viewBox="0 0 24 24"
