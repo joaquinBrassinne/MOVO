@@ -26,7 +26,7 @@ FROM (
     WHERE v.featured AND ST_DWithin(v.location, o.p, $3::float8)
     ORDER BY v.business_id, ST_Distance(v.location, o.p), v.branch_id
 ) nearest
-ORDER BY md5(business_id::text || $4::text), business_id
+ORDER BY md5(business_id::text || $4::bigint::text), business_id
 LIMIT $5`
 
 // Featured returns up to q.Limit featured businesses within q.RadiusM, rotated by seed.
