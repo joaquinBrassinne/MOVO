@@ -1,54 +1,100 @@
-// Horarios de atención de una sede: una franja por día, con un interruptor de abierto.
-// La API guarda tramos sueltos; acá se pasa de un lado al otro.
+// Horarios de atención de una sede: por día, cero o más franjas (turno cortado). La API
+// guarda tramos sueltos; acá se pasa de un lado al otro y se editan las franjas.
+// Un día cerrado es un día sin franjas. Ninguna franja cruza la medianoche.
 
-import { isValidRange, WEEK } from "./schedule.ts";
+import { findOverlap, isValidRange, WEEK, type Range } from "./schedule.ts";
 import type { Slot } from "./types.ts";
 
 export interface DayHours {
   weekday: number;
-  open: boolean;
-  start: string;
-  end: string;
+  ranges: Range[];
 }
 
 /** La franja que se propone al abrir un día que estaba cerrado. */
-const DEFAULT_RANGE = { start: "09:00", end: "18:00" };
+const DEFAULT_RANGE: Range = { start: "09:00", end: "18:00" };
+
+/** Los siete días en el orden de la semana, con las franjas de cada uno ordenadas. */
+export function toDayHours(slots: Slot[]): DayHours[] {
+  return WEEK.map(({ weekday }) => ({
+    weekday,
+    ranges: slots
+      .filter((slot) => slot.weekday === weekday)
+      .map(({ start, end }) => ({ start, end }))
+      .sort((a, b) => a.start.localeCompare(b.start)),
+  }));
+}
+
+/** Los tramos que se guardan: las franjas de cada día, en el orden de la semana. */
+export function toSlots(rows: DayHours[]): Slot[] {
+  return rows.flatMap(({ weekday, ranges }) =>
+    ranges.map(({ start, end }) => ({ weekday, start, end })),
+  );
+}
+
+function changeDay(rows: DayHours[], weekday: number, ranges: (current: Range[]) => Range[]) {
+  return rows.map((row) =>
+    row.weekday === weekday ? { ...row, ranges: ranges(row.ranges) } : row,
+  );
+}
+
+/** Abrir un día le pone la franja por defecto; cerrarlo le quita todas. */
+export function setDayOpen(rows: DayHours[], weekday: number, open: boolean): DayHours[] {
+  return changeDay(rows, weekday, () => (open ? [{ ...DEFAULT_RANGE }] : []));
+}
 
 /**
- * Los siete días en el orden de la semana. `null` si algún día tiene más de un tramo
- * (turno cortado): ese horario no cabe en el formulario y se deja como está.
+ * "Agregar franja": arranca donde termina la última (una hora de largo) para que no se
+ * pise; si no entra más día, repite la franja por defecto y el dueño la corrige.
  */
-export function toDayHours(slots: Slot[]): DayHours[] | null {
-  const byDay = new Map<number, Slot[]>();
-  for (const slot of slots) byDay.set(slot.weekday, [...(byDay.get(slot.weekday) ?? []), slot]);
-  if ([...byDay.values()].some((day) => day.length > 1)) return null;
-
-  return WEEK.map(({ weekday }) => {
-    const slot = byDay.get(weekday)?.[0];
-    return slot
-      ? { weekday, open: true, start: slot.start, end: slot.end }
-      : { weekday, open: false, ...DEFAULT_RANGE };
+export function addRange(rows: DayHours[], weekday: number): DayHours[] {
+  return changeDay(rows, weekday, (current) => {
+    const last = current.at(-1);
+    if (!last) return [{ ...DEFAULT_RANGE }];
+    const hour = Number(last.end.slice(0, 2));
+    if (!isValidRange(last) || hour >= 22) return [...current, { ...DEFAULT_RANGE }];
+    const start = last.end;
+    const end = `${String(hour + 1).padStart(2, "0")}${last.end.slice(2)}`;
+    return [...current, { start, end }];
   });
 }
 
-/** Los tramos que se guardan: solo los días abiertos. */
-export function toSlots(rows: DayHours[]): Slot[] {
-  return rows.filter((row) => row.open).map(({ weekday, start, end }) => ({ weekday, start, end }));
+export function removeRange(rows: DayHours[], weekday: number, index: number): DayHours[] {
+  return changeDay(rows, weekday, (current) => current.filter((_, i) => i !== index));
 }
 
-/** "Copiar Lun a Vie": el horario del lunes pasa a martes, miércoles, jueves y viernes. */
-export function copyMondayToWeekdays(rows: DayHours[]): DayHours[] {
-  const monday = rows.find((row) => row.weekday === 1);
-  if (!monday) return rows;
+export function updateRange(
+  rows: DayHours[],
+  weekday: number,
+  index: number,
+  change: Partial<Range>,
+): DayHours[] {
+  return changeDay(rows, weekday, (current) =>
+    current.map((range, i) => (i === index ? { ...range, ...change } : range)),
+  );
+}
+
+/** "Copiar a otros días": las franjas de `from` reemplazan las de cada día de `targets`. */
+export function copyDay(rows: DayHours[], from: number, targets: number[]): DayHours[] {
+  const source = rows.find((row) => row.weekday === from);
+  if (!source) return rows;
 
   return rows.map((row) =>
-    row.weekday >= 2 && row.weekday <= 5
-      ? { ...row, open: monday.open, start: monday.start, end: monday.end }
+    row.weekday !== from && targets.includes(row.weekday)
+      ? { ...row, ranges: source.ranges.map((range) => ({ ...range })) }
       : row,
   );
 }
 
-/** El día de la semana del primer día abierto con una franja mal armada, o `null` si todo está bien. */
-export function firstInvalidDay(rows: DayHours[]): number | null {
-  return rows.find((row) => row.open && !isValidRange(row))?.weekday ?? null;
+export interface HoursProblem {
+  weekday: number;
+  kind: "invalid" | "overlap";
+}
+
+/** El primer día con una franja mal armada o dos franjas que se pisan, o `null` si todo está bien. */
+export function firstProblem(rows: DayHours[]): HoursProblem | null {
+  for (const { weekday, ranges } of rows) {
+    if (!ranges.every(isValidRange)) return { weekday, kind: "invalid" };
+    if (findOverlap(ranges)) return { weekday, kind: "overlap" };
+  }
+  return null;
 }
