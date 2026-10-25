@@ -13,5 +13,6 @@ import (
 
 // newSearchRoutes composes the search module: adapter, use case and HTTP.
 func newSearchRoutes(log *slog.Logger, pool *pgxpool.Pool) func(chi.Router) {
-	return searchhttp.New(queries.NewNearbyBranches(searchpostgres.NewBranches(pool)), log).Mount
+	branches := searchpostgres.NewBranches(pool)
+	return searchhttp.New(queries.NewNearbyBranches(branches), queries.NewFeaturedBranches(branches, nil), log).Mount
 }

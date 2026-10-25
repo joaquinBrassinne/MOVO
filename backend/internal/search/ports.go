@@ -76,3 +76,10 @@ func (q Query) Validate() error {
 	}
 	return nil
 }
+
+// FeaturedFinder lists the featured (Pro) businesses around a point, one branch per
+// business, in an order that depends on seed: the same seed gives the same order and
+// a new seed reshuffles it.
+type FeaturedFinder interface {
+	Featured(ctx context.Context, q Query, seed int64) ([]Branch, error)
+}

@@ -23,7 +23,8 @@ func newServer(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	t.Helper()
 
 	pool := dbtest.New(t)
-	h := searchhttp.New(queries.NewNearbyBranches(searchpostgres.NewBranches(pool)), nil)
+	branches := searchpostgres.NewBranches(pool)
+	h := searchhttp.New(queries.NewNearbyBranches(branches), queries.NewFeaturedBranches(branches, nil), nil)
 	return httpx.NewRouter(nil, nil, h.Mount), pool
 }
 
@@ -158,6 +159,43 @@ func TestSearchRejectsBadParameters(t *testing.T) {
 		details, _ := body.Error.Details.(map[string]any)
 		if rec.Code != http.StatusUnprocessableEntity || body.Error.Code != searchhttp.CodeValidationFailed ||
 			details["field"] != tc.field || details["reason"] != tc.reason {
+			t.Errorf("%s: status %d, body %s; want 422 on %s/%s", name, rec.Code, rec.Body, tc.field, tc.reason)
+		}
+	}
+}
+
+func getFeatured(h http.Handler, query string) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/home/featured?"+query, nil))
+	return rec
+}
+
+func TestFeaturedAnswersAnEmptyListUntilBusinessesAreFeatured(t *testing.T) {
+	t.Parallel()
+
+	h, pool := newServer(t)
+	addBranch(t, pool, 1, 500)
+
+	rec := getFeatured(h, origin)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"results":[]`) {
+		t.Errorf("status = %d, body %s; want 200 and an empty list", rec.Code, rec.Body)
+	}
+}
+
+func TestFeaturedRejectsBadParameters(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newServer(t)
+	for name, tc := range map[string]struct{ query, field, reason string }{
+		"missing lat": {"lng=-64.11", "lat", "required"},
+		"limit range": {origin + "&limit=21", "limit", "out_of_range"},
+		"text radius": {origin + "&radius_m=big", "radius_m", "invalid"},
+	} {
+		rec := getFeatured(h, tc.query)
+		var body httpx.ErrorEnvelope
+		_ = json.Unmarshal(rec.Body.Bytes(), &body)
+		details, _ := body.Error.Details.(map[string]any)
+		if rec.Code != http.StatusUnprocessableEntity || details["field"] != tc.field || details["reason"] != tc.reason {
 			t.Errorf("%s: status %d, body %s; want 422 on %s/%s", name, rec.Code, rec.Body, tc.field, tc.reason)
 		}
 	}

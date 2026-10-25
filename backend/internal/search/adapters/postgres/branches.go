@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/joaquinBrassinne/MOVO/internal/search"
@@ -44,6 +45,11 @@ func (r *Branches) Nearby(ctx context.Context, q search.Query) ([]search.Branch,
 	if err != nil {
 		return nil, fmt.Errorf("postgres: search nearby: %w", err)
 	}
+	return collect(rows)
+}
+
+// collect reads every row of a branch query, in the column order both queries share.
+func collect(rows pgx.Rows) ([]search.Branch, error) {
 	defer rows.Close()
 
 	branches := []search.Branch{}
@@ -57,7 +63,7 @@ func (r *Branches) Nearby(ctx context.Context, q search.Query) ([]search.Branch,
 		branches = append(branches, b)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("postgres: search nearby: %w", err)
+		return nil, fmt.Errorf("postgres: read branches: %w", err)
 	}
 	return branches, nil
 }

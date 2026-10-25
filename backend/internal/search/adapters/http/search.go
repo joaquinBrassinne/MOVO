@@ -20,21 +20,23 @@ const CodeValidationFailed = "validation_failed"
 
 // Handlers serves the search endpoints.
 type Handlers struct {
-	nearby *queries.NearbyBranches
-	log    *slog.Logger
+	nearby   *queries.NearbyBranches
+	featured *queries.FeaturedBranches
+	log      *slog.Logger
 }
 
 // New builds the handlers. A nil logger discards logs.
-func New(nearby *queries.NearbyBranches, log *slog.Logger) *Handlers {
+func New(nearby *queries.NearbyBranches, featured *queries.FeaturedBranches, log *slog.Logger) *Handlers {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &Handlers{nearby: nearby, log: log}
+	return &Handlers{nearby: nearby, featured: featured, log: log}
 }
 
-// Mount registers GET /search. It is public and takes no identity.
+// Mount registers GET /search and GET /home/featured. Both are public and take no identity.
 func (h *Handlers) Mount(r chi.Router) {
 	r.Get("/search", h.handleSearch)
+	r.Get("/home/featured", h.handleFeatured)
 }
 
 // branchJSON is the light card the map and the lists need: nothing internal and no
@@ -65,18 +67,39 @@ func (h *Handlers) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	page, err := h.nearby.Handle(r.Context(), q)
 	if err != nil {
-		var qe *search.QueryError
-		if errors.As(err, &qe) {
-			invalid(w, qe.Field, "out_of_range")
-			return
-		}
-		h.log.Error("search failed", "request_id", httpx.RequestID(r.Context()), "error", err)
-		httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, "something went wrong", nil)
+		h.fail(w, r, err)
 		return
 	}
 
-	items := make([]branchJSON, 0, len(page.Items))
-	for _, b := range page.Items {
+	var next *int
+	if page.HasMore {
+		n := q.Offset + len(page.Items)
+		next = &n
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"results": cards(page.Items), "next_offset": next})
+}
+
+// handleFeatured serves "Destacados cerca tuyo". It takes lat, lng, radius_m and
+// limit; category and offset do not apply to a rotating section and are ignored.
+func (h *Handlers) handleFeatured(w http.ResponseWriter, r *http.Request) {
+	q, field, reason := parseQuery(r)
+	if field != "" {
+		invalid(w, field, reason)
+		return
+	}
+	q.Category, q.Offset = "", 0
+
+	items, err := h.featured.Handle(r.Context(), q)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"results": cards(items)})
+}
+
+func cards(branches []search.Branch) []branchJSON {
+	items := make([]branchJSON, 0, len(branches))
+	for _, b := range branches {
 		items = append(items, branchJSON{
 			BranchID: b.BranchID, BusinessName: b.BusinessName, BusinessSlug: b.BusinessSlug,
 			BranchName: b.BranchName, Address: b.Address, City: b.City, Reference: b.Reference,
@@ -84,12 +107,19 @@ func (h *Handlers) handleSearch(w http.ResponseWriter, r *http.Request) {
 			RatingAvg: b.RatingAvg, RatingCount: b.RatingCount, Verified: b.Verified, Featured: b.Featured,
 		})
 	}
-	var next *int
-	if page.HasMore {
-		n := q.Offset + len(page.Items)
-		next = &n
+	return items
+}
+
+// fail answers a use case error: a range error is the client's, anything else is
+// logged with the request id and reported as a generic 500.
+func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
+	var qe *search.QueryError
+	if errors.As(err, &qe) {
+		invalid(w, qe.Field, "out_of_range")
+		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"results": items, "next_offset": next})
+	h.log.Error("search failed", "request_id", httpx.RequestID(r.Context()), "error", err)
+	httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, "something went wrong", nil)
 }
 
 // parseQuery reads the query string. lat and lng are required; the rest is optional.
