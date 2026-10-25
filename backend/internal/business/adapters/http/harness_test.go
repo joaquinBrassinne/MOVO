@@ -84,7 +84,7 @@ func newServer(t *testing.T, limits planLimits) *server {
 		RemoveImage:     commands.NewRemoveImage(businesses, images, s.storage),
 		AddBranch:       commands.NewAddBranch(businesses, branches, plan),
 		EditBranch:      commands.NewEditBranch(businesses, branches),
-		RemoveBranch:    commands.NewRemoveBranch(businesses, branches),
+		RetireBranch:    commands.NewRetireBranch(businesses, branches),
 		SetBranchHours:  commands.NewSetBranchHours(businesses, branches),
 		SetBranchActive: commands.NewSetBranchActive(businesses, branches, plan),
 

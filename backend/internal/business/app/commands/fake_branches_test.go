@@ -69,19 +69,6 @@ func (f *fakeBranches) Save(_ context.Context, b domain.Branch) error {
 	return nil
 }
 
-func (f *fakeBranches) Delete(_ context.Context, businessID, branchID int64) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	b, ok := f.byID[branchID]
-	if !ok || b.BusinessID != businessID {
-		return business.ErrBranchNotFound
-	}
-	delete(f.byID, branchID)
-	delete(f.hours, branchID)
-	return nil
-}
-
 func (f *fakeBranches) Hours(_ context.Context, businessID, branchID int64) ([]domain.Slot, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

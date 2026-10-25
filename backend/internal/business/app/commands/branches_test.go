@@ -94,7 +94,7 @@ func TestEditBranchCannotReachAnotherBusiness(t *testing.T) {
 	}
 }
 
-func TestRemoveBranchCannotReachAnotherBusiness(t *testing.T) {
+func TestRetireBranchDeactivatesInsteadOfDeleting(t *testing.T) {
 	t.Parallel()
 
 	businesses, branches := twoOwners(t)
@@ -102,19 +102,23 @@ func TestRemoveBranchCannotReachAnotherBusiness(t *testing.T) {
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
-	remove := commands.NewRemoveBranch(businesses, branches)
+	retire := commands.NewRetireBranch(businesses, branches)
 
-	if err := remove.Handle(t.Context(), commands.RemoveBranchInput{OwnerID: 8, BranchID: mine.ID}); !errors.Is(err, business.ErrBranchNotFound) {
-		t.Fatalf("foreign remove error = %v, want ErrBranchNotFound", err)
+	if err := retire.Handle(t.Context(), commands.RetireBranchInput{OwnerID: 8, BranchID: mine.ID}); !errors.Is(err, business.ErrBranchNotFound) {
+		t.Fatalf("foreign retire error = %v, want ErrBranchNotFound", err)
 	}
-	if len(branches.byID) != 1 {
-		t.Fatal("a foreign remove must not delete the branch")
+	if !branches.byID[mine.ID].Active {
+		t.Fatal("a foreign retire must not touch the branch")
 	}
-	if err := remove.Handle(t.Context(), commands.RemoveBranchInput{OwnerID: 7, BranchID: mine.ID}); err != nil {
-		t.Fatalf("own remove: %v", err)
+
+	for range 2 { // the second call proves retiring is idempotent
+		if err := retire.Handle(t.Context(), commands.RetireBranchInput{OwnerID: 7, BranchID: mine.ID}); err != nil {
+			t.Fatalf("own retire: %v", err)
+		}
 	}
-	if len(branches.byID) != 0 {
-		t.Error("the branch must be gone")
+	kept, ok := branches.byID[mine.ID]
+	if !ok || kept.Active {
+		t.Errorf("branch kept = %t, active = %t; want it kept and inactive", ok, kept.Active)
 	}
 }
 

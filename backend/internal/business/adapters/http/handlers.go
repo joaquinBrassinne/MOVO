@@ -37,7 +37,7 @@ type Deps struct {
 	RemoveImage     *commands.RemoveImage
 	AddBranch       *commands.AddBranch
 	EditBranch      *commands.EditBranch
-	RemoveBranch    *commands.RemoveBranch
+	RetireBranch    *commands.RetireBranch
 	SetBranchHours  *commands.SetBranchHours
 	SetBranchActive *commands.SetBranchActive
 

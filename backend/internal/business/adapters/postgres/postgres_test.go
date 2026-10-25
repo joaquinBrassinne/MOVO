@@ -305,33 +305,6 @@ func TestBranchesHoursAreReplacedAtomically(t *testing.T) {
 	}
 }
 
-func TestBranchesDeleteRemovesHoursAndIsScopedByBusiness(t *testing.T) {
-	t.Parallel()
-
-	pool, repo, mine, theirs := setupBranches(t)
-	branch, err := repo.Create(t.Context(), newBranch(t, mine, "Centro"))
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	if err := repo.ReplaceHours(t.Context(), mine, branch.ID, []domain.Slot{{Weekday: 1, Start: 540, End: 780}}); err != nil {
-		t.Fatalf("ReplaceHours: %v", err)
-	}
-
-	if err := repo.Delete(t.Context(), theirs, branch.ID); !errors.Is(err, business.ErrBranchNotFound) {
-		t.Fatalf("delete through another business error = %v, want ErrBranchNotFound", err)
-	}
-	if err := repo.Delete(t.Context(), mine, branch.ID); err != nil {
-		t.Fatalf("Delete: %v", err)
-	}
-	if err := repo.Delete(t.Context(), mine, branch.ID); !errors.Is(err, business.ErrBranchNotFound) {
-		t.Errorf("second delete error = %v, want ErrBranchNotFound", err)
-	}
-	var n int
-	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM business_hours`).Scan(&n); err != nil || n != 0 {
-		t.Errorf("hours left after deleting the branch = %d, %v; want 0", n, err)
-	}
-}
-
 func TestBusinessesIsPilot(t *testing.T) {
 	t.Parallel()
 

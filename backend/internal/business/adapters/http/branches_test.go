@@ -67,11 +67,21 @@ func TestOwnerManagesBranchesAndTheirHours(t *testing.T) {
 		t.Errorf("first slot = %v", first)
 	}
 
-	if got := s.do(http.MethodDelete, path, owner, nil); got.status != http.StatusNoContent {
-		t.Fatalf("delete = %d", got.status)
+	// DELETE retires the branch: it stays in the list, inactive, with its hours.
+	for range 2 { // the second call proves retiring is idempotent
+		if got := s.do(http.MethodDelete, path, owner, nil); got.status != http.StatusNoContent {
+			t.Fatalf("retire = %d", got.status)
+		}
 	}
-	if got := s.do(http.MethodDelete, path, owner, nil); got.status != http.StatusNotFound || got.errorCode() != "branch_not_found" {
-		t.Errorf("second delete = %d %q, want 404 branch_not_found", got.status, got.errorCode())
+	retired, _ := s.do(http.MethodGet, "/me/business", owner, nil).body["branches"].([]any)
+	if len(retired) != 1 {
+		t.Fatalf("branches after retiring = %v, want the branch kept", retired)
+	}
+	if kept, _ := retired[0].(map[string]any); kept["active"] != false {
+		t.Errorf("retired branch = %v, want active false", kept)
+	}
+	if got := s.do(http.MethodDelete, "/me/business/branches/999999", owner, nil); got.status != http.StatusNotFound || got.errorCode() != "branch_not_found" {
+		t.Errorf("retire of an unknown branch = %d %q, want 404 branch_not_found", got.status, got.errorCode())
 	}
 }
 

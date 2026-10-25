@@ -130,3 +130,49 @@ func TestMetricDailyKeepsBranchAndServiceInsideTheirBusiness(t *testing.T) {
 		t.Errorf("counters left after deleting the business = %d, %v; want 0", left, err)
 	}
 }
+
+// TestRetiringABranchKeepsItsMetricsButDeletingItIsRefused pins the rule that
+// branches are never deleted: history references them, so a physical delete fails
+// while deactivating keeps the counters and takes the branch off the search.
+func TestRetiringABranchKeepsItsMetricsButDeletingItIsRefused(t *testing.T) {
+	t.Parallel()
+
+	pool := dbtest.New(t)
+	ctx := t.Context()
+	business, err := insertBusiness(ctx, pool, insertOwner(ctx, t, pool, "owner@example.com"), "studio", "5491112345678", "active")
+	if err != nil {
+		t.Fatalf("insert business: %v", err)
+	}
+	counted := insertBranch(ctx, t, pool, business)
+	empty := insertBranch(ctx, t, pool, business)
+	if _, err := pool.Exec(ctx, `INSERT INTO metric_daily (business_id, branch_id, date, metric, count) VALUES ($1, $2, '2026-03-01', 'whatsapp_click', 5)`, business, counted); err != nil {
+		t.Fatalf("insert counter: %v", err)
+	}
+
+	_, err = pool.Exec(ctx, `DELETE FROM branches WHERE id = $1`, counted)
+	requireSQLState(t, err, foreignKeyViolation)
+	if _, err := pool.Exec(ctx, `DELETE FROM branches WHERE id = $1`, empty); err != nil {
+		t.Errorf("a branch with no history can still be deleted: %v", err)
+	}
+
+	visible := func() (n int) {
+		t.Helper()
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM visible_branches WHERE branch_id = $1`, counted).Scan(&n); err != nil {
+			t.Fatalf("count visible: %v", err)
+		}
+		return n
+	}
+	if visible() != 1 {
+		t.Fatal("the branch must be visible before it is retired")
+	}
+	if _, err := pool.Exec(ctx, `UPDATE branches SET active = false WHERE id = $1`, counted); err != nil {
+		t.Fatalf("retire: %v", err)
+	}
+	if visible() != 0 {
+		t.Error("a retired branch must leave the search")
+	}
+	var total int64
+	if err := pool.QueryRow(ctx, `SELECT COALESCE(sum(count), 0) FROM metric_daily WHERE branch_id = $1`, counted).Scan(&total); err != nil || total != 5 {
+		t.Errorf("history after retiring = %d, %v; want 5 kept", total, err)
+	}
+}

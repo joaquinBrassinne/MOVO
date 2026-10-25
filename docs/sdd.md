@@ -192,6 +192,8 @@ Todas las tablas con `id` (UUID v7 o `bigserial`), `created_at`, `updated_at`. M
 
 Los planes **no son una tabla**: se definen por configuración (precio para mostrar, URL del plan de Mercado Pago y límites), ver 4.2 y 7.5.
 
+**Baja lógica.** Las sedes y los negocios no se borran: se dan de baja de forma lógica (`branches.active = false`, `businesses.status = 'deleted'`), porque las métricas, los canjes y las reseñas los referencian y son historial que el local y el admin siguen leyendo. En la base, `metric_daily` apunta a `branches` con `ON DELETE RESTRICT`, así que un `DELETE` físico de una sede con historial falla en lugar de borrar sus contadores en silencio. En la API, `DELETE /me/business/branches/{id}` desactiva la sede (es idempotente y conserva el historial); volver a mostrarla es `PUT …/active`, que revisa el límite del plan.
+
 Índices importantes:
 - `GIST (location)` en `branches`.
 - `UNIQUE (code)` en `benefit_codes`; índice por `(customer_id, status)` y `(business_id, status)`.
@@ -576,6 +578,7 @@ Convenciones de trabajo:
 - [ ] 6.1 Super admin: listados y filtros de locales y suscripciones (M)
 - [ ] 6.2 Reseteo de contraseña asistido (enlace temporal para enviar por WhatsApp) (M)
 - [ ] 6.3 Métricas del super admin: locales activos, cupones generados y canjeados (S)
+- [ ] 6.3b Anti-inflado de métricas: descartar el mismo clic o vista repetido desde la misma IP en una ventana corta, en memoria (interfaz lista para Redis) y sin persistir la IP; se aplica a `profile_view`, `service_view` y `whatsapp_click` antes de mostrar métricas en el panel (S)
 - [ ] 6.4 Métricas esenciales del local (Starter) sobre `metric_daily` y las tablas de cupones (M)
 - [ ] 6.5 Actividades más demandadas (vistas del servicio + clics a WhatsApp por servicio) (S)
 - [ ] 6.6 Tasas de conversión con tendencia y desglose por sede y actividad (Pro). Las vistas de perfil son por negocio (§4.3): "vistas → cupones" se calcula solo a nivel negocio; el desglose por sede aplica a clics a WhatsApp, vistas de servicio y canjes (`redeemed_branch_id`) (M)
@@ -638,6 +641,8 @@ Convenciones de trabajo:
 | Los locales no ven valor y no pagan | Piloto gratuito antes de activar cobros, medir canjes y reseñas |
 | Facturación/impuestos de la suscripción | Cobrar recurrentemente requiere inscripción fiscal y facturas: definirlo con un contador antes del lanzamiento (Fase 8) |
 | Datos personales de usuarios | Mínimo dato necesario, política de privacidad, Ley 25.326 |
+| Borrar una sede o un negocio y perder su historial (métricas, canjes, reseñas) | Baja lógica (§4): las sedes se desactivan y los negocios pasan a `deleted`; las claves foráneas del historial son `RESTRICT` donde corresponde, así que un `DELETE` físico falla |
+| Inflar las métricas: `/r/wa` y las vistas son públicos y cuentan en cada GET, y el filtro de bots solo descarta agentes automáticos | Tarea 6.3b: descartar el mismo clic o vista repetido desde la misma IP en una ventana corta, en memoria y sin persistir la IP. Hasta entonces, las métricas se rotulan como "vistas" y "clics", no como personas |
 
 ---
 
