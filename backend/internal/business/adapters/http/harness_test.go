@@ -73,13 +73,14 @@ func newServer(t *testing.T, limits planLimits) *server {
 
 	handlers := businesshttp.New(businesshttp.Deps{
 		Verifier:        s.tokens,
+		MaxImages:       maxPhotos,
 		MyBusiness:      queries.NewGetMyBusiness(businesses, branches, images, s.storage),
 		CreateBusiness:  commands.NewCreateBusiness(businesses),
 		UpdateBusiness:  commands.NewUpdateBusiness(businesses),
 		SubmitBusiness:  commands.NewSubmitBusiness(businesses),
 		PresignImage:    commands.NewPresignImageUpload(businesses, s.storage, nil),
 		Geocode:         commands.NewGeocodeAddress(businesses, s.geocoder),
-		RegisterImage:   commands.NewRegisterImage(businesses, images, s.storage),
+		RegisterImage:   commands.NewRegisterImage(businesses, images, s.storage, maxPhotos),
 		ReorderImages:   commands.NewReorderImages(businesses, images),
 		RemoveImage:     commands.NewRemoveImage(businesses, images, s.storage),
 		AddBranch:       commands.NewAddBranch(businesses, branches, plan),
@@ -202,3 +203,6 @@ func (f *fakeGeocoder) Geocode(_ context.Context, query string) (business.Place,
 	f.calls = append(f.calls, query)
 	return f.place, f.err
 }
+
+// maxPhotos is the photo limit the test server is configured with.
+const maxPhotos = 4

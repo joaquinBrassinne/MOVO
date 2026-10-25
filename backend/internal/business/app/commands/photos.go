@@ -19,11 +19,13 @@ type RegisterImage struct {
 	businesses business.BusinessRepository
 	images     business.ImageRepository
 	storage    business.ImageStorage
+	max        int
 }
 
-// NewRegisterImage wires the RegisterImage use case.
-func NewRegisterImage(businesses business.BusinessRepository, images business.ImageRepository, storage business.ImageStorage) *RegisterImage {
-	return &RegisterImage{businesses: businesses, images: images, storage: storage}
+// NewRegisterImage wires the RegisterImage use case. max is how many photos a business
+// may register (MAX_BUSINESS_IMAGES).
+func NewRegisterImage(businesses business.BusinessRepository, images business.ImageRepository, storage business.ImageStorage, max int) *RegisterImage {
+	return &RegisterImage{businesses: businesses, images: images, storage: storage, max: max}
 }
 
 // Handle checks that the key is inside the business folder and that the object is
@@ -47,7 +49,7 @@ func (c *RegisterImage) Handle(ctx context.Context, in RegisterImageInput) (doma
 		return domain.Image{}, business.ErrImageNotUploaded
 	}
 
-	image, err := c.images.Add(ctx, owned.ID, in.ObjectKey, domain.MaxImages)
+	image, err := c.images.Add(ctx, owned.ID, in.ObjectKey, c.max)
 	if err != nil {
 		return domain.Image{}, fmt.Errorf("add image: %w", err)
 	}

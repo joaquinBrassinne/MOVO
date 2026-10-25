@@ -92,3 +92,35 @@ func TestLoadStorageRejections(t *testing.T) {
 		t.Error("a nil lookup must be rejected")
 	}
 }
+
+func TestLoadStorageMaxImages(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		value   string
+		want    int
+		wantErr bool
+	}{
+		{"unset takes the default of ten", "", 10, false},
+		{"a configured limit", " 4 ", 4, false},
+		{"the ceiling is allowed", "30", 30, false},
+		{"zero is rejected", "0", 0, true},
+		{"above the ceiling is rejected", "31", 0, true},
+		{"text is rejected", "many", 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := config.LoadStorage(storageEnv(map[string]string{"MAX_BUSINESS_IMAGES": tt.value}))
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "MAX_BUSINESS_IMAGES") {
+					t.Fatalf("err = %v, want one naming MAX_BUSINESS_IMAGES", err)
+				}
+				return
+			}
+			if err != nil || got.MaxImages != tt.want {
+				t.Errorf("MaxImages = %d, %v; want %d", got.MaxImages, err, tt.want)
+			}
+		})
+	}
+}

@@ -41,11 +41,3 @@ func TestValidateImageKeyAcceptsOnlyKeysInsideTheBusiness(t *testing.T) {
 		})
 	}
 }
-
-func TestMaxImages(t *testing.T) {
-	t.Parallel()
-
-	if domain.MaxImages != 6 {
-		t.Errorf("MaxImages = %d, want 6 (the design shows \"3 de 6\")", domain.MaxImages)
-	}
-}

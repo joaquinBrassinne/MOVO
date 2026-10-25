@@ -69,6 +69,7 @@ func newBusinessRoutes(
 	verifier httpx.TokenVerifier,
 	plans config.Plans,
 	images business.ImageStorage,
+	maxImages int,
 	geocoder business.Geocoder,
 ) (businessMount, billingMount func(chi.Router), err error) {
 	catalog, err := configcatalog.New(plans)
@@ -88,7 +89,8 @@ func newBusinessRoutes(
 	entitlements := entitlementsOf{query: billingqueries.NewEntitlementsFor(catalog, resolver)}
 
 	handlers := businesshttp.New(businesshttp.Deps{
-		Verifier: verifier,
+		Verifier:  verifier,
+		MaxImages: maxImages,
 
 		MyBusiness:     queries.NewGetMyBusiness(businesses, branches, photos, images),
 		CreateBusiness: commands.NewCreateBusiness(businesses),
@@ -96,7 +98,7 @@ func newBusinessRoutes(
 		SubmitBusiness: commands.NewSubmitBusiness(businesses),
 		PresignImage:   commands.NewPresignImageUpload(businesses, images, nil),
 		Geocode:        commands.NewGeocodeAddress(businesses, geocoder),
-		RegisterImage:  commands.NewRegisterImage(businesses, photos, images),
+		RegisterImage:  commands.NewRegisterImage(businesses, photos, images, maxImages),
 		ReorderImages:  commands.NewReorderImages(businesses, photos),
 		RemoveImage:    commands.NewRemoveImage(businesses, photos, images),
 

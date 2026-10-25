@@ -11,6 +11,9 @@ import (
 )
 
 // uploaded simulates the client uploading to a presigned URL: the object exists.
+// maxPhotos is the limit these tests configure: small, so the limit is reached quickly.
+const maxPhotos = 3
+
 func uploaded(mem *storage.Memory, businessID int64, name string) string {
 	key := "businesses/" + itoa(businessID) + "/" + name + ".jpg"
 	mem.Put(key)
@@ -23,7 +26,7 @@ func TestRegisterImagePutsThePhotoAtTheEndOfTheList(t *testing.T) {
 	businesses, _ := twoOwners(t)
 	mine, _ := businesses.FindByOwner(t.Context(), 7)
 	mem, images := storage.NewMemory(), &fakeImages{}
-	register := commands.NewRegisterImage(businesses, images, mem)
+	register := commands.NewRegisterImage(businesses, images, mem, maxPhotos)
 
 	for i, name := range []string{"a", "b", "c"} {
 		got, err := register.Handle(t.Context(), commands.RegisterImageInput{OwnerID: 7, ObjectKey: uploaded(mem, mine.ID, name)})
@@ -40,7 +43,7 @@ func TestRegisterImageRejections(t *testing.T) {
 	mine, _ := businesses.FindByOwner(t.Context(), 7)
 	theirs, _ := businesses.FindByOwner(t.Context(), 8)
 	mem, images := storage.NewMemory(), &fakeImages{}
-	register := commands.NewRegisterImage(businesses, images, mem)
+	register := commands.NewRegisterImage(businesses, images, mem, maxPhotos)
 
 	registered := uploaded(mem, mine.ID, "first")
 	if _, err := register.Handle(t.Context(), commands.RegisterImageInput{OwnerID: 7, ObjectKey: registered}); err != nil {
@@ -75,16 +78,16 @@ func TestRegisterImageStopsAtTheLimit(t *testing.T) {
 	businesses, _ := twoOwners(t)
 	mine, _ := businesses.FindByOwner(t.Context(), 7)
 	mem, images := storage.NewMemory(), &fakeImages{}
-	register := commands.NewRegisterImage(businesses, images, mem)
+	register := commands.NewRegisterImage(businesses, images, mem, maxPhotos)
 
-	for i := range domain.MaxImages {
+	for i := range maxPhotos {
 		if _, err := register.Handle(t.Context(), commands.RegisterImageInput{OwnerID: 7, ObjectKey: uploaded(mem, mine.ID, "p"+itoa(int64(i)))}); err != nil {
 			t.Fatalf("photo %d: %v", i+1, err)
 		}
 	}
 	_, err := register.Handle(t.Context(), commands.RegisterImageInput{OwnerID: 7, ObjectKey: uploaded(mem, mine.ID, "one-too-many")})
 	if !errors.Is(err, business.ErrImageLimitReached) {
-		t.Fatalf("seventh photo error = %v, want ErrImageLimitReached", err)
+		t.Fatalf("photo over the limit error = %v, want ErrImageLimitReached", err)
 	}
 }
 
@@ -94,7 +97,7 @@ func TestRemoveImageClosesTheGapAndDeletesTheObject(t *testing.T) {
 	businesses, _ := twoOwners(t)
 	mine, _ := businesses.FindByOwner(t.Context(), 7)
 	mem, images := storage.NewMemory(), &fakeImages{}
-	register := commands.NewRegisterImage(businesses, images, mem)
+	register := commands.NewRegisterImage(businesses, images, mem, maxPhotos)
 	var ids []int64
 	var keys []string
 	for _, name := range []string{"a", "b", "c"} {
@@ -129,7 +132,7 @@ func TestOneOwnerCannotRemoveOrReorderThePhotosOfAnother(t *testing.T) {
 	businesses, _ := twoOwners(t)
 	mine, _ := businesses.FindByOwner(t.Context(), 7)
 	mem, images := storage.NewMemory(), &fakeImages{}
-	img, err := commands.NewRegisterImage(businesses, images, mem).Handle(t.Context(), commands.RegisterImageInput{OwnerID: 7, ObjectKey: uploaded(mem, mine.ID, "a")})
+	img, err := commands.NewRegisterImage(businesses, images, mem, maxPhotos).Handle(t.Context(), commands.RegisterImageInput{OwnerID: 7, ObjectKey: uploaded(mem, mine.ID, "a")})
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -151,7 +154,7 @@ func TestReorderImagesChoosesTheCover(t *testing.T) {
 	businesses, _ := twoOwners(t)
 	mine, _ := businesses.FindByOwner(t.Context(), 7)
 	mem, images := storage.NewMemory(), &fakeImages{}
-	register := commands.NewRegisterImage(businesses, images, mem)
+	register := commands.NewRegisterImage(businesses, images, mem, maxPhotos)
 	var ids []int64
 	for _, name := range []string{"a", "b", "c"} {
 		img, _ := register.Handle(t.Context(), commands.RegisterImageInput{OwnerID: 7, ObjectKey: uploaded(mem, mine.ID, name)})

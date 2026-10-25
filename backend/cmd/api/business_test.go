@@ -42,7 +42,7 @@ func newAPIHarness(t *testing.T) *apiHarness {
 		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800},
 	}
 
-	businessMount, billingMount, err := newBusinessRoutes(pool, signer, plans, storage.NewMemory(), unusedGeocoder{})
+	businessMount, billingMount, err := newBusinessRoutes(pool, signer, plans, storage.NewMemory(), 6, unusedGeocoder{})
 	if err != nil {
 		t.Fatalf("newBusinessRoutes: %v", err)
 	}
