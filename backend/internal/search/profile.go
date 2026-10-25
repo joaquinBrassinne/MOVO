@@ -67,3 +67,10 @@ type ProfileFinder interface {
 type ImageURLs interface {
 	PresignDownload(ctx context.Context, key string) (string, error)
 }
+
+// BusinessResolver finds the business behind a public slug.
+type BusinessResolver interface {
+	// PublicBusinessID returns ErrBusinessNotFound when no business has the slug or
+	// none of its branches is public.
+	PublicBusinessID(ctx context.Context, slug string) (int64, error)
+}

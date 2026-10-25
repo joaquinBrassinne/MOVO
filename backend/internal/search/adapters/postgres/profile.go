@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -183,4 +184,18 @@ func readProfileImages(ctx context.Context, tx pgx.Tx, p *search.Profile) error 
 		p.ImageKeys = append(p.ImageKeys, key)
 	}
 	return rows.Err()
+}
+
+// PublicBusinessID returns the id of the business with that slug when it has a public
+// branch, or search.ErrBusinessNotFound.
+func (r *Branches) PublicBusinessID(ctx context.Context, slug string) (int64, error) {
+	var id int64
+	err := r.pool.QueryRow(ctx, `SELECT business_id FROM visible_branches WHERE business_slug = $1 LIMIT 1`, slug).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, search.ErrBusinessNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("postgres: public business %q: %w", slug, err)
+	}
+	return id, nil
 }

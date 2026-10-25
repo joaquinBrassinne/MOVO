@@ -25,6 +25,7 @@ type Handlers struct {
 	featured *queries.FeaturedBranches
 	whatsapp *commands.OpenWhatsApp
 	profile  *queries.BusinessProfile
+	view     *commands.RecordProfileView
 	log      *slog.Logger
 }
 
@@ -42,6 +43,9 @@ func (h *Handlers) Mount(r chi.Router) {
 	r.Get("/home/featured", h.handleFeatured)
 	if h.profile != nil {
 		r.Get("/businesses/{slug}", h.handleProfile)
+	}
+	if h.view != nil {
+		r.Post("/businesses/{slug}/view", h.handleProfileView)
 	}
 	if h.whatsapp != nil {
 		r.Get("/r/wa/{branch_id}", h.handleWhatsApp)

@@ -256,6 +256,7 @@ Principio: **contar, no seguir**. No se guardan IP, user-agent ni identificadore
 - **Pro, "Inteligencia comercial" (incluye todo Starter):**
   5. **Tasas de conversión** (vistas → cupones, cupones → canjes) con tendencia contra el período anterior y desglose por sede y actividad. No hay "embudo" como función aparte.
   6. **Una alerta: "Cupones sin canjear"** (la tasa de canje de los últimos 30 días queda bajo un umbral, con una cantidad mínima de cupones generados). Se muestra en el panel, como máximo una por semana.
+- **Cómo se cuenta una vista de perfil.** `GET /businesses/{slug}` no cuenta nada: lo llama también el render del servidor (rastreadores y vistas previas de enlaces). La ficha, ya cargada en el navegador, avisa con `POST /businesses/{slug}/view` desde un componente de cliente, una sola vez por carga (`navigator.sendBeacon` o `fetch` con `keepalive`). El endpoint responde siempre `204` sin cuerpo y sin cookies, también cuando el negocio no existe o no es visible (así no revela qué locales existen), suma `profile_view` con `branch_id` nulo e ignora los bots por user-agent.
 - **Las vistas de perfil son por negocio.** La ficha `/locales/[slug]` es del negocio, así que `profile_view` se guarda sin sede. El desglose por sede de Pro aplica a los clics a WhatsApp, las vistas de servicio y los canjes (`redeemed_branch_id`). La tasa "vistas → cupones" se calcula solo a nivel negocio; "cupones → canjes" sí admite desglose por sede.
 - **Post-MVP:** benchmarking anónimo de zona (solo con ≥ 5 locales activos por categoría y zona; solo medianas y percentiles) y las alertas "Alta demanda" y "Franjas con poca demanda". La demanda por actividad se mide con los contadores de servicio; MOVO no conoce ocupación ni capacidad.
 - Los contadores se registran **desde la Fase 3** para tener historial cuando se construya el panel.
@@ -346,7 +347,8 @@ El vencimiento se evalúa por `expires_at` al leer; una tarea diaria marca como 
 | GET | `/plans` | público | Planes con precio y URL de contratación |
 | GET | `/search/businesses` | público | Búsqueda geoespacial |
 | GET | `/home/featured` | público | Destacados cerca tuyo |
-| GET | `/businesses/{slug}` | público | Ficha del local (solo sedes públicas y servicios activos; 404 `business_not_found` si no es público; sin número de WhatsApp) |
+| GET | `/businesses/{slug}` | público | Ficha del local (solo sedes públicas y servicios activos; 404 `business_not_found` si no es público; sin número de WhatsApp; no cuenta vistas) |
+| POST | `/businesses/{slug}/view` | público | Cuenta una vista de la ficha (`profile_view`, sin sede). Siempre `204` sin cuerpo ni cookies, aunque el negocio no sea visible; ignora bots |
 | GET | `/r/wa/{branch_id}` | público | Cuenta el clic y redirige a WhatsApp |
 | POST/PUT | `/me/business` | business_admin | Crear/editar mi negocio |
 | POST/PUT/DELETE | `/me/business/branches` | business_admin | Sedes (según límite del plan) |
@@ -518,7 +520,7 @@ Convenciones de trabajo:
 - [x] 3.7 Endpoint `GET /r/wa/{branch_id}?service=` que cuenta el clic y redirige a `wa.me` con mensaje prearmado (S)
 - [x] 3.8b Endpoint público `GET /businesses/{slug}`: ficha con sedes y horarios públicos, servicios activos con su agenda, fotos (URLs prefirmadas) y sello de verificado; sin el número de WhatsApp (S)
 - [ ] 3.8 Frontend: Home y Mapa (React Leaflet, marcadores, geolocalización del navegador) (L)
-- [ ] 3.9 Frontend: ficha SSR del local `/locales/[slug]` con metadatos SEO, servicios, horarios, sello de verificado y botón de WhatsApp (M)
+- [ ] 3.9 Backend y frontend: `POST /businesses/{slug}/view` (204 sin cuerpo ni cookies, ignora bots y no revela si el negocio es visible; suma `profile_view` con `branch_id` nulo) y la ficha SSR del local `/locales/[slug]` con metadatos SEO, servicios, horarios con "abierto ahora", sello de verificado y botón de WhatsApp; un componente de cliente dispara la vista una sola vez por carga, después de montar (M)
 
 **Vistas:** Home, Mapa, Ficha del local (opcionales: Explorar, Splash).
 **DoD:** búsqueda p95 < 300 ms; la ficha se renderiza del lado del servidor; el botón de WhatsApp abre la conversación y suma el contador.

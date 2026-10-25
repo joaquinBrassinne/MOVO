@@ -19,5 +19,6 @@ func newSearchRoutes(log *slog.Logger, pool *pgxpool.Pool, images search.ImageUR
 	record := commands.NewRecordMetric(searchpostgres.NewMetrics(pool), nil)
 	return searchhttp.New(queries.NewNearbyBranches(branches), queries.NewFeaturedBranches(branches, nil), log).
 		WithWhatsApp(commands.NewOpenWhatsApp(branches, record, log)).
-		WithProfile(queries.NewBusinessProfile(branches, images, nil)).Mount
+		WithProfile(queries.NewBusinessProfile(branches, images, nil)).
+		WithProfileView(commands.NewRecordProfileView(branches, record, log)).Mount
 }
