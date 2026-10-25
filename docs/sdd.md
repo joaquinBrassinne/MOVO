@@ -485,8 +485,8 @@ Convenciones de trabajo:
 - [x] 2.7 Super admin: aprobar / pausar / reactivar / baja lógica, marcar verificado, marcar piloto + `audit_log` (M)
 - [x] 2.7b Capa HTTP de la fase: endpoints `/me/business...`, `/admin/businesses...` y `/plans`, con rol por grupo de rutas, y cableado en `cmd/api` (M)
 - [x] 2.8 Frontend `/onboarding`: crear cuenta y completar datos, WhatsApp, sede con pin en el mapa, fotos y número de operación opcional; estado "en revisión" (L)
-- [ ] 2.9 Frontend: Servicios y horarios y Sedes, con contador del límite del plan (M)
-- [ ] 2.10 Frontend super admin: lista de locales y acciones (M)
+- [x] 2.9 Frontend: Servicios y horarios y Sedes, con contador del límite del plan (M)
+- [x] 2.10 Frontend super admin: lista de locales y acciones (M)
 
 **Vistas:** Onboarding, Servicios y horarios, Sedes, Super admin → Locales.
 **DoD:** un dueño crea su local, el admin lo activa y lo marca verificado, y queda en estado `active`.
