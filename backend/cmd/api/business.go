@@ -116,6 +116,7 @@ func newBusinessRoutes(
 		Categories:     queries.NewListCategories(businesspostgres.NewCategories(pool)),
 		ListBusinesses: queries.NewListBusinesses(admin),
 		AdminAction:    commands.NewApplyAdminAction(admin),
+		AdminDetail:    queries.NewGetBusinessDetail(admin, branches, services),
 	})
 
 	planHandlers := billinghttp.New(catalog).WithOwnerPlans(verifier, ownerPlans{businesses: businesses, resolver: resolver, catalog: catalog})

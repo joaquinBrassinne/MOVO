@@ -7,6 +7,7 @@ package business
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/joaquinBrassinne/MOVO/internal/business/domain"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/storage"
@@ -133,11 +134,14 @@ type AdminRepository interface {
 }
 
 // AdminFilter selects which businesses the super admin list shows. An empty
-// Status means every business except the deleted ones.
+// Status means every business except the deleted ones. Query searches the name, the
+// slug, the owner email and the branch addresses, or matches an exact business id.
 type AdminFilter struct {
-	Status domain.Status
-	Limit  int
-	Offset int
+	Status     domain.Status
+	Query      string
+	CategoryID int64
+	Limit      int
+	Offset     int
 }
 
 // AdminRow is one line of the super admin list.
@@ -148,16 +152,31 @@ type AdminRow struct {
 	BranchCount  int
 }
 
-// AdminPage is a page of the list with the total of businesses that match.
+// AdminPage is a page of the list with the total of businesses that match. Counts is
+// how many businesses each status has in the whole directory, whatever the filters
+// say: it feeds the tabs of the list.
 type AdminPage struct {
-	Rows  []AdminRow
-	Total int
+	Rows   []AdminRow
+	Total  int
+	Counts map[domain.Status]int
+}
+
+// AuditRecord is one entry of the history of a business, as the super admin reads it.
+type AuditRecord struct {
+	ActorEmail string
+	Action     string
+	At         time.Time
+	Metadata   map[string]any
 }
 
 // AdminDirectory lists businesses for the super admin, those waiting for review
 // first and then the most recent.
 type AdminDirectory interface {
 	List(ctx context.Context, filter AdminFilter) (AdminPage, error)
+	// Find returns one business as a list row (ErrBusinessNotFound).
+	Find(ctx context.Context, id int64) (AdminRow, error)
+	// History returns the audit entries of the business, newest first.
+	History(ctx context.Context, id int64) ([]AuditRecord, error)
 }
 
 // ImageStorage moves photos through presigned URLs. The object server behind it

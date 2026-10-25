@@ -98,6 +98,7 @@ func newServer(t *testing.T, limits planLimits) *server {
 		Categories:     queries.NewListCategories(postgres.NewCategories(pool)),
 		ListBusinesses: queries.NewListBusinesses(admin),
 		AdminAction:    commands.NewApplyAdminAction(admin),
+		AdminDetail:    queries.NewGetBusinessDetail(admin, branches, services),
 	})
 
 	ts := httptest.NewServer(httpx.NewRouter(nil, nil, handlers.Mount))

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/joaquinBrassinne/MOVO/internal/business"
 	"github.com/joaquinBrassinne/MOVO/internal/business/domain"
@@ -13,6 +14,7 @@ import (
 const (
 	defaultAdminLimit = 50
 	maxAdminLimit     = 100
+	maxAdminQueryLen  = 100
 )
 
 // ErrAdminFilterInvalid means the status or the paging of the list is not valid.
@@ -40,7 +42,8 @@ func (q *ListBusinesses) Handle(ctx context.Context, filter business.AdminFilter
 	if filter.Limit == 0 {
 		filter.Limit = defaultAdminLimit
 	}
-	if filter.Limit < 0 || filter.Limit > maxAdminLimit || filter.Offset < 0 {
+	if filter.Limit < 0 || filter.Limit > maxAdminLimit || filter.Offset < 0 ||
+		filter.CategoryID < 0 || utf8.RuneCountInString(filter.Query) > maxAdminQueryLen {
 		return business.AdminPage{}, ErrAdminFilterInvalid
 	}
 

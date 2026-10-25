@@ -3,6 +3,7 @@ package queries_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/joaquinBrassinne/MOVO/internal/business"
@@ -13,6 +14,14 @@ import (
 type spyDirectory struct {
 	got  business.AdminFilter
 	page business.AdminPage
+}
+
+func (s *spyDirectory) Find(context.Context, int64) (business.AdminRow, error) {
+	panic("not used by the query")
+}
+
+func (s *spyDirectory) History(context.Context, int64) ([]business.AuditRecord, error) {
+	panic("not used by the query")
 }
 
 func (s *spyDirectory) List(_ context.Context, filter business.AdminFilter) (business.AdminPage, error) {
@@ -40,10 +49,12 @@ func TestListBusinessesRejectsInvalidFilters(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]business.AdminFilter{
-		"unknown status":  {Status: "approved"},
-		"negative limit":  {Limit: -1},
-		"limit too large": {Limit: 101},
-		"negative offset": {Offset: -1},
+		"unknown status":    {Status: "approved"},
+		"negative limit":    {Limit: -1},
+		"limit too large":   {Limit: 101},
+		"negative offset":   {Offset: -1},
+		"negative category": {CategoryID: -1},
+		"search too long":   {Query: strings.Repeat("a", 101)},
 	}
 	for name, filter := range tests {
 		t.Run(name, func(t *testing.T) {

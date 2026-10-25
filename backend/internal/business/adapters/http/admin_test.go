@@ -2,6 +2,7 @@ package businesshttp_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -156,5 +157,95 @@ func TestAdminListFiltersAndPages(t *testing.T) {
 		if got := s.do(http.MethodGet, "/admin/businesses"+query, admin, nil); got.status != http.StatusUnprocessableEntity || got.errorField() != "filter" {
 			t.Errorf("%s = %d field %q, want 422 filter", query, got.status, got.errorField())
 		}
+	}
+}
+
+func TestAdminListSearchesFiltersByCategoryAndCountsByStatus(t *testing.T) {
+	t.Parallel()
+
+	s := newServer(t, planLimits{})
+	_, root := s.user("root@example.com", "super_admin")
+	ownerWithBusiness(s, "ana@alma.example")
+
+	other := ownerWithBusiness(s, "bruno@flow.example")
+	s.do(http.MethodPost, "/me/business/submit", other, map[string]any{})
+
+	byEmail := s.do(http.MethodGet, "/admin/businesses?q=bruno", root, nil)
+	if rows, _ := byEmail.body["businesses"].([]any); len(rows) != 1 || byEmail.body["total"] != float64(1) {
+		t.Fatalf("search by owner email = %v", byEmail.body)
+	}
+
+	counts, _ := byEmail.body["counts"].(map[string]any)
+	if counts["draft"] != float64(1) || counts["pending_review"] != float64(1) {
+		t.Errorf("counts = %v, want them to describe the whole directory and not the search", counts)
+	}
+
+	gyms := s.do(http.MethodGet, "/admin/businesses?category_id="+itoa(s.categoryID("gimnasios")), root, nil)
+	if rows, _ := gyms.body["businesses"].([]any); len(rows) != 0 {
+		t.Errorf("another category = %v, want none (both businesses are yoga)", rows)
+	}
+	yoga := s.do(http.MethodGet, "/admin/businesses?category_id="+itoa(s.categoryID("yoga")), root, nil)
+	if rows, _ := yoga.body["businesses"].([]any); len(rows) != 2 {
+		t.Errorf("yoga = %v, want both", rows)
+	}
+
+	for _, query := range []string{"?category_id=abc", "?category_id=-1", "?q=" + strings.Repeat("a", 101)} {
+		if got := s.do(http.MethodGet, "/admin/businesses"+query, root, nil); got.status != http.StatusUnprocessableEntity {
+			t.Errorf("%s = %d, want 422", query[:12], got.status)
+		}
+	}
+}
+
+func TestAdminDetailShowsBranchesServicesAndHistory(t *testing.T) {
+	t.Parallel()
+
+	s := newServer(t, planLimits{})
+	_, root := s.user("root@example.com", "super_admin")
+	owner := ownerWithBusiness(s, "owner@example.com")
+	s.do(http.MethodPost, "/me/business/branches", owner, validBranch())
+	s.do(http.MethodPost, "/me/business/services", owner, map[string]any{"name": "Yoga"})
+	off := s.do(http.MethodPost, "/me/business/services", owner, map[string]any{"name": "Pilates"})
+	s.do(http.MethodPut, "/me/business/services/"+serviceID(off)+"/active", owner, map[string]any{"active": false})
+	s.do(http.MethodPost, "/me/business/submit", owner, map[string]any{"payment_reference": "OP-9"})
+
+	list := s.do(http.MethodGet, "/admin/businesses", root, nil)
+	id := itoa(int64(list.body["businesses"].([]any)[0].(map[string]any)["id"].(float64)))
+	adminAction(s, root, id, "approve")
+	adminAction(s, root, id, "verify")
+
+	got := s.do(http.MethodGet, "/admin/businesses/"+id, root, nil)
+	business, _ := got.body["business"].(map[string]any)
+	branches, _ := got.body["branches"].([]any)
+	history, _ := got.body["history"].([]any)
+	if got.status != http.StatusOK || business["owner_email"] != "owner@example.com" || business["payment_reference"] != "OP-9" || business["whatsapp"] == "" {
+		t.Fatalf("detail = %d %v", got.status, got.body)
+	}
+	if len(branches) != 1 || got.body["services_total"] != float64(2) || got.body["services_active"] != float64(1) {
+		t.Errorf("branches %d, services %v/%v; want 1 branch and 1 of 2 services active", len(branches), got.body["services_active"], got.body["services_total"])
+	}
+	if len(history) != 2 || history[0].(map[string]any)["action"] != "business.verify" || history[0].(map[string]any)["actor_email"] != "root@example.com" {
+		t.Errorf("history = %v, want the two admin actions, newest first, with who did them", history)
+	}
+}
+
+func TestAdminDetailIsForSuperAdminsOnly(t *testing.T) {
+	t.Parallel()
+
+	s := newServer(t, planLimits{})
+	_, root := s.user("root@example.com", "super_admin")
+	owner := ownerWithBusiness(s, "owner@example.com")
+	id := itoa(int64(s.do(http.MethodGet, "/admin/businesses", root, nil).body["businesses"].([]any)[0].(map[string]any)["id"].(float64)))
+
+	if got := s.do(http.MethodGet, "/admin/businesses/"+id, "", nil); got.status != http.StatusUnauthorized {
+		t.Errorf("anonymous = %d, want 401", got.status)
+	}
+	if got := s.do(http.MethodGet, "/admin/businesses/"+id, owner, nil); got.status != http.StatusForbidden {
+		t.Errorf("owner = %d, want 403", got.status)
+	}
+	if got := s.do(http.MethodGet, "/admin/businesses/99999", root, nil); got.status != http.StatusNotFound || got.errorCode() != "business_not_found" {
+		t.Errorf("missing = %d %q, want 404 business_not_found", got.status, got.errorCode())
+	}
+	if got := s.do(http.MethodGet, "/admin/businesses/abc", root, nil); got.status != http.StatusNotFound {
+		t.Errorf("non numeric id = %d, want 404", got.status)
 	}
 }

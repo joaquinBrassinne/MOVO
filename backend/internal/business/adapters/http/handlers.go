@@ -52,6 +52,7 @@ type Deps struct {
 
 	ListBusinesses *queries.ListBusinesses
 	AdminAction    *commands.ApplyAdminAction
+	AdminDetail    *queries.GetBusinessDetail
 }
 
 // Handlers serves the business endpoints.

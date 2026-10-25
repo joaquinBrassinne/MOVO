@@ -3,6 +3,7 @@ package businesshttp
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -32,6 +33,7 @@ func (h *Handlers) mountAdmin(r chi.Router) {
 		admin.Use(httpx.Authenticate(h.Verifier), httpx.RequireRole(roleSuperAdmin), noStore)
 
 		admin.Get("/", h.handleAdminList)
+		admin.Get("/{id}", h.handleAdminDetail)
 		admin.Post("/{id}/actions", h.handleAdminAction)
 	})
 }
@@ -40,13 +42,15 @@ func (h *Handlers) handleAdminList(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	limit, okLimit := intParam(query.Get("limit"))
 	offset, okOffset := intParam(query.Get("offset"))
-	if !okLimit || !okOffset {
+	category, okCategory := intParam(query.Get("category_id"))
+	if !okLimit || !okOffset || !okCategory {
 		h.fail(w, r, queries.ErrAdminFilterInvalid)
 		return
 	}
 
 	page, err := h.ListBusinesses.Handle(r.Context(), business.AdminFilter{
-		Status: domain.Status(query.Get("status")), Limit: limit, Offset: offset,
+		Status: domain.Status(query.Get("status")), Query: query.Get("q"),
+		CategoryID: int64(category), Limit: limit, Offset: offset,
 	})
 	if err != nil {
 		h.fail(w, r, err)
@@ -60,7 +64,11 @@ func (h *Handlers) handleAdminList(w http.ResponseWriter, r *http.Request) {
 			CategoryName: row.CategoryName, BranchCount: row.BranchCount,
 		})
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"businesses": rows, "total": page.Total})
+	counts := make(map[string]int, len(page.Counts))
+	for status, n := range page.Counts {
+		counts[string(status)] = n
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"businesses": rows, "total": page.Total, "counts": counts})
 }
 
 func (h *Handlers) handleAdminAction(w http.ResponseWriter, r *http.Request) {
@@ -91,4 +99,54 @@ func intParam(raw string) (int, bool) {
 	}
 	n, err := strconv.Atoi(raw)
 	return n, err == nil
+}
+
+type auditJSON struct {
+	ActorEmail string         `json:"actor_email"`
+	Action     string         `json:"action"`
+	At         time.Time      `json:"at"`
+	Metadata   map[string]any `json:"metadata"`
+}
+
+type adminDetailJSON struct {
+	Business       adminBusinessJSON `json:"business"`
+	Branches       []branchJSON      `json:"branches"`
+	ServicesTotal  int               `json:"services_total"`
+	ServicesActive int               `json:"services_active"`
+	History        []auditJSON       `json:"history"`
+}
+
+func (h *Handlers) handleAdminDetail(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.pathID(w, r, business.ErrBusinessNotFound)
+	if !ok {
+		return
+	}
+
+	detail, err := h.AdminDetail.Handle(r.Context(), id)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	out := adminDetailJSON{
+		Business: adminBusinessJSON{
+			businessJSON: toBusinessJSON(detail.Row.Business), OwnerEmail: detail.Row.OwnerEmail,
+			CategoryName: detail.Row.CategoryName, BranchCount: detail.Row.BranchCount,
+		},
+		Branches:      make([]branchJSON, 0, len(detail.Branches)),
+		ServicesTotal: len(detail.Services),
+		History:       make([]auditJSON, 0, len(detail.History)),
+	}
+	for _, branch := range detail.Branches {
+		out.Branches = append(out.Branches, toBranchJSON(branch, nil))
+	}
+	for _, service := range detail.Services {
+		if service.Active {
+			out.ServicesActive++
+		}
+	}
+	for _, record := range detail.History {
+		out.History = append(out.History, auditJSON{ActorEmail: record.ActorEmail, Action: record.Action, At: record.At, Metadata: record.Metadata})
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
 }

@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -204,5 +205,154 @@ func TestAdminListOrdersTheReviewQueueFirstAndFilters(t *testing.T) {
 	paged, err := repo.List(t.Context(), business.AdminFilter{Limit: 1, Offset: 1})
 	if err != nil || paged.Total != 2 || len(paged.Rows) != 1 || paged.Rows[0].Business.Name != "Active One" {
 		t.Errorf("second page = %+v, %v; want the total to ignore paging", paged, err)
+	}
+}
+
+// seedDirectory creates four businesses with different status, category, owner and
+// branch address, and returns their ids by name.
+func seedDirectory(t *testing.T, pool *pgxpool.Pool) map[string]int64 {
+	t.Helper()
+
+	businesses := postgres.NewBusinesses(pool)
+	branches := postgres.NewBranches(pool)
+	ids := map[string]int64{}
+
+	for _, c := range []struct {
+		name, email, category, address string
+		status                         domain.Status
+	}{
+		{"Alma Haus", "ana@alma.example", "gimnasios", "Gorriti 5520", domain.StatusActive},
+		{"Flow Yoga", "bruno@flow.example", "yoga", "Vicente Lopez 1822", domain.StatusPendingReview},
+		{"Box 100%", "carla@box.example", "gimnasios", "Cabildo 2140", domain.StatusPaused},
+		{"Cerrado", "dario@closed.example", "yoga", "Callao 10", domain.StatusDeleted},
+	} {
+		b, err := businesses.Create(t.Context(), draft(t, newOwner(t, pool, c.email), categoryID(t, pool, c.category), c.name))
+		if err != nil {
+			t.Fatalf("create %s: %v", c.name, err)
+		}
+		b.Status = c.status
+		if err := businesses.Save(t.Context(), b); err != nil {
+			t.Fatalf("save %s: %v", c.name, err)
+		}
+		branch := newBranch(t, b.ID, "Sede")
+		branch.Address = c.address
+		if _, err := branches.Create(t.Context(), branch); err != nil {
+			t.Fatalf("branch of %s: %v", c.name, err)
+		}
+		ids[c.name] = b.ID
+	}
+	return ids
+}
+
+func names(page business.AdminPage) []string {
+	out := []string{}
+	for _, row := range page.Rows {
+		out = append(out, row.Business.Name)
+	}
+	return out
+}
+
+func TestAdminListSearchesFiltersAndCounts(t *testing.T) {
+	t.Parallel()
+
+	pool := dbtest.New(t)
+	repo := postgres.NewAdmin(pool)
+	ids := seedDirectory(t, pool)
+
+	search := func(q string) []string {
+		page, err := repo.List(t.Context(), business.AdminFilter{Query: q, Limit: 10})
+		if err != nil {
+			t.Fatalf("List(%q): %v", q, err)
+		}
+		return names(page)
+	}
+
+	if got := search("alma"); len(got) != 1 || got[0] != "Alma Haus" {
+		t.Errorf("by name (any case) = %v", got)
+	}
+	if got := search("BRUNO@flow"); len(got) != 1 || got[0] != "Flow Yoga" {
+		t.Errorf("by owner email = %v", got)
+	}
+	if got := search("cabildo"); len(got) != 1 || got[0] != "Box 100%" {
+		t.Errorf("by branch address = %v", got)
+	}
+	// A number is matched as an id and as text (it may be a street number), so the
+	// business with that id must be among the results.
+	if got := search(itoa(ids["Flow Yoga"])); !slices.Contains(got, "Flow Yoga") {
+		t.Errorf("by exact id = %v, want it to include Flow Yoga", got)
+	}
+	if got := search("%"); len(got) != 1 || got[0] != "Box 100%" {
+		t.Errorf("a literal %% must match only the name that has one, got %v", got)
+	}
+	if got := search("_"); len(got) != 0 {
+		t.Errorf("a literal underscore matched %v: wildcards must be escaped", got)
+	}
+	if got := search("   "); len(got) != 3 {
+		t.Errorf("a blank search = %v, want the unfiltered list without the deleted one", got)
+	}
+
+	yoga, err := repo.List(t.Context(), business.AdminFilter{CategoryID: categoryID(t, pool, "yoga"), Limit: 10})
+	if err != nil || len(yoga.Rows) != 1 || yoga.Rows[0].Business.Name != "Flow Yoga" || yoga.Total != 1 {
+		t.Errorf("category filter = %v, %v; want only the non-deleted yoga business", names(yoga), err)
+	}
+
+	page, err := repo.List(t.Context(), business.AdminFilter{Status: domain.StatusActive, Query: "flow", Limit: 10})
+	if err != nil || len(page.Rows) != 0 {
+		t.Errorf("status and search together = %v, %v; want none", names(page), err)
+	}
+	// The tab counters describe the whole directory, whatever the filters say.
+	want := map[domain.Status]int{domain.StatusActive: 1, domain.StatusPendingReview: 1, domain.StatusPaused: 1}
+	for status, n := range want {
+		if page.Counts[status] != n {
+			t.Errorf("count of %s = %d, want %d", status, page.Counts[status], n)
+		}
+	}
+	if page.Counts[domain.StatusDeleted] != 1 || page.Counts[domain.StatusDraft] != 0 {
+		t.Errorf("counts = %v, want the deleted one counted apart and no drafts", page.Counts)
+	}
+}
+
+func TestAdminFindAndHistory(t *testing.T) {
+	t.Parallel()
+
+	pool := dbtest.New(t)
+	repo := postgres.NewAdmin(pool)
+	ids := seedDirectory(t, pool)
+	admin := newAdminUser(t, pool)
+
+	row, err := repo.Find(t.Context(), ids["Alma Haus"])
+	if err != nil || row.OwnerEmail != "ana@alma.example" || row.CategoryName != "Gimnasios" || row.BranchCount != 1 {
+		t.Fatalf("Find = %+v, %v", row, err)
+	}
+	if _, err := repo.Find(t.Context(), 424242); !errors.Is(err, business.ErrBusinessNotFound) {
+		t.Errorf("missing business error = %v, want ErrBusinessNotFound", err)
+	}
+
+	previous, _ := repo.FindByID(t.Context(), ids["Alma Haus"])
+	verified := previous.MarkVerified(admin)
+	if err := repo.Apply(t.Context(), verified, previous, entry(admin, previous.ID, "business.verify")); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	unmarked, _ := verified.SetPilot(true)
+	if err := repo.Apply(t.Context(), unmarked, verified, entry(admin, previous.ID, "business.mark_pilot")); err != nil {
+		t.Fatalf("pilot: %v", err)
+	}
+	other, _ := repo.FindByID(t.Context(), ids["Flow Yoga"])
+	if err := repo.Apply(t.Context(), other.MarkVerified(admin), other, entry(admin, other.ID, "business.verify")); err != nil {
+		t.Fatalf("other: %v", err)
+	}
+
+	history, err := repo.History(t.Context(), previous.ID)
+	if err != nil || len(history) != 2 {
+		t.Fatalf("History = %+v, %v; want only the two entries of this business", history, err)
+	}
+	if history[0].Action != "business.mark_pilot" || history[1].Action != "business.verify" {
+		t.Errorf("history = %v, %v; want newest first", history[0].Action, history[1].Action)
+	}
+	if history[0].ActorEmail != "root@example.com" || history[0].At.IsZero() || history[0].Metadata["status_to"] != "pending_review" {
+		t.Errorf("record = %+v", history[0])
+	}
+	if empty, err := repo.History(t.Context(), ids["Box 100%"]); err != nil || empty == nil || len(empty) != 0 {
+		t.Errorf("history without entries = %#v, %v; want a non-nil empty list", empty, err)
 	}
 }

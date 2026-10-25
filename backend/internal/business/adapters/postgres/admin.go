@@ -3,8 +3,12 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/joaquinBrassinne/MOVO/internal/business"
@@ -73,27 +77,98 @@ WHERE id = $1 AND status = $6 AND pilot = $7 AND (verified_at IS NOT NULL) = $8`
 	return nil
 }
 
-// List returns one page of businesses, those waiting for review first and then
-// the most recent. Without a status filter the deleted ones are left out.
-func (r *Admin) List(ctx context.Context, filter business.AdminFilter) (business.AdminPage, error) {
-	status := string(filter.Status)
-	const where = `WHERE ($1 = '' AND b.status <> 'deleted') OR b.status = $1`
-
-	var page business.AdminPage
-	if err := r.pool.QueryRow(ctx, `SELECT count(*) FROM businesses b `+where, status).Scan(&page.Total); err != nil {
-		return business.AdminPage{}, fmt.Errorf("postgres: count businesses: %w", err)
-	}
-
-	rows, err := r.pool.Query(ctx, `
+const adminSelect = `
 SELECT b.id, b.owner_user_id, b.category_id, b.name, b.slug, b.description, b.whatsapp_number, b.status,
        b.pilot, b.verified_at, b.verified_by, b.payment_reference, b.created_at,
        u.email, c.name, (SELECT count(*) FROM branches br WHERE br.business_id = b.id)
 FROM businesses b
 JOIN users u ON u.id = b.owner_user_id
-JOIN categories c ON c.id = b.category_id
-`+where+`
-ORDER BY (b.status = 'pending_review') DESC, b.created_at DESC, b.id DESC
-LIMIT $2 OFFSET $3`, status, filter.Limit, filter.Offset)
+JOIN categories c ON c.id = b.category_id`
+
+// scanner is what pgx.Row and pgx.Rows share.
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+func scanAdminRow(row scanner) (business.AdminRow, error) {
+	var (
+		r   business.AdminRow
+		st  string
+		by  *int64
+		pay *string
+	)
+	err := row.Scan(
+		&r.Business.ID, &r.Business.OwnerID, &r.Business.CategoryID, &r.Business.Name, &r.Business.Slug,
+		&r.Business.Description, &r.Business.WhatsApp, &st, &r.Business.Pilot, &r.Business.VerifiedAt,
+		&by, &pay, &r.Business.CreatedAt, &r.OwnerEmail, &r.CategoryName, &r.BranchCount,
+	)
+	if err != nil {
+		return business.AdminRow{}, err
+	}
+
+	r.Business.Status = domain.Status(st)
+	if by != nil {
+		r.Business.VerifiedBy = *by
+	}
+	if pay != nil {
+		r.Business.PaymentReference = *pay
+	}
+	return r, nil
+}
+
+// Find returns one business as a list row.
+func (r *Admin) Find(ctx context.Context, id int64) (business.AdminRow, error) {
+	row, err := scanAdminRow(r.pool.QueryRow(ctx, adminSelect+` WHERE b.id = $1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return business.AdminRow{}, business.ErrBusinessNotFound
+	}
+	if err != nil {
+		return business.AdminRow{}, fmt.Errorf("postgres: select business row: %w", err)
+	}
+	return row, nil
+}
+
+// List returns one page of businesses, those waiting for review first and then the most
+// recent. Without a status filter the deleted ones are left out. The search matches the
+// name, slug, owner email and branch addresses, case-insensitively and with the
+// wildcards of the text escaped, or an exact business id.
+func (r *Admin) List(ctx context.Context, filter business.AdminFilter) (business.AdminPage, error) {
+	var (
+		conditions []string
+		args       []any
+	)
+	arg := func(value any) string {
+		args = append(args, value)
+		return "$" + strconv.Itoa(len(args))
+	}
+
+	if filter.Status == "" {
+		conditions = append(conditions, "b.status <> 'deleted'")
+	} else {
+		conditions = append(conditions, "b.status = "+arg(string(filter.Status)))
+	}
+	if filter.CategoryID != 0 {
+		conditions = append(conditions, "b.category_id = "+arg(filter.CategoryID))
+	}
+	if q := strings.TrimSpace(filter.Query); q != "" {
+		pattern, exact := arg("%"+escapeLike(q)+"%"), arg(q)
+		conditions = append(conditions, "(b.name ILIKE "+pattern+" OR b.slug ILIKE "+pattern+" OR u.email ILIKE "+pattern+
+			" OR EXISTS (SELECT 1 FROM branches s WHERE s.business_id = b.id AND s.address ILIKE "+pattern+")"+
+			" OR b.id::text = "+exact+")")
+	}
+	where := " WHERE " + strings.Join(conditions, " AND ")
+
+	var page business.AdminPage
+	err := r.pool.QueryRow(ctx,
+		"SELECT count(*) FROM businesses b JOIN users u ON u.id = b.owner_user_id"+where, args...).Scan(&page.Total)
+	if err != nil {
+		return business.AdminPage{}, fmt.Errorf("postgres: count businesses: %w", err)
+	}
+
+	rows, err := r.pool.Query(ctx,
+		adminSelect+where+
+			" ORDER BY (b.status = 'pending_review') DESC, b.created_at DESC, b.id DESC LIMIT "+arg(filter.Limit)+" OFFSET "+arg(filter.Offset),
+		args...)
 	if err != nil {
 		return business.AdminPage{}, fmt.Errorf("postgres: list businesses: %w", err)
 	}
@@ -101,31 +176,75 @@ LIMIT $2 OFFSET $3`, status, filter.Limit, filter.Offset)
 
 	page.Rows = []business.AdminRow{}
 	for rows.Next() {
-		var (
-			row    business.AdminRow
-			st     string
-			by     *int64
-			pay    *string
-			target = []any{
-				&row.Business.ID, &row.Business.OwnerID, &row.Business.CategoryID, &row.Business.Name, &row.Business.Slug,
-				&row.Business.Description, &row.Business.WhatsApp, &st, &row.Business.Pilot, &row.Business.VerifiedAt,
-				&by, &pay, &row.Business.CreatedAt, &row.OwnerEmail, &row.CategoryName, &row.BranchCount,
-			}
-		)
-		if err := rows.Scan(target...); err != nil {
+		row, err := scanAdminRow(rows)
+		if err != nil {
 			return business.AdminPage{}, fmt.Errorf("postgres: scan business: %w", err)
-		}
-		row.Business.Status = domain.Status(st)
-		if by != nil {
-			row.Business.VerifiedBy = *by
-		}
-		if pay != nil {
-			row.Business.PaymentReference = *pay
 		}
 		page.Rows = append(page.Rows, row)
 	}
 	if err := rows.Err(); err != nil {
 		return business.AdminPage{}, fmt.Errorf("postgres: list businesses: %w", err)
 	}
+
+	if page.Counts, err = r.counts(ctx); err != nil {
+		return business.AdminPage{}, err
+	}
 	return page, nil
+}
+
+// counts is how many businesses each status has, for the tabs of the list.
+func (r *Admin) counts(ctx context.Context) (map[domain.Status]int, error) {
+	rows, err := r.pool.Query(ctx, `SELECT status, count(*) FROM businesses GROUP BY status`)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: count by status: %w", err)
+	}
+	defer rows.Close()
+
+	counts := map[domain.Status]int{}
+	for rows.Next() {
+		var (
+			status string
+			n      int
+		)
+		if err := rows.Scan(&status, &n); err != nil {
+			return nil, fmt.Errorf("postgres: scan status count: %w", err)
+		}
+		counts[domain.Status(status)] = n
+	}
+	return counts, rows.Err()
+}
+
+// History returns the audit entries of the business, newest first.
+func (r *Admin) History(ctx context.Context, id int64) ([]business.AuditRecord, error) {
+	rows, err := r.pool.Query(ctx, `
+SELECT u.email, a.action, a.created_at, a.metadata
+FROM audit_log a
+JOIN users u ON u.id = a.actor_id
+WHERE a.entity = 'business' AND a.entity_id = $1
+ORDER BY a.created_at DESC, a.id DESC`, id)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: list audit history: %w", err)
+	}
+	defer rows.Close()
+
+	records := []business.AuditRecord{}
+	for rows.Next() {
+		var (
+			rec business.AuditRecord
+			raw []byte
+		)
+		if err := rows.Scan(&rec.ActorEmail, &rec.Action, &rec.At, &raw); err != nil {
+			return nil, fmt.Errorf("postgres: scan audit record: %w", err)
+		}
+		if err := json.Unmarshal(raw, &rec.Metadata); err != nil {
+			return nil, fmt.Errorf("postgres: decode audit metadata: %w", err)
+		}
+		records = append(records, rec)
+	}
+	return records, rows.Err()
+}
+
+// escapeLike makes the text literal inside a LIKE pattern.
+func escapeLike(text string) string {
+	return strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(text)
 }
