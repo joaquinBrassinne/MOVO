@@ -13,6 +13,14 @@ import (
 	"os/signal"
 
 	"github.com/jackc/pgx/v5"
+
+	identitydomain "github.com/joaquinBrassinne/MOVO/internal/identity/domain"
+)
+
+// The owner of the first test business signs in with these, to try the owner panel.
+const (
+	demoOwnerEmail = "alma-haus-training-club@seed.movo.test"
+	demoPassword   = "movo-demo-1234"
 )
 
 //go:embed seed.sql
@@ -26,7 +34,7 @@ func main() {
 		slog.Error("seed-dev failed", "error", err)
 		os.Exit(1)
 	}
-	slog.Info("seed-dev finished")
+	slog.Info("seed-dev finished", "owner_email", demoOwnerEmail, "owner_password", demoPassword)
 }
 
 func run(ctx context.Context, databaseURL string) error {
@@ -45,6 +53,15 @@ func run(ctx context.Context, databaseURL string) error {
 
 	if _, err := conn.Exec(ctx, seedSQL); err != nil {
 		return fmt.Errorf("seed: %w", err)
+	}
+
+	// One owner can sign in, to try the panel: the first test business.
+	hash, err := identitydomain.HashPassword(demoPassword)
+	if err != nil {
+		return fmt.Errorf("hash demo password: %w", err)
+	}
+	if _, err := conn.Exec(ctx, `UPDATE users SET password_hash = $1 WHERE email = $2`, hash, demoOwnerEmail); err != nil {
+		return fmt.Errorf("set demo owner password: %w", err)
 	}
 	return nil
 }

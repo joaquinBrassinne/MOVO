@@ -81,7 +81,7 @@ var conflicts = []struct {
 }{
 	{business.ErrOwnerHasBusiness, CodeBusinessExists, "you already have a business", nil},
 	{commands.ErrSlugExhausted, CodeSlugUnavailable, "no free address could be built from that name", nil},
-	{business.ErrImageLimitReached, CodeImageLimit, "you already have the maximum number of photos", map[string]int{"max": domain.MaxImages}},
+	{business.ErrImageLimitReached, CodeImageLimit, "you already have the maximum number of photos", nil},
 	{business.ErrImageExists, CodeImageExists, "that photo is already registered", nil},
 	{business.ErrBranchLimitReached, CodePlanLimitReached, "your plan has no room for another branch", map[string]string{"resource": "branches"}},
 	{business.ErrServiceLimitReached, CodePlanLimitReached, "your plan has no room for another active service", map[string]string{"resource": "services"}},
@@ -116,7 +116,11 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	for _, c := range conflicts {
 		if errors.Is(err, c.err) {
-			httpx.WriteError(w, http.StatusConflict, c.code, c.message, c.details)
+			details := c.details
+			if errors.Is(err, business.ErrImageLimitReached) {
+				details = map[string]int{"max": h.MaxImages}
+			}
+			httpx.WriteError(w, http.StatusConflict, c.code, c.message, details)
 			return
 		}
 	}

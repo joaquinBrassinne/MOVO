@@ -5,7 +5,14 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
 import { Logo } from "@/components/Logo";
-import { GridIcon, LogOutIcon, SearchIcon, StoreIcon, UserIcon } from "@/components/socios/icons";
+import {
+  GridIcon,
+  ImageIcon,
+  LogOutIcon,
+  SearchIcon,
+  StoreIcon,
+  UserIcon,
+} from "@/components/socios/icons";
 import { useBusiness } from "@/lib/business/BusinessProvider";
 import { useSession } from "@/lib/session/SessionProvider";
 
@@ -13,11 +20,13 @@ const NAV = [
   { href: "/socios/panel", label: "Inicio", icon: GridIcon },
   { href: "/socios/servicios", label: "Servicios", icon: SearchIcon },
   { href: "/socios/sedes", label: "Mi local", icon: StoreIcon },
+  { href: "/socios/fotos", label: "Fotos", icon: ImageIcon },
 ] as const;
 
 /** El título del encabezado según la vista en la que está el dueño. */
 function titleOf(pathname: string): string {
   if (pathname === "/socios/servicios") return "Servicios y horarios";
+  if (pathname === "/socios/fotos") return "Fotos del local";
   if (pathname === "/socios/sedes") return "Mis sedes";
   if (pathname === "/socios/sedes/nueva") return "Nueva sede";
   if (pathname.startsWith("/socios/sedes/")) return "Editar sede";

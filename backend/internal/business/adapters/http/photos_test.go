@@ -117,23 +117,30 @@ func TestPhotoRegistrationRejections(t *testing.T) {
 	}
 }
 
-func TestPhotoLimitIsSix(t *testing.T) {
+func TestPhotoLimitComesFromTheConfiguration(t *testing.T) {
 	t.Parallel()
 
 	s := newServer(t, planLimits{})
 	owner := ownerWithBusiness(s, "owner@example.com")
 
-	for i := range 6 {
+	for i := range maxPhotos {
 		if got := s.do(http.MethodPost, "/me/business/images", owner, map[string]any{"object_key": uploadPhoto(s, owner)}); got.status != http.StatusCreated {
 			t.Fatalf("photo %d = %d %v", i+1, got.status, got.body)
 		}
 	}
 	got := s.do(http.MethodPost, "/me/business/images", owner, map[string]any{"object_key": uploadPhoto(s, owner)})
 	if got.status != http.StatusConflict || got.errorCode() != "image_limit_reached" {
-		t.Fatalf("seventh photo = %d %q, want 409 image_limit_reached", got.status, got.errorCode())
+		t.Fatalf("photo over the limit = %d %q, want 409 image_limit_reached", got.status, got.errorCode())
+	}
+	if max := got.body["error"].(map[string]any)["details"].(map[string]any)["max"]; max != float64(maxPhotos) {
+		t.Errorf("error details max = %v, want %d", max, maxPhotos)
+	}
+
+	mine := s.do(http.MethodGet, "/me/business", owner, nil)
+	if mine.body["max_images"] != float64(maxPhotos) {
+		t.Errorf("max_images = %v, want %d so the panel can show the limit", mine.body["max_images"], maxPhotos)
 	}
 }
-
 func TestOwnersCannotTouchEachOthersPhotos(t *testing.T) {
 	t.Parallel()
 

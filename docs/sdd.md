@@ -178,7 +178,7 @@ Todas las tablas con `id` (UUID v7 o `bigserial`), `created_at`, `updated_at`. M
 | `categories` | slug, name — seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel; y `trekking-outdoor` ("Trekking y outdoor"), agregada en una migración aparte. En esa categoría la **sede es el punto de encuentro** de la salida y **cada salida se carga como un servicio** (con sus días y horarios) |
 | `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description (≤ 500 caracteres), whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, mp_payer_email (email con el que pagó en Mercado Pago, obligatorio al enviar a revisión), mp_payer_name (nombre completo del titular, obligatorio, mínimo 3 caracteres), mp_return_params (parámetros de la URL de retorno, solo pista para el admin) |
 | `branches` | business_id, name, address, city, reference (opcional, ≤ 100), `location geography(Point,4326)`, external_booking_url (opcional), rating_avg, rating_count, active — **la búsqueda se hace por sede** |
-| `business_hours` | branch_id, weekday, opens_at, closes_at |
+| `business_hours` | branch_id, weekday, opens_at, closes_at (varias franjas por día; no se pisan, no cruzan la medianoche; sin franjas = cerrado) |
 | `business_images` | business_id, object_key, position |
 | `services` | business_id, branch_id (opcional), name, description, price (opcional, pesos enteros; sin duración porque el MVP no tiene agenda), active — lo que el negocio ofrece (clase de yoga, alquiler de cancha, etc.) |
 | `service_schedules` | service_id, weekday, starts_at, ends_at |
@@ -502,6 +502,8 @@ Convenciones de trabajo:
 - [x] 2.8 Frontend `/onboarding`: crear cuenta y completar datos, WhatsApp, sede con pin en el mapa, fotos y, en el paso 4, email y nombre completo del titular en Mercado Pago (obligatorios; sin número de operación ni comprobante); estado "en revisión" (L)
 - [x] 2.9 Frontend: Servicios y horarios y Sedes, con contador del límite del plan (M)
 - [x] 2.10 Frontend super admin: lista de locales y acciones; en el cajón, email y nombre declarados, pista de plan si existe y checklist de confirmación ("Mail de Mercado Pago con el mismo email", "Plan y monto correctos", "Perfil revisado") (M)
+- [x] 2.11 Horarios cortados: `business_hours` admite varias franjas por sede y día sin superponerse (restricción de exclusión con `btree_gist`; las franjas no cruzan la medianoche y "cerrado" es no tener franjas), `ReplaceHours` las guarda en una transacción y devuelve `ErrSlotsOverlap` si se pisan, la ficha pública calcula "abierto ahora / cierra a las HH:MM / abre a las HH:MM" en `America/Argentina/Cordoba`, y el editor de Sedes carga varias franjas por día con "Copiar a otros días" (M). *Entra tarde porque en la Fase 2 el editor era de una franja por día y la base solo impedía repetir la hora de apertura; el turno cortado (gimnasios, pilates) se vio al diseñar la ficha de la Fase 3.*
+- [x] 2.12 Galería de fotos del negocio: pantalla "Fotos" del panel (agregar con la URL prefirmada, borrar, reordenar y elegir portada), máximo configurable por env (10 por defecto) con tipo y tamaño validados, y baja del objeto al borrar con reintento registrado si falla (M). Hecho en el backend: el máximo sale de `MAX_BUSINESS_IMAGES` (10 por defecto, de 1 a 30), el panel lo recibe como `max_images`, y al borrar una foto el borrado del objeto queda en la cola `object_cleanup` (en la misma transacción) y se reintenta con `PurgeObjects`; pantalla "Fotos" del panel (grilla, portada, subir y bajar, menú por foto, confirmación al eliminar). *Entra tarde porque en el onboarding solo se cargan fotos una vez y el panel no permitía cambiarlas; la ficha de la Fase 3 las muestra. En el MVP las fotos son por negocio; las fotos por sede quedan para después del MVP (§13, punto 10).*
 
 **Vistas:** Onboarding, Servicios y horarios, Sedes, Super admin → Locales.
 **DoD:** un dueño crea su local, el admin lo activa y lo marca verificado, y queda en estado `active`.
@@ -519,8 +521,8 @@ Convenciones de trabajo:
 - [x] 3.6 Contadores `metric_daily` (migración, upsert, filtrado básico de bots, sin datos personales) (M)
 - [x] 3.7 Endpoint `GET /r/wa/{branch_id}?service=` que cuenta el clic y redirige a `wa.me` con mensaje prearmado (S)
 - [x] 3.8b Endpoint público `GET /businesses/{slug}`: ficha con sedes y horarios públicos, servicios activos con su agenda, fotos (URLs prefirmadas) y sello de verificado; sin el número de WhatsApp (S)
-- [ ] 3.8 Frontend: Home y Mapa (React Leaflet, marcadores, geolocalización del navegador) (L)
-- [ ] 3.9 Backend y frontend: `POST /businesses/{slug}/view` (204 sin cuerpo ni cookies, ignora bots y no revela si el negocio es visible; suma `profile_view` con `branch_id` nulo) y la ficha SSR del local `/locales/[slug]` con metadatos SEO, servicios, horarios con "abierto ahora", sello de verificado y botón de WhatsApp; un componente de cliente dispara la vista una sola vez por carga, después de montar (M)
+- [x] 3.8 Frontend: Home y Mapa (React Leaflet, marcadores, geolocalización del navegador) (L)
+- [x] 3.9 Backend y frontend: `POST /businesses/{slug}/view` (204 sin cuerpo ni cookies, ignora bots y no revela si el negocio es visible; suma `profile_view` con `branch_id` nulo) y la ficha SSR del local `/locales/[slug]` con metadatos SEO, servicios, horarios con "abierto ahora", sello de verificado y botón de WhatsApp; un componente de cliente dispara la vista una sola vez por carga, después de montar (M)
 
 **Vistas:** Home, Mapa, Ficha del local (opcionales: Explorar, Splash).
 **DoD:** búsqueda p95 < 300 ms; la ficha se renderiza del lado del servidor; el botón de WhatsApp abre la conversación y suma el contador.
@@ -711,6 +713,7 @@ Convenciones de trabajo:
 7. Favoritos del cliente.
 8. Captcha o verificación del cliente, si aparece abuso.
 9. Sede principal: hoy ninguna sede se distingue de las demás ("principal + 1" en 12.2 es solo una forma de contar). Hay que poder marcar cuál es la sede principal de cada local (por ejemplo `branches.is_primary`, una sola por negocio) y usarla donde se necesite una sede única, como la ficha o la tarjeta del Home.
+10. Fotos por sede: en el MVP las fotos pertenecen al negocio (`business_images`) y la ficha las muestra todas juntas. Más adelante cada sede puede tener las suyas (por ejemplo `branch_id` opcional en `business_images`) para mostrar la fachada y el interior de cada local.
 
 ---
 

@@ -94,6 +94,7 @@ export function OnboardingFlow() {
         <StepPhotos
           business={data.business}
           photos={data.images}
+          maxPhotos={data.max_images}
           onChanged={mine.reload}
           onBack={() => go(3)}
         />

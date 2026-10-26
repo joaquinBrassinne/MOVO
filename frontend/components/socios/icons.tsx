@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 type IconProps = { className?: string };
 
-function Svg({ children, className = "size-5" }: IconProps & { children: ReactNode }) {
+export function Svg({ children, className = "size-5" }: IconProps & { children: ReactNode }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -232,5 +232,25 @@ export const LogOutIcon = (p: IconProps) => (
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
     <path d="m16 17 5-5-5-5" />
     <path d="M21 12H9" />
+  </Svg>
+);
+
+export const ChevronUpIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m18 15-6-6-6 6" />
+  </Svg>
+);
+
+export const ChevronDownIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m6 9 6 6 6-6" />
+  </Svg>
+);
+
+export const MoreIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="12" cy="5" r="1" />
+    <circle cx="12" cy="19" r="1" />
   </Svg>
 );

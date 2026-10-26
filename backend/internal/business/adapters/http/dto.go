@@ -76,13 +76,16 @@ type myBusinessJSON struct {
 	Business businessJSON `json:"business"`
 	Branches []branchJSON `json:"branches"`
 	Images   []imageJSON  `json:"images"`
+	// MaxImages is how many photos the business may have, so the panel can say "3 de 10".
+	MaxImages int `json:"max_images"`
 }
 
-func toMyBusinessJSON(v queries.MyBusinessView) myBusinessJSON {
+func toMyBusinessJSON(v queries.MyBusinessView, maxImages int) myBusinessJSON {
 	out := myBusinessJSON{
-		Business: toBusinessJSON(v.Business),
-		Branches: make([]branchJSON, 0, len(v.Branches)),
-		Images:   make([]imageJSON, 0, len(v.Images)),
+		Business:  toBusinessJSON(v.Business),
+		Branches:  make([]branchJSON, 0, len(v.Branches)),
+		Images:    make([]imageJSON, 0, len(v.Images)),
+		MaxImages: maxImages,
 	}
 	for _, b := range v.Branches {
 		out.Branches = append(out.Branches, toBranchJSON(b.Branch, b.Hours))

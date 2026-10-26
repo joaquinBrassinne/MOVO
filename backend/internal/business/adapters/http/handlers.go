@@ -23,7 +23,9 @@ const (
 // Deps are the use cases and the token verifier the handlers need.
 type Deps struct {
 	Verifier httpx.TokenVerifier
-	Log      *slog.Logger
+	// MaxImages is how many photos a business may register; the panel shows it.
+	MaxImages int
+	Log       *slog.Logger
 
 	MyBusiness     *queries.GetMyBusiness
 	CreateBusiness *commands.CreateBusiness
@@ -130,7 +132,7 @@ func (h *Handlers) handleGetMine(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, toMyBusinessJSON(view))
+	httpx.WriteJSON(w, http.StatusOK, toMyBusinessJSON(view, h.MaxImages))
 }
 
 func (h *Handlers) handleCreate(w http.ResponseWriter, r *http.Request) {
