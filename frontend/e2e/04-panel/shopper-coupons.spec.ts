@@ -169,7 +169,9 @@ test.describe("Customer coupons", () => {
     { tag: ["@high", "@e2e", "@coupons", "@COUPONS-E2E-006"] },
     async ({ page, request }) => {
       await page.goto(`/cupon/${"x".repeat(43)}`);
-      await expect(page.getByRole("alert")).toContainText("No encontramos este cupón");
+      await expect(page.getByRole("main").getByRole("alert")).toContainText(
+        "No encontramos este cupón",
+      );
 
       // El cupo del local se agota: el límite pasa a ser lo ya generado este mes.
       const token = await ownerToken(request);
