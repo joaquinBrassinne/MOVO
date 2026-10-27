@@ -32,10 +32,10 @@ func NewBenefits(pool *pgxpool.Pool) *Benefits {
 // Create stores b and returns it with ID set. A new benefit is never admin-paused.
 func (r *Benefits) Create(ctx context.Context, b domain.Benefit) (domain.Benefit, error) {
 	err := r.pool.QueryRow(ctx, `
-INSERT INTO benefits (business_id, type, percent, amount_ars, title, conditions, active, monthly_limit)
-VALUES ($1, $2, NULLIF($3, 0), NULLIF($4, 0), NULLIF($5, ''), NULLIF($6, ''), $7, $8)
+INSERT INTO benefits (business_id, type, percent, amount_ars, title, conditions, active)
+VALUES ($1, $2, NULLIF($3, 0), NULLIF($4, 0), NULLIF($5, ''), NULLIF($6, ''), $7)
 RETURNING id`,
-		b.BusinessID, b.Type, b.Percent, b.AmountARS, b.Title, b.Conditions, b.Active, b.MonthlyLimit,
+		b.BusinessID, b.Type, b.Percent, b.AmountARS, b.Title, b.Conditions, b.Active,
 	).Scan(&b.ID)
 	if err != nil {
 		return domain.Benefit{}, fmt.Errorf("postgres: create benefit: %w", err)
@@ -81,9 +81,9 @@ func (r *Benefits) Save(ctx context.Context, b domain.Benefit) error {
 	tag, err := r.pool.Exec(ctx, `
 UPDATE benefits
 SET type = $3, percent = NULLIF($4, 0), amount_ars = NULLIF($5, 0), title = NULLIF($6, ''), conditions = NULLIF($7, ''),
-    active = $8, monthly_limit = $9, updated_at = now()
+    active = $8, updated_at = now()
 WHERE id = $1 AND business_id = $2`,
-		b.ID, b.BusinessID, b.Type, b.Percent, b.AmountARS, b.Title, b.Conditions, b.Active, b.MonthlyLimit)
+		b.ID, b.BusinessID, b.Type, b.Percent, b.AmountARS, b.Title, b.Conditions, b.Active)
 	if err != nil {
 		return fmt.Errorf("postgres: save benefit: %w", err)
 	}

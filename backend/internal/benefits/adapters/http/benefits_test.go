@@ -86,6 +86,8 @@ func newServerWithLimit(t *testing.T, maxAttempts int) *server {
 		Edit:      commands.NewEditBenefit(res, repo),
 		SetActive: commands.NewSetBenefitActive(res, repo),
 		Pause:     commands.NewPauseBenefit(repo),
+		Quota:     queries.NewGetCouponQuota(res, postgres.NewCoupons(pool), nil),
+		SetQuota:  commands.NewSetCouponQuota(res, postgres.NewCoupons(pool), nil),
 		Generate:  commands.NewGenerateCode(postgres.NewCoupons(pool), limiter, nil, nil),
 		Redeem:    commands.NewRedeemCode(res, postgres.NewCoupons(pool), nil),
 		Preview:   queries.NewPreviewCode(res, postgres.NewCoupons(pool), nil),
@@ -194,25 +196,25 @@ func benefitPath(r reply) string {
 	return "/me/business/benefits/" + strconv.FormatInt(int64(r.body["id"].(float64)), 10)
 }
 
-func TestOwnerManagesBenefitsAndTheMonthlyLimit(t *testing.T) {
+func TestOwnerManagesBenefits(t *testing.T) {
 	t.Parallel()
 
 	s := newServer(t)
 	owner := s.owner("owner@example.com", "active")
 
-	percent := s.do(http.MethodPost, "/me/business/benefits", owner, map[string]any{"type": "percent", "percent": 15, "monthly_limit": 40})
+	percent := s.do(http.MethodPost, "/me/business/benefits", owner, map[string]any{"type": "percent", "percent": 15})
 	if percent.status != http.StatusCreated || percent.body["type"] != "percent" || percent.body["percent"] != float64(15) ||
-		percent.body["title"] != nil || percent.body["amount_ars"] != nil || percent.body["short_label"] != "-15%" || percent.body["admin_paused"] != false || percent.body["active"] != true || percent.body["monthly_limit"] != float64(40) {
+		percent.body["title"] != nil || percent.body["amount_ars"] != nil || percent.body["short_label"] != "-15%" || percent.body["admin_paused"] != false || percent.body["active"] != true {
 		t.Fatalf("create percent = %d %v", percent.status, percent.body)
 	}
-	gift := s.do(http.MethodPost, "/me/business/benefits", owner, map[string]any{"type": "custom", "title": " Una clase gratis ", "conditions": "Solo lunes", "monthly_limit": 10})
+	gift := s.do(http.MethodPost, "/me/business/benefits", owner, map[string]any{"type": "custom", "title": " Una clase gratis ", "conditions": "Solo lunes"})
 	if gift.status != http.StatusCreated || gift.body["percent"] != nil || gift.body["title"] != "Una clase gratis" || gift.body["conditions"] != "Solo lunes" || gift.body["short_label"] != "Beneficio" {
 		t.Fatalf("create gift = %d %v", gift.status, gift.body)
 	}
 
-	// Turning the percent benefit into a gift drops the percent, and the limit changes.
-	edited := s.do(http.MethodPut, benefitPath(percent), owner, map[string]any{"type": "custom", "title": "Mate", "monthly_limit": 25})
-	if edited.status != http.StatusOK || edited.body["percent"] != nil || edited.body["title"] != "Mate" || edited.body["monthly_limit"] != float64(25) {
+	// Turning the percent benefit into a gift drops the percent.
+	edited := s.do(http.MethodPut, benefitPath(percent), owner, map[string]any{"type": "custom", "title": "Mate"})
+	if edited.status != http.StatusOK || edited.body["percent"] != nil || edited.body["title"] != "Mate" {
 		t.Fatalf("edit = %d %v", edited.status, edited.body)
 	}
 	if off := s.do(http.MethodPut, benefitPath(percent)+"/active", owner, map[string]any{"active": false}); off.status != http.StatusOK || off.body["active"] != false {
@@ -222,7 +224,7 @@ func TestOwnerManagesBenefitsAndTheMonthlyLimit(t *testing.T) {
 		t.Fatalf("deactivate twice = %d %v, want it idempotent", again.status, again.body)
 	}
 	// Editing keeps the active flag.
-	if kept := s.do(http.MethodPut, benefitPath(percent), owner, map[string]any{"type": "percent", "percent": 20, "monthly_limit": 5}); kept.body["active"] != false || kept.body["title"] != nil {
+	if kept := s.do(http.MethodPut, benefitPath(percent), owner, map[string]any{"type": "percent", "percent": 20}); kept.body["active"] != false || kept.body["title"] != nil {
 		t.Errorf("edit = %v, want it to stay inactive with no gift", kept.body)
 	}
 
@@ -262,17 +264,16 @@ func TestBenefitValidationNamesTheField(t *testing.T) {
 		body  map[string]any
 		field string
 	}{
-		{"percent 0", map[string]any{"type": "percent", "percent": 0, "monthly_limit": 5}, "percent"},
-		{"percent missing", map[string]any{"type": "percent", "monthly_limit": 5}, "percent"},
-		{"percent 101", map[string]any{"type": "percent", "percent": 101, "monthly_limit": 5}, "percent"},
-		{"amount zero", map[string]any{"type": "amount", "amount_ars": 0, "monthly_limit": 5}, "amount_ars"},
-		{"custom without title", map[string]any{"type": "custom", "monthly_limit": 5}, "title"},
-		{"title with a link", map[string]any{"type": "custom", "title": "visitá www.promo.com", "monthly_limit": 5}, "title"},
-		{"conditions with a phone", map[string]any{"type": "percent", "percent": 10, "conditions": "llamá al 351 123 4567", "monthly_limit": 5}, "conditions"},
-		{"old welcome gift", map[string]any{"type": "welcome_gift", "title": "Mate", "monthly_limit": 5}, "type"},
-		{"unknown type", map[string]any{"type": "two_for_one", "monthly_limit": 5}, "type"},
-		{"no type", map[string]any{"percent": 10, "monthly_limit": 5}, "type"},
-		{"no limit", map[string]any{"type": "percent", "percent": 10}, "monthly_limit"},
+		{"percent 0", map[string]any{"type": "percent", "percent": 0}, "percent"},
+		{"percent missing", map[string]any{"type": "percent"}, "percent"},
+		{"percent 101", map[string]any{"type": "percent", "percent": 101}, "percent"},
+		{"amount zero", map[string]any{"type": "amount", "amount_ars": 0}, "amount_ars"},
+		{"custom without title", map[string]any{"type": "custom"}, "title"},
+		{"title with a link", map[string]any{"type": "custom", "title": "visitá www.promo.com"}, "title"},
+		{"conditions with a phone", map[string]any{"type": "percent", "percent": 10, "conditions": "llamá al 351 123 4567"}, "conditions"},
+		{"old welcome gift", map[string]any{"type": "welcome_gift", "title": "Mate"}, "type"},
+		{"unknown type", map[string]any{"type": "two_for_one"}, "type"},
+		{"no type", map[string]any{"percent": 10}, "type"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := s.do(http.MethodPost, "/me/business/benefits", owner, tc.body)
@@ -292,15 +293,15 @@ func TestOwnerCannotReachTheBenefitOfAnotherBusiness(t *testing.T) {
 	s := newServer(t)
 	mine := s.owner("mine@example.com", "active")
 	other := s.owner("other@example.com", "active")
-	theirs := s.do(http.MethodPost, "/me/business/benefits", other, map[string]any{"type": "percent", "percent": 10, "monthly_limit": 5})
+	theirs := s.do(http.MethodPost, "/me/business/benefits", other, map[string]any{"type": "percent", "percent": 10})
 
 	for _, call := range []struct {
 		method, path string
 		body         any
 	}{
-		{http.MethodPut, benefitPath(theirs), map[string]any{"type": "percent", "percent": 20, "monthly_limit": 9}},
+		{http.MethodPut, benefitPath(theirs), map[string]any{"type": "percent", "percent": 20}},
 		{http.MethodPut, benefitPath(theirs) + "/active", map[string]any{"active": false}},
-		{http.MethodPut, "/me/business/benefits/999999", map[string]any{"type": "percent", "percent": 10, "monthly_limit": 1}},
+		{http.MethodPut, "/me/business/benefits/999999", map[string]any{"type": "percent", "percent": 10}},
 		{http.MethodPut, "/me/business/benefits/abc/active", map[string]any{"active": true}},
 	} {
 		got := s.do(call.method, call.path, mine, call.body)
@@ -310,11 +311,11 @@ func TestOwnerCannotReachTheBenefitOfAnotherBusiness(t *testing.T) {
 	}
 
 	// The business id never comes from the body: the strict decoder refuses a forged one.
-	forged := s.do(http.MethodPost, "/me/business/benefits", mine, map[string]any{"type": "percent", "percent": 10, "monthly_limit": 5, "business_id": 1})
+	forged := s.do(http.MethodPost, "/me/business/benefits", mine, map[string]any{"type": "percent", "percent": 10, "business_id": 1})
 	if forged.status != http.StatusBadRequest {
 		t.Fatalf("forged business_id = %d %v, want 400", forged.status, forged.body)
 	}
-	own := s.do(http.MethodPost, "/me/business/benefits", mine, map[string]any{"type": "percent", "percent": 10, "monthly_limit": 5})
+	own := s.do(http.MethodPost, "/me/business/benefits", mine, map[string]any{"type": "percent", "percent": 10})
 	if own.status != http.StatusCreated {
 		t.Fatalf("create = %d %v", own.status, own.body)
 	}
@@ -332,7 +333,7 @@ func TestBenefitsNeedABusinessThatCanStillChange(t *testing.T) {
 	s := newServer(t)
 	_, noBusiness := s.user("nobody@example.com", "business_admin")
 	deleted := s.owner("deleted@example.com", "deleted")
-	body := map[string]any{"type": "percent", "percent": 10, "monthly_limit": 5}
+	body := map[string]any{"type": "percent", "percent": 10}
 
 	if got := s.do(http.MethodPost, "/me/business/benefits", noBusiness, body); got.status != http.StatusNotFound || got.errorCode() != "business_not_found" {
 		t.Errorf("no business = %d %q, want 404 business_not_found", got.status, got.errorCode())
@@ -354,7 +355,7 @@ func TestBenefitRoutesNeedAnOwner(t *testing.T) {
 	if got := s.do(http.MethodGet, "/me/business/benefits", "token-unknown", nil); got.status != http.StatusUnauthorized {
 		t.Errorf("bad token = %d, want 401", got.status)
 	}
-	if got := s.do(http.MethodPost, "/me/business/benefits", admin, map[string]any{"type": "percent", "percent": 10, "monthly_limit": 5}); got.status != http.StatusForbidden {
+	if got := s.do(http.MethodPost, "/me/business/benefits", admin, map[string]any{"type": "percent", "percent": 10}); got.status != http.StatusForbidden {
 		t.Errorf("super admin = %d, want 403", got.status)
 	}
 }

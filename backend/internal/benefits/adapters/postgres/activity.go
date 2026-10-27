@@ -21,7 +21,7 @@ WITH events AS (
     FROM benefit_codes c WHERE c.business_id = $1 AND c.status = 'redeemed'
 )
 SELECT e.kind, e.at, cu.name,
-       ` + benefitColumns("b") + `,
+       `+benefitColumns("b")+`,
        count(*) FILTER (WHERE e.at > $2) OVER ()
 FROM events e
 JOIN customers cu ON cu.id = e.customer_id

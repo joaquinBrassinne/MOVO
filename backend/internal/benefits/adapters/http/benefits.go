@@ -3,12 +3,14 @@
 package benefitshttp
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"math"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -63,6 +65,10 @@ type Deps struct {
 	// View serves the customer's look at their coupon by access token; without it the
 	// route is not mounted.
 	View *queries.ViewMyCoupon
+	// Quota and SetQuota serve the monthly coupon cap of the business; each route is
+	// mounted only when its use case is set.
+	Quota    *queries.GetCouponQuota
+	SetQuota *commands.SetCouponQuota
 	// Pause serves the super admin's pause of a benefit; without it the route is not mounted.
 	Pause *commands.PauseBenefit
 }
@@ -105,6 +111,12 @@ func (h *Handlers) Mount(r chi.Router) {
 	if h.Generate != nil {
 		r.With(noStore).Post("/benefits/{id}/codes", h.handleGenerate)
 	}
+	if h.Quota != nil {
+		owner.Get("/me/business/coupon-quota", h.handleQuota)
+	}
+	if h.SetQuota != nil {
+		owner.Put("/me/business/coupon-quota", h.handleSetQuota)
+	}
 	if h.Activity != nil {
 		owner.Get("/me/business/activity", h.handleActivity)
 	}
@@ -120,18 +132,17 @@ func (h *Handlers) Mount(r chi.Router) {
 }
 
 type benefitRequest struct {
-	Type         domain.Type `json:"type"`
-	Percent      int         `json:"percent"`
-	AmountARS    int         `json:"amount_ars"`
-	Title        string      `json:"title"`
-	Conditions   string      `json:"conditions"`
-	MonthlyLimit int         `json:"monthly_limit"`
+	Type       domain.Type `json:"type"`
+	Percent    int         `json:"percent"`
+	AmountARS  int         `json:"amount_ars"`
+	Title      string      `json:"title"`
+	Conditions string      `json:"conditions"`
 }
 
 func (b benefitRequest) input() domain.BenefitInput {
 	return domain.BenefitInput{
 		Type: b.Type, Percent: b.Percent, AmountARS: b.AmountARS, Title: b.Title,
-		Conditions: b.Conditions, MonthlyLimit: b.MonthlyLimit,
+		Conditions: b.Conditions,
 	}
 }
 
@@ -176,13 +187,12 @@ func toClaimedBenefitJSON(b domain.Benefit) claimedBenefitJSON {
 // switch, whether the super admin paused it, and the monthly limit.
 type benefitJSON struct {
 	claimedBenefitJSON
-	Active       bool `json:"active"`
-	AdminPaused  bool `json:"admin_paused"`
-	MonthlyLimit int  `json:"monthly_limit"`
+	Active      bool `json:"active"`
+	AdminPaused bool `json:"admin_paused"`
 }
 
 func toBenefitJSON(b domain.Benefit) benefitJSON {
-	return benefitJSON{claimedBenefitJSON: toClaimedBenefitJSON(b), Active: b.Active, AdminPaused: b.AdminPaused, MonthlyLimit: b.MonthlyLimit}
+	return benefitJSON{claimedBenefitJSON: toClaimedBenefitJSON(b), Active: b.Active, AdminPaused: b.AdminPaused}
 }
 
 func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
@@ -442,7 +452,7 @@ var validation = map[error]struct{ field, reason string }{
 	domain.ErrBenefitTypeInvalid:  {"type", "invalid"},
 	domain.ErrPercentInvalid:      {"percent", "invalid"},
 	domain.ErrAmountInvalid:       {"amount_ars", "invalid"},
-	domain.ErrMonthlyLimitInvalid: {"monthly_limit", "invalid"},
+	domain.ErrQuotaLimitInvalid:   {"limit", "invalid"},
 	domain.ErrCustomerNameInvalid: {"name", "invalid"},
 	domain.ErrPhoneInvalid:        {"phone", "invalid"},
 	benefits.ErrBranchRequired:    {"branch_id", "required"},
@@ -485,6 +495,12 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	case errors.Is(err, benefits.ErrBusinessNotEditable):
 		httpx.WriteError(w, http.StatusConflict, CodeBusinessDeleted, "this business was deleted and can no longer change", nil)
+		return
+	}
+	var below *domain.QuotaBelowGeneratedError
+	if errors.As(err, &below) {
+		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the limit is below the coupons already generated this month",
+			map[string]any{"field": "limit", "reason": "below_generated", "generated_this_month": below.Generated})
 		return
 	}
 	var text *domain.TextError
@@ -543,4 +559,60 @@ func (h *Handlers) handleActivity(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+// quotaJSON is the monthly coupon quota of the business. A null limit means no limit;
+// resets_on is the date the count starts again, in Argentina time.
+type quotaJSON struct {
+	Limit              *int   `json:"limit"`
+	GeneratedThisMonth int    `json:"generated_this_month"`
+	ResetsOn           string `json:"resets_on"`
+}
+
+func toQuotaJSON(v benefits.QuotaView) quotaJSON {
+	return quotaJSON{Limit: v.Limit, GeneratedThisMonth: v.Generated, ResetsOn: domain.DateInArgentina(v.ResetsOn)}
+}
+
+// quotaRequest keeps the limit raw so that an absent key (an error) can be told apart
+// from an explicit null (no limit).
+type quotaRequest struct {
+	Limit json.RawMessage `json:"limit"`
+}
+
+func (h *Handlers) handleQuota(w http.ResponseWriter, r *http.Request) {
+	view, err := h.Quota.Handle(r.Context(), callerID(r))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, toQuotaJSON(view))
+}
+
+func (h *Handlers) handleSetQuota(w http.ResponseWriter, r *http.Request) {
+	var req quotaRequest
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	var limit *int
+	switch raw := strings.TrimSpace(string(req.Limit)); raw {
+	case "":
+		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the limit is required, or null for no limit",
+			map[string]string{"field": "limit", "reason": "required"})
+		return
+	case "null":
+	default:
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			h.fail(w, r, domain.ErrQuotaLimitInvalid)
+			return
+		}
+		limit = &n
+	}
+
+	view, err := h.SetQuota.Handle(r.Context(), callerID(r), limit)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, toQuotaJSON(view))
 }

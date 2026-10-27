@@ -22,7 +22,7 @@ func (r *Coupons) ByToken(ctx context.Context, tokenHash []byte) (benefits.HeldC
 	b := &out.Benefit
 	err := r.pool.QueryRow(ctx, `
 SELECT c.id, c.code, c.status, c.expires_at, c.redeemed_at, cu.name, bs.name,
-       ` + benefitColumns("b") + `
+       `+benefitColumns("b")+`
 FROM benefit_codes c
 JOIN customers cu ON cu.id = c.customer_id
 JOIN benefits b ON b.id = c.benefit_id

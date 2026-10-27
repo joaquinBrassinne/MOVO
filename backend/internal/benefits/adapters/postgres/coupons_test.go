@@ -20,7 +20,8 @@ import (
 type shop struct{ business, benefit int64 }
 
 // newShop creates a business in the given status with an active branch, so it is visible
-// when active, and a percent benefit with the given monthly limit.
+// when active, and a percent benefit. The business caps its monthly coupons at limit;
+// 0 means no limit.
 func newShop(ctx context.Context, t *testing.T, pool *pgxpool.Pool, name, status string, limit int) shop {
 	t.Helper()
 
@@ -30,8 +31,8 @@ func newShop(ctx context.Context, t *testing.T, pool *pgxpool.Pool, name, status
 		t.Fatalf("insert owner: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
-INSERT INTO businesses (owner_user_id, category_id, name, slug, whatsapp_number, status)
-VALUES ($1, (SELECT id FROM categories WHERE slug = 'yoga'), $2, $2, '5491112345678', $3) RETURNING id`, owner, name, status).Scan(&business); err != nil {
+INSERT INTO businesses (owner_user_id, category_id, name, slug, whatsapp_number, status, monthly_coupon_limit)
+VALUES ($1, (SELECT id FROM categories WHERE slug = 'yoga'), $2, $2, '5491112345678', $3, NULLIF($4, 0)) RETURNING id`, owner, name, status, limit).Scan(&business); err != nil {
 		t.Fatalf("insert business: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `
@@ -40,7 +41,7 @@ VALUES ($1, 'Centro', 'Calle 1', 'Cordoba', ST_SetSRID(ST_MakePoint(-64.18, -31.
 		t.Fatalf("insert branch: %v", err)
 	}
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO benefits (business_id, type, percent, monthly_limit) VALUES ($1, 'percent', 10, $2) RETURNING id`, business, limit).Scan(&benefit); err != nil {
+		`INSERT INTO benefits (business_id, type, percent) VALUES ($1, 'percent', 10) RETURNING id`, business).Scan(&benefit); err != nil {
 		t.Fatalf("insert benefit: %v", err)
 	}
 	return shop{business: business, benefit: benefit}
@@ -184,7 +185,7 @@ func TestIssueFreesTheSlotOfAnOverdueCouponTheSweepHasNotMarkedYet(t *testing.T)
 	}
 }
 
-func TestIssueStopsAtTheMonthlyLimitAndCountsOnlyThisMonth(t *testing.T) {
+func TestIssueStopsAtTheMonthlyLimitOfTheBusinessAndCountsOnlyThisMonth(t *testing.T) {
 	t.Parallel()
 
 	pool := dbtest.New(t)
@@ -209,9 +210,9 @@ func TestIssueStopsAtTheMonthlyLimitAndCountsOnlyThisMonth(t *testing.T) {
 	if _, err := issuer.Issue(ctx, request(s, "5491100000004", "CCCCCCCC")); !errors.Is(err, benefits.ErrQuotaReached) {
 		t.Errorf("third coupon of the month: error = %v, want ErrQuotaReached", err)
 	}
-	// The limit counts generated coupons, redeemed or not, and is per benefit.
+	// The limit counts generated coupons, redeemed or not, and belongs to the business.
 	if _, err := issuer.Issue(ctx, request(other, "5491100000004", "DDDDDDDD")); err != nil {
-		t.Errorf("another benefit has its own limit: %v", err)
+		t.Errorf("another business has its own limit: %v", err)
 	}
 }
 

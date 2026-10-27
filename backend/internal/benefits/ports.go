@@ -222,3 +222,24 @@ type BenefitModerator interface {
 	// ErrBenefitNotFound when there is no such benefit.
 	SetAdminPaused(ctx context.Context, actorID, benefitID int64, paused bool) (domain.Benefit, error)
 }
+
+// QuotaView is the monthly coupon quota of a business as the panel shows it: the limit,
+// how many coupons were generated this month and when the count starts again.
+type QuotaView struct {
+	domain.Quota
+	ResetsOn time.Time
+}
+
+// CouponQuotas reads and sets the monthly cap on the coupons a business generates. The
+// month is the calendar month in Argentina, given as [monthStart, monthEnd).
+type CouponQuotas interface {
+	// Quota returns the limit of the business and what it generated in the month, or
+	// ErrBusinessNotFound.
+	Quota(ctx context.Context, businessID int64, monthStart, monthEnd time.Time) (domain.Quota, error)
+	// SetQuotaLimit sets the limit (nil removes it) and returns the quota. It locks the
+	// business row, like generating a coupon does, so the check against what was already
+	// generated cannot be overtaken by a coupon that is being generated. It returns
+	// domain.ErrQuotaLimitInvalid or a *domain.QuotaBelowGeneratedError when the limit is
+	// not allowed.
+	SetQuotaLimit(ctx context.Context, businessID int64, limit *int, monthStart, monthEnd time.Time) (domain.Quota, error)
+}

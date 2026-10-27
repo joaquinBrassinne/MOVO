@@ -28,8 +28,11 @@ VALUES ($1, 'Centro', 'Calle 1', 'Cordoba', ST_SetSRID(ST_MakePoint(-64.18, -31.
 		s.t.Fatalf("insert branch: %v", err)
 	}
 	if err := s.pool.QueryRow(s.t.Context(),
-		`INSERT INTO benefits (business_id, type, percent, monthly_limit) VALUES ($1, 'percent', 15, $2) RETURNING id`, business, limit).Scan(&benefit); err != nil {
+		`INSERT INTO benefits (business_id, type, percent) VALUES ($1, 'percent', 15) RETURNING id`, business).Scan(&benefit); err != nil {
 		s.t.Fatalf("insert benefit: %v", err)
+	}
+	if _, err := s.pool.Exec(s.t.Context(), `UPDATE businesses SET monthly_coupon_limit = $2 WHERE id = $1`, business, limit); err != nil {
+		s.t.Fatalf("set coupon quota: %v", err)
 	}
 	return "/benefits/" + strconv.FormatInt(benefit, 10) + "/codes"
 }
@@ -101,7 +104,7 @@ func TestSecondCouponAtTheSameBusinessIsAConflict(t *testing.T) {
 	}
 }
 
-func TestCouponsStopAtTheMonthlyLimit(t *testing.T) {
+func TestCouponsStopAtTheMonthlyLimitOfTheBusiness(t *testing.T) {
 	t.Parallel()
 
 	s := newServer(t)
@@ -125,8 +128,8 @@ func TestGenerateRefusesInvalidInputAndUnavailableBenefits(t *testing.T) {
 	_ = hidden
 	var draftBenefit int64
 	if err := s.pool.QueryRow(t.Context(), `
-INSERT INTO benefits (business_id, type, percent, monthly_limit)
-SELECT b.id, 'percent', 10, 5 FROM businesses b JOIN users u ON u.id = b.owner_user_id WHERE u.email = 'draft@example.com' RETURNING id`).Scan(&draftBenefit); err != nil {
+INSERT INTO benefits (business_id, type, percent)
+SELECT b.id, 'percent', 10 FROM businesses b JOIN users u ON u.id = b.owner_user_id WHERE u.email = 'draft@example.com' RETURNING id`).Scan(&draftBenefit); err != nil {
 		t.Fatalf("insert draft benefit: %v", err)
 	}
 

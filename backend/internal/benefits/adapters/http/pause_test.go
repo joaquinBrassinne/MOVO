@@ -36,7 +36,7 @@ func TestSuperAdminPausesABenefitAndTheOwnerCannotLiftIt(t *testing.T) {
 	if back := s.do(http.MethodPut, ownerPath+"/active", owner, map[string]any{"active": true}); back.body["admin_paused"] != true {
 		t.Errorf("after the owner toggles = %v, want admin_paused still true", back.body)
 	}
-	edit := s.do(http.MethodPut, ownerPath, owner, map[string]any{"type": "percent", "percent": 20, "monthly_limit": 9})
+	edit := s.do(http.MethodPut, ownerPath, owner, map[string]any{"type": "percent", "percent": 20})
 	if edit.status != http.StatusOK || edit.body["admin_paused"] != true {
 		t.Errorf("after the owner edits = %d %v, want admin_paused still true", edit.status, edit.body)
 	}
@@ -47,7 +47,7 @@ func TestSuperAdminPausesABenefitAndTheOwnerCannotLiftIt(t *testing.T) {
 	if got := s.do(http.MethodPut, pause, owner, map[string]any{"paused": false}); got.status != http.StatusForbidden {
 		t.Errorf("owner on the admin route = %d, want 403", got.status)
 	}
-	if got := s.do(http.MethodPut, ownerPath, owner, map[string]any{"type": "percent", "percent": 20, "monthly_limit": 9, "admin_paused": false}); got.status != http.StatusBadRequest {
+	if got := s.do(http.MethodPut, ownerPath, owner, map[string]any{"type": "percent", "percent": 20, "admin_paused": false}); got.status != http.StatusBadRequest {
 		t.Errorf("owner sending admin_paused = %d, want 400 (unknown field)", got.status)
 	}
 
@@ -108,16 +108,16 @@ func TestOwnerCreatesBenefitsOfEveryTypeWithTheirLabels(t *testing.T) {
 		body  map[string]any
 		label string
 	}{
-		{"any percent", map[string]any{"type": "percent", "percent": 37, "monthly_limit": 5}, "-37%"},
-		{"fixed amount", map[string]any{"type": "amount", "amount_ars": 2000, "conditions": "Mínimo $10.000", "monthly_limit": 5}, "-$2.000"},
-		{"custom", map[string]any{"type": "custom", "title": "Una clase gratis", "monthly_limit": 5}, "Beneficio"},
+		{"any percent", map[string]any{"type": "percent", "percent": 37}, "-37%"},
+		{"fixed amount", map[string]any{"type": "amount", "amount_ars": 2000, "conditions": "Mínimo $10.000"}, "-$2.000"},
+		{"custom", map[string]any{"type": "custom", "title": "Una clase gratis"}, "Beneficio"},
 	} {
 		got := s.do(http.MethodPost, "/me/business/benefits", owner, tc.body)
 		if got.status != http.StatusCreated || got.body["short_label"] != tc.label {
 			t.Errorf("%s = %d %v, want label %q", tc.name, got.status, got.body, tc.label)
 		}
 	}
-	amount := s.do(http.MethodPost, "/me/business/benefits", owner, map[string]any{"type": "amount", "amount_ars": 500, "monthly_limit": 1})
+	amount := s.do(http.MethodPost, "/me/business/benefits", owner, map[string]any{"type": "amount", "amount_ars": 500})
 	if amount.body["amount_ars"] != float64(500) || amount.body["percent"] != nil || amount.body["title"] != nil || amount.body["conditions"] != nil {
 		t.Errorf("amount body = %v, want only the amount set", amount.body)
 	}

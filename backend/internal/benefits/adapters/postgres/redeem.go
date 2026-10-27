@@ -35,7 +35,7 @@ WITH redeemed AS (
     RETURNING id, code, benefit_id, business_id, customer_id, expires_at, redeemed_at
 )
 SELECT r.id, r.code, r.expires_at, r.redeemed_at, cu.name,
-       ` + benefitColumns("b") + `
+       `+benefitColumns("b")+`
 FROM redeemed r
 JOIN customers cu ON cu.id = r.customer_id
 JOIN benefits b ON b.id = r.benefit_id`,

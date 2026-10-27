@@ -30,10 +30,11 @@ func NewCoupons(pool *pgxpool.Pool) *Coupons {
 	return &Coupons{pool: pool}
 }
 
-// Issue generates one coupon in a single transaction. The benefit row is locked, so
-// the monthly count and the insert of two simultaneous requests run one after the
-// other and the limit cannot be overshot. The unique indexes still guard the two rules
-// the database owns: the code and one pending coupon per customer and business.
+// Issue generates one coupon in a single transaction. The business row is locked, so
+// the monthly count and the insert of two simultaneous requests for the same business
+// run one after the other and the limit cannot be overshot. The unique indexes still
+// guard the two rules the database owns: the code and one pending coupon per customer
+// and business.
 func (r *Coupons) Issue(ctx context.Context, req benefits.IssueRequest) (benefits.Issued, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -43,15 +44,22 @@ func (r *Coupons) Issue(ctx context.Context, req benefits.IssueRequest) (benefit
 
 	// Only a benefit the owner has on and the admin has not paused, of a business with a
 	// visible branch, can be claimed.
-	benefit, err := scanBenefit(tx.QueryRow(ctx, selectBenefit+`
-WHERE id = $1 AND active AND NOT admin_paused
-  AND EXISTS (SELECT 1 FROM visible_branches v WHERE v.business_id = benefits.business_id)
-FOR UPDATE`, req.BenefitID))
+	var (
+		benefit domain.Benefit
+		limit   *int
+	)
+	err = tx.QueryRow(ctx, `
+SELECT `+benefitColumns("b")+`, bs.monthly_coupon_limit
+FROM benefits b
+JOIN businesses bs ON bs.id = b.business_id
+WHERE b.id = $1 AND b.active AND NOT b.admin_paused
+  AND EXISTS (SELECT 1 FROM visible_branches v WHERE v.business_id = b.business_id)
+FOR UPDATE OF bs`, req.BenefitID).Scan(append(benefitDest(&benefit), &limit)...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return benefits.Issued{}, benefits.ErrBenefitNotFound
 	}
 	if err != nil {
-		return benefits.Issued{}, err
+		return benefits.Issued{}, fmt.Errorf("postgres: find benefit: %w", err)
 	}
 
 	// One person is one phone: a repeat visit reuses the customer and keeps the name
@@ -82,13 +90,14 @@ WHERE customer_id = $1 AND business_id = $2 AND status = 'pending' AND expires_a
 		return benefits.Issued{}, benefits.ErrPendingCoupon
 	}
 
-	var generated int
+	// The cap is the business's, over every benefit it offers.
+	quota := domain.Quota{Limit: limit}
 	if err := tx.QueryRow(ctx,
-		`SELECT count(*) FROM benefit_codes WHERE benefit_id = $1 AND created_at >= $2 AND created_at < $3`,
-		benefit.ID, req.MonthStart, req.MonthEnd).Scan(&generated); err != nil {
+		`SELECT count(*) FROM benefit_codes WHERE business_id = $1 AND created_at >= $2 AND created_at < $3`,
+		benefit.BusinessID, req.MonthStart, req.MonthEnd).Scan(&quota.Generated); err != nil {
 		return benefits.Issued{}, fmt.Errorf("postgres: count coupons of the month: %w", err)
 	}
-	if !benefit.HasRoom(generated) {
+	if !quota.HasRoom() {
 		return benefits.Issued{}, benefits.ErrQuotaReached
 	}
 

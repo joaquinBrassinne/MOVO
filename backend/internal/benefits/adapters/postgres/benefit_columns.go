@@ -12,7 +12,7 @@ import (
 func benefitColumns(alias string) string {
 	cols := []string{
 		"id", "business_id", "type", "COALESCE(percent, 0)", "COALESCE(amount_ars, 0)",
-		"COALESCE(title, '')", "COALESCE(conditions, '')", "active", "admin_paused", "monthly_limit",
+		"COALESCE(title, '')", "COALESCE(conditions, '')", "active", "admin_paused",
 	}
 	for i, c := range cols {
 		if alias == "" {
@@ -31,6 +31,6 @@ func benefitColumns(alias string) string {
 func benefitDest(b *domain.Benefit) []any {
 	return []any{
 		&b.ID, &b.BusinessID, &b.Type, &b.Percent, &b.AmountARS,
-		&b.Title, &b.Conditions, &b.Active, &b.AdminPaused, &b.MonthlyLimit,
+		&b.Title, &b.Conditions, &b.Active, &b.AdminPaused,
 	}
 }

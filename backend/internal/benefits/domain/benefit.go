@@ -12,10 +12,9 @@ import (
 
 // Validation errors for benefits. The free texts report a *TextError instead.
 var (
-	ErrBenefitTypeInvalid  = errors.New("benefits: benefit type is not valid")
-	ErrPercentInvalid      = errors.New("benefits: percent must be between 1 and 100")
-	ErrAmountInvalid       = errors.New("benefits: amount must be greater than zero")
-	ErrMonthlyLimitInvalid = errors.New("benefits: monthly limit must be greater than zero")
+	ErrBenefitTypeInvalid = errors.New("benefits: benefit type is not valid")
+	ErrPercentInvalid     = errors.New("benefits: percent must be between 1 and 100")
+	ErrAmountInvalid      = errors.New("benefits: amount must be greater than zero")
 )
 
 // Type is the kind of benefit a business offers.
@@ -49,19 +48,17 @@ type Benefit struct {
 	Conditions string // optional, any type
 	// Active is the owner's switch. AdminPaused is the super admin's: the owner cannot
 	// lift it, so a benefit is offered only when both allow it.
-	Active       bool
-	AdminPaused  bool
-	MonthlyLimit int // coupons the business accepts to generate per calendar month
+	Active      bool
+	AdminPaused bool
 }
 
 // BenefitInput is what an owner provides to create or edit a benefit.
 type BenefitInput struct {
-	Type         Type
-	Percent      int
-	AmountARS    int
-	Title        string
-	Conditions   string
-	MonthlyLimit int
+	Type       Type
+	Percent    int
+	AmountARS  int
+	Title      string
+	Conditions string
 }
 
 // NewBenefit validates the input and builds an active benefit. BusinessID and ID are
@@ -74,9 +71,6 @@ func NewBenefit(in BenefitInput) (Benefit, error) {
 // identity and both switches. Only the field of the chosen type is kept, so a percent
 // benefit never carries a title and the other way around.
 func (b Benefit) Update(in BenefitInput) (Benefit, error) {
-	if in.MonthlyLimit <= 0 {
-		return Benefit{}, ErrMonthlyLimitInvalid
-	}
 	conditions, err := plainText("conditions", in.Conditions, false, maxConditionsLen)
 	if err != nil {
 		return Benefit{}, err
@@ -104,7 +98,7 @@ func (b Benefit) Update(in BenefitInput) (Benefit, error) {
 		return Benefit{}, ErrBenefitTypeInvalid
 	}
 
-	b.Type, b.Conditions, b.MonthlyLimit = in.Type, conditions, in.MonthlyLimit
+	b.Type, b.Conditions = in.Type, conditions
 	return b, nil
 }
 
@@ -163,12 +157,6 @@ func (b Benefit) ResumeByAdmin() Benefit {
 // and the super admin has not paused it.
 func (b Benefit) Offered() bool {
 	return b.Active && !b.AdminPaused
-}
-
-// HasRoom reports whether the business can still generate a coupon this month, given
-// how many it already generated. The limit counts coupons generated, not redeemed.
-func (b Benefit) HasRoom(generatedThisMonth int) bool {
-	return generatedThisMonth < b.MonthlyLimit
 }
 
 // QuotaMonth returns the half-open interval [start, end) of the calendar month, in
