@@ -65,6 +65,8 @@ type Deps struct {
 	// View serves the customer's look at their coupon by access token; without it the
 	// route is not mounted.
 	View *queries.ViewMyCoupon
+	// Overview serves the counts of the panel home; without it the route is not mounted.
+	Overview *queries.GetOverview
 	// Quota and SetQuota serve the monthly coupon cap of the business; each route is
 	// mounted only when its use case is set.
 	Quota    *queries.GetCouponQuota
@@ -110,6 +112,9 @@ func (h *Handlers) Mount(r chi.Router) {
 	// Public: the customer has no account. The origin limit lives in the use case.
 	if h.Generate != nil {
 		r.With(noStore).Post("/benefits/{id}/codes", h.handleGenerate)
+	}
+	if h.Overview != nil {
+		owner.Get("/me/business/overview", h.handleOverview)
 	}
 	if h.Quota != nil {
 		owner.Get("/me/business/coupon-quota", h.handleQuota)
@@ -195,6 +200,14 @@ func toBenefitJSON(b domain.Benefit) benefitJSON {
 	return benefitJSON{claimedBenefitJSON: toClaimedBenefitJSON(b), Active: b.Active, AdminPaused: b.AdminPaused}
 }
 
+// benefitListItemJSON is a benefit of the list, with what it did in the current month
+// (Argentina time): coupons generated in it and coupons redeemed in it.
+type benefitListItemJSON struct {
+	benefitJSON
+	GeneratedThisMonth int `json:"generated_this_month"`
+	RedeemedThisMonth  int `json:"redeemed_this_month"`
+}
+
 func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 	list, err := h.List.Handle(r.Context(), callerID(r))
 	if err != nil {
@@ -202,9 +215,9 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := make([]benefitJSON, 0, len(list))
+	out := make([]benefitListItemJSON, 0, len(list))
 	for _, b := range list {
-		out = append(out, toBenefitJSON(b))
+		out = append(out, benefitListItemJSON{benefitJSON: toBenefitJSON(b.Benefit), GeneratedThisMonth: b.Generated, RedeemedThisMonth: b.Redeemed})
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"benefits": out})
 }
@@ -310,12 +323,14 @@ type redeemedJSON struct {
 // previewJSON is a coupon as the owner sees it before confirming. It has no phone: the
 // business only needs the name to greet the customer.
 type previewJSON struct {
-	Code         string             `json:"code"`
-	Status       domain.Status      `json:"status"`
-	CustomerName string             `json:"customer_name"`
-	ExpiresAt    time.Time          `json:"expires_at"`
-	RedeemedAt   *time.Time         `json:"redeemed_at"`
-	Benefit      claimedBenefitJSON `json:"benefit"`
+	Code         string        `json:"code"`
+	Status       domain.Status `json:"status"`
+	CustomerName string        `json:"customer_name"`
+	// CustomerRedeemed is how many coupons this customer already redeemed at the business.
+	CustomerRedeemed int                `json:"customer_redeemed_count"`
+	ExpiresAt        time.Time          `json:"expires_at"`
+	RedeemedAt       *time.Time         `json:"redeemed_at"`
+	Benefit          claimedBenefitJSON `json:"benefit"`
 }
 
 func (h *Handlers) handlePreview(w http.ResponseWriter, r *http.Request) {
@@ -326,7 +341,7 @@ func (h *Handlers) handlePreview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out := previewJSON{
-		Code: view.Code, Status: view.Status, CustomerName: view.CustomerName,
+		Code: view.Code, Status: view.Status, CustomerName: view.CustomerName, CustomerRedeemed: view.CustomerRedeemed,
 		ExpiresAt: view.ExpiresAt.UTC(), Benefit: toClaimedBenefitJSON(view.Benefit),
 	}
 	if view.RedeemedAt != nil {
@@ -615,4 +630,24 @@ func (h *Handlers) handleSetQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, toQuotaJSON(view))
+}
+
+// overviewJSON is the home of the panel. The views and the clicks are of the last 7 days.
+type overviewJSON struct {
+	ActiveCoupons    int `json:"active_coupons"`
+	RedeemedToday    int `json:"redeemed_today"`
+	ProfileViews7d   int `json:"profile_views_7d"`
+	WhatsAppClicks7d int `json:"whatsapp_clicks_7d"`
+}
+
+func (h *Handlers) handleOverview(w http.ResponseWriter, r *http.Request) {
+	got, err := h.Overview.Handle(r.Context(), callerID(r))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, overviewJSON{
+		ActiveCoupons: got.ActiveCoupons, RedeemedToday: got.RedeemedToday,
+		ProfileViews7d: got.ProfileViews, WhatsAppClicks7d: got.WhatsAppClicks,
+	})
 }

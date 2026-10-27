@@ -57,3 +57,11 @@ func QuotaResetsOn(now time.Time) time.Time {
 func DateInArgentina(t time.Time) string {
 	return t.In(argentina).Format(time.DateOnly)
 }
+
+// DayInArgentina returns the half-open interval [start, end) of the calendar day, in
+// Argentina time, that contains now.
+func DayInArgentina(now time.Time) (start, end time.Time) {
+	local := now.In(argentina)
+	start = time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, argentina)
+	return start, start.AddDate(0, 0, 1)
+}

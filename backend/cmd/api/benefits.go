@@ -58,11 +58,12 @@ func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.Toke
 	return benefitshttp.New(benefitshttp.Deps{
 		Verifier:  verifier,
 		Log:       log,
-		List:      queries.NewListMyBenefits(owners, repo),
+		List:      queries.NewListMyBenefits(owners, repo, coupons, nil),
 		Add:       commands.NewAddBenefit(owners, repo),
 		Edit:      commands.NewEditBenefit(owners, repo),
 		SetActive: commands.NewSetBenefitActive(owners, repo),
 		Pause:     commands.NewPauseBenefit(repo),
+		Overview:  queries.NewGetOverview(owners, coupons, nil),
 		Quota:     queries.NewGetCouponQuota(owners, coupons, nil),
 		SetQuota:  commands.NewSetCouponQuota(owners, coupons, nil),
 		Generate:  commands.NewGenerateCode(coupons, limiter, nil, nil),

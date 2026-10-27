@@ -81,11 +81,12 @@ func newServerWithLimit(t *testing.T, maxAttempts int) *server {
 	limiter := ratelimit.New(ratelimit.Config{MaxAttempts: maxAttempts, Window: time.Hour, MaxKeys: 100}, nil)
 	handlers := benefitshttp.New(benefitshttp.Deps{
 		Verifier:  s.tokens,
-		List:      queries.NewListMyBenefits(res, repo),
+		List:      queries.NewListMyBenefits(res, repo, postgres.NewCoupons(pool), nil),
 		Add:       commands.NewAddBenefit(res, repo),
 		Edit:      commands.NewEditBenefit(res, repo),
 		SetActive: commands.NewSetBenefitActive(res, repo),
 		Pause:     commands.NewPauseBenefit(repo),
+		Overview:  queries.NewGetOverview(res, postgres.NewCoupons(pool), nil),
 		Quota:     queries.NewGetCouponQuota(res, postgres.NewCoupons(pool), nil),
 		SetQuota:  commands.NewSetCouponQuota(res, postgres.NewCoupons(pool), nil),
 		Generate:  commands.NewGenerateCode(postgres.NewCoupons(pool), limiter, nil, nil),

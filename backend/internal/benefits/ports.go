@@ -114,6 +114,8 @@ type CouponPreview struct {
 	Benefit      domain.Benefit
 	CustomerName string
 	RedeemedAt   *time.Time // nil until redeemed
+	// CustomerRedeemed is how many coupons this customer already redeemed at the business.
+	CustomerRedeemed int
 }
 
 // HeldCoupon is a coupon as its customer sees it: the preview plus the business that
@@ -242,4 +244,39 @@ type CouponQuotas interface {
 	// domain.ErrQuotaLimitInvalid or a *domain.QuotaBelowGeneratedError when the limit is
 	// not allowed.
 	SetQuotaLimit(ctx context.Context, businessID int64, limit *int, monthStart, monthEnd time.Time) (domain.Quota, error)
+}
+
+// Usage is what one benefit did in a calendar month: coupons generated in it and coupons
+// redeemed in it, whenever they were generated.
+type Usage struct {
+	Generated int
+	Redeemed  int
+}
+
+// BenefitUsage reads what each benefit of a business did in a month, for the panel.
+type BenefitUsage interface {
+	// MonthlyUsage returns the usage by benefit id for [monthStart, monthEnd). A benefit
+	// with no coupons is absent.
+	MonthlyUsage(ctx context.Context, businessID int64, monthStart, monthEnd time.Time) (map[int64]Usage, error)
+}
+
+// BenefitWithUsage is a benefit and what it did this month.
+type BenefitWithUsage struct {
+	domain.Benefit
+	Usage
+}
+
+// Overview is the handful of numbers on the home of the panel (SDD 4.9b): coupons that
+// can still be redeemed, coupons redeemed today, and the views of the profile and the
+// clicks to WhatsApp of the last 7 days (today and the six before). Days are Argentina's.
+type Overview struct {
+	ActiveCoupons  int
+	RedeemedToday  int
+	ProfileViews   int
+	WhatsAppClicks int
+}
+
+// OverviewReader reads the numbers of the home of the panel. It only counts.
+type OverviewReader interface {
+	Overview(ctx context.Context, businessID int64, now time.Time) (Overview, error)
 }
