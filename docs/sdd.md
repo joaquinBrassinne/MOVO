@@ -532,7 +532,7 @@ Convenciones de trabajo:
 ### Fase 4 — Beneficios y cupones (el lazo de valor)
 **Objetivo:** generar y canjear cupones de forma segura y atómica, sin cuenta de cliente.
 
-- [ ] 4.1 Migraciones `customers`, `benefits`, `benefit_codes` + índice único parcial (S)
+- [x] 4.1 Migraciones `customers`, `benefits`, `benefit_codes` + índice único parcial (S)
 - [ ] 4.2 Dominio `benefits`: tipos (`percent` 10/15/20 o `welcome_gift`), TTL de 48 h, cupo mensual, estados (M)
 - [ ] 4.3 CRUD de beneficios y cupo mensual desde el panel del local (M)
 - [ ] 4.4 Comando `GenerateCode`: nombre y WhatsApp, un pendiente por cliente y local, cupo, reintento por colisión, token de acceso (M)
