@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
 import { BUSINESS, OWNER, signIn } from "../helpers";
+import { failOnConsoleErrors } from "../support/console";
 import { PORTS } from "../support/env.mjs";
 
 // Sigue a benefits.spec: el negocio ya tiene beneficios y no tiene cupo. Los cupones los
@@ -45,6 +46,8 @@ async function redeem(request: APIRequestContext, owner: Owner, code: string) {
 }
 
 test.describe("Owner home", () => {
+  failOnConsoleErrors();
+
   test(
     "The home shows the redeem button, the counts, the quota and an empty activity",
     { tag: ["@critical", "@e2e", "@home", "@HOME-E2E-001"] },

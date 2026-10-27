@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 import { OWNER, signIn } from "../helpers";
+import { failOnConsoleErrors } from "../support/console";
 import { PORTS } from "../support/env.mjs";
 
 // Los cupones los genera el "cliente" por la API pública. El negocio puede tener una o dos
@@ -48,6 +49,8 @@ async function confirm(page: Page) {
 }
 
 test.describe("Redeem", () => {
+  failOnConsoleErrors();
+
   test(
     "Looking at a coupon shows who it is for and what it is worth without redeeming it",
     { tag: ["@critical", "@e2e", "@redeem", "@REDEEM-E2E-001"] },

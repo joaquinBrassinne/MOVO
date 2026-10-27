@@ -13,6 +13,9 @@ import { formatCountdown, formatShortDate } from "@/lib/coupons/format";
 import { isToken, readSaved, saveToken } from "@/lib/coupons/saved";
 import type { HeldCoupon } from "@/lib/coupons/types";
 
+/** Un instante fijo para antes de tener reloj: nunca se muestra, el cupón aparece junto con el reloj. */
+const EPOCH = new Date(0);
+
 type Loaded =
   | { status: "loading" }
   | { status: "ready"; coupon: HeldCoupon }
@@ -34,7 +37,9 @@ export function CouponScreen({ token, fresh }: Props) {
   const [fetched, setFetched] = useState<Loaded>({ status: "loading" });
   // Un enlace que no es un token ni se consulta: es un cupón que no existe.
   const loaded: Loaded = isToken(token) ? fetched : { status: "missing" };
-  const [now, setNow] = useState(() => new Date());
+  // El reloj se toma al cargar y se mueve solo: leerlo al renderizar no es estable para Next.
+  const [clock, setClock] = useState<Date | null>(null);
+  const now = clock ?? EPOCH;
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -43,8 +48,10 @@ export function CouponScreen({ token, fresh }: Props) {
 
     void getHeldCoupon(token).then((result) => {
       if (ignore) return;
-      if (result.ok) setFetched({ status: "ready", coupon: result.data });
-      else setFetched(result.status === 404 ? { status: "missing" } : { status: "failed" });
+      if (result.ok) {
+        setFetched({ status: "ready", coupon: result.data });
+        setClock(new Date());
+      } else setFetched(result.status === 404 ? { status: "missing" } : { status: "failed" });
     });
     return () => {
       ignore = true;
@@ -53,7 +60,7 @@ export function CouponScreen({ token, fresh }: Props) {
 
   // La cuenta regresiva se mueve sola cada medio minuto: alcanza para horas y minutos.
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30_000);
+    const timer = setInterval(() => setClock(new Date()), 30_000);
     return () => clearInterval(timer);
   }, []);
 

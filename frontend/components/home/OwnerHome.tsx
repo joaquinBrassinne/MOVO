@@ -20,14 +20,15 @@ export function OwnerHome() {
   const overview = useOverview();
   const quota = useCouponQuota();
   // La marca de lo ya visto: lo posterior a ella cuenta como novedad en la campana.
-  // La primera vez no hay marca: se toma el momento de la visita, así cuenta lo que pase después.
-  const [seenAt, setSeenAt] = useState<string>(() => readSeenAt() ?? new Date().toISOString());
+  // La primera vez no hay marca: se guarda el momento de la visita (abajo), así la próxima vez
+  // cuenta lo que haya pasado desde entonces. Leer la hora al renderizar no es estable para Next.
+  const [seenAt, setSeenAt] = useState<string | undefined>(() => readSeenAt());
   const activity = useActivity(seenAt);
   const activityRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    if (!readSeenAt()) writeSeenAt(seenAt);
-  }, [seenAt]);
+    if (!readSeenAt()) writeSeenAt(new Date().toISOString());
+  }, []);
 
   const name = business.status === "ready" ? business.data.business.name : "";
   const pilot = business.status === "ready" && business.data.business.pilot;

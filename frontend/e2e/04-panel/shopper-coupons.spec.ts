@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 import { BUSINESS, OWNER } from "../helpers";
+import { failOnConsoleErrors } from "../support/console";
 import { PORTS } from "../support/env.mjs";
 
 // El cliente no tiene cuenta: entra a la ficha pública, genera su cupón y lo guarda en el
@@ -32,21 +33,7 @@ async function generate(sheet: ReturnType<Page["getByRole"]>, name: string, phon
 }
 
 test.describe("Customer coupons", () => {
-  // Ninguna pantalla del cliente debe dejar errores en la consola (por ejemplo, de hidratación).
-  // Una respuesta 404 de la API es esperable en algún test y no es un error de la pantalla.
-  let problems: string[] = [];
-  test.beforeEach(({ page }) => {
-    problems = [];
-    page.on("console", (message) => {
-      if (message.type() === "error" && !message.text().includes("Failed to load resource")) {
-        problems.push(message.text());
-      }
-    });
-    page.on("pageerror", (error) => problems.push(error.message));
-  });
-  test.afterEach(() => {
-    expect(problems).toEqual([]);
-  });
+  failOnConsoleErrors();
 
   test(
     "The profile lists the benefits on offer, best first, with a button to get each coupon",

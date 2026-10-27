@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { OWNER, signIn } from "../helpers";
+import { failOnConsoleErrors } from "../support/console";
 
 // Sigue a 03-admin: el negocio está activo y todavía no tiene beneficios ni cupo. Los
 // tests son el uso real de la vista, en orden. Se miran a 390 px: el panel es mobile primero.
@@ -20,6 +21,8 @@ async function open(page: Page) {
 }
 
 test.describe("Benefits", () => {
+  failOnConsoleErrors();
+
   test.beforeEach(async ({ page }) => {
     await signIn(page, OWNER);
     await open(page);

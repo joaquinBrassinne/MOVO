@@ -16,6 +16,9 @@ import { formatExpiresIn, formatShortDate } from "@/lib/coupons/format";
 import { parseSaved, readRawSaved, subscribeSaved } from "@/lib/coupons/saved";
 import type { HeldCoupon } from "@/lib/coupons/types";
 
+/** Un instante fijo para antes de cargar: no se muestra, los cupones aparecen junto con el reloj. */
+const EPOCH = new Date(0);
+
 interface Item {
   token: string;
   coupon: HeldCoupon;
@@ -43,7 +46,8 @@ export function MyCoupons() {
   const [items, setItems] = useState<Item[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [tab, setTab] = useState<TabKey>("all");
-  const [now] = useState(() => new Date());
+  // El reloj se toma al cargar los cupones: leerlo al renderizar no es estable para Next.
+  const [now, setNow] = useState(EPOCH);
 
   useEffect(() => {
     let ignore = false;
@@ -61,6 +65,7 @@ export function MyCoupons() {
         else if (result.status !== 404) broken = true;
       }
       setItems(found);
+      setNow(new Date());
       setFailed(broken);
     });
     return () => {

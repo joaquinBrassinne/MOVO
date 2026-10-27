@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { ADMIN, BUSINESS, OWNER, signIn } from "../helpers";
+import { failOnConsoleErrors } from "../support/console";
 import { PORTS } from "../support/env.mjs";
 
 // Sigue a 03-admin: el negocio está activo. Se cambia solo la descripción para no alterar lo
@@ -25,6 +26,8 @@ async function openData(page: import("@playwright/test").Page) {
 }
 
 test.describe("Business data", () => {
+  failOnConsoleErrors();
+
   test(
     "The owner sees their data, edits the description and the change survives a reload",
     { tag: ["@critical", "@e2e", "@business-data", "@DATA-E2E-001"] },

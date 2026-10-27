@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 import { OWNER, signIn } from "../helpers";
+import { failOnConsoleErrors } from "../support/console";
 import { PORTS } from "../support/env.mjs";
 import { writeQrVideo } from "../support/fake-camera.mjs";
 
@@ -36,6 +37,8 @@ async function openRedeem(page: Page) {
 }
 
 test.describe("QR scanner", () => {
+  failOnConsoleErrors();
+
   test(
     "Scanning the QR of a coupon shows its preview, redeems nothing and loads only from our origin",
     { tag: ["@critical", "@e2e", "@scanner", "@SCANNER-E2E-001"] },
