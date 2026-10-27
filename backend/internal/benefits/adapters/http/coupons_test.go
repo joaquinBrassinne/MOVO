@@ -3,6 +3,7 @@ package benefitshttp_test
 import (
 	"bytes"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"strconv"
 	"testing"
@@ -171,6 +172,44 @@ SELECT b.id, 'percent', 10 FROM businesses b JOIN users u ON u.id = b.owner_user
 	var customers int
 	if err := s.pool.QueryRow(t.Context(), `SELECT count(*) FROM customers`).Scan(&customers); err != nil || customers != 0 {
 		t.Errorf("customers after refused requests = %d, %v; want none filed", customers, err)
+	}
+}
+
+func forwarded(ip string) http.Header { return http.Header{"X-Forwarded-For": {ip}} }
+
+func TestClientsBehindATrustedProxyHaveTheirOwnBudget(t *testing.T) {
+	t.Parallel()
+
+	s := newServerBehind(t, 1, []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")})
+	path := s.visibleBenefit("owner@example.com", 50)
+
+	first := s.doWith(forwarded("198.51.100.1"), http.MethodPost, path, "", customer("Ana", "5491112345678"))
+	again := s.doWith(forwarded("198.51.100.1"), http.MethodPost, path, "", customer("Ana", "5491112345678"))
+	other := s.doWith(forwarded("198.51.100.2"), http.MethodPost, path, "", customer("Beto", "5491187654321"))
+
+	if first.status != http.StatusCreated || other.status != http.StatusCreated {
+		t.Errorf("each client's first request = %d and %d, want 201 for both", first.status, other.status)
+	}
+	if again.status != http.StatusTooManyRequests {
+		t.Errorf("the first client's second request = %d, want 429", again.status)
+	}
+}
+
+func TestAForgedForwardedForDoesNotBuyANewBudget(t *testing.T) {
+	t.Parallel()
+
+	// Nobody is trusted: the header is a client claim, so changing it changes nothing.
+	s := newServerBehind(t, 1, nil)
+	path := s.visibleBenefit("owner@example.com", 50)
+
+	first := s.doWith(forwarded("198.51.100.1"), http.MethodPost, path, "", customer("Ana", "5491112345678"))
+	forged := s.doWith(forwarded("198.51.100.2"), http.MethodPost, path, "", customer("Beto", "5491187654321"))
+
+	if first.status != http.StatusCreated {
+		t.Fatalf("first request = %d, want 201", first.status)
+	}
+	if forged.status != http.StatusTooManyRequests {
+		t.Errorf("forged address = %d, want 429: the budget belongs to the connection", forged.status)
 	}
 }
 

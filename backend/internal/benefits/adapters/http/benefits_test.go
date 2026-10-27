@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strconv"
 	"testing"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/adapters/ratelimit"
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/app/commands"
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/app/queries"
+	"github.com/joaquinBrassinne/MOVO/internal/platform/clientip"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/dbtest"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
 )
@@ -73,6 +75,13 @@ func newServer(t *testing.T) *server {
 // request of a test comes from the same address, so the budget is the test's own.
 func newServerWithLimit(t *testing.T, maxAttempts int) *server {
 	t.Helper()
+	return newServerBehind(t, maxAttempts, nil)
+}
+
+// newServerBehind is newServerWithLimit with the proxies whose X-Forwarded-For is trusted.
+// The test client connects from 127.0.0.1, so trusting that address makes it a proxy.
+func newServerBehind(t *testing.T, maxAttempts int, proxies []netip.Prefix) *server {
+	t.Helper()
 
 	pool := dbtest.New(t)
 	s := &server{t: t, pool: pool, tokens: tokens{}}
@@ -104,7 +113,7 @@ func newServerWithLimit(t *testing.T, maxAttempts int) *server {
 			me.HandleFunc("/*", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
 		})
 	}
-	ts := httptest.NewServer(httpx.NewRouter(nil, nil, business, handlers.Mount))
+	ts := httptest.NewServer(clientip.Middleware(proxies)(httpx.NewRouter(nil, nil, business, handlers.Mount)))
 	t.Cleanup(ts.Close)
 	s.url = ts.URL + "/api/v1"
 	return s
@@ -148,6 +157,12 @@ type reply struct {
 
 func (s *server) do(method, path, token string, body any) reply {
 	s.t.Helper()
+	return s.doWith(nil, method, path, token, body)
+}
+
+// doWith is do with extra request headers, such as the X-Forwarded-For a proxy adds.
+func (s *server) doWith(extra http.Header, method, path, token string, body any) reply {
+	s.t.Helper()
 
 	var reader io.Reader
 	if body != nil {
@@ -160,6 +175,9 @@ func (s *server) do(method, path, token string, body any) reply {
 	req, err := http.NewRequestWithContext(s.t.Context(), method, s.url+path, reader)
 	if err != nil {
 		s.t.Fatalf("build request: %v", err)
+	}
+	for name, values := range extra {
+		req.Header[name] = values
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"log/slog"
 	"math"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/app/commands"
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/app/queries"
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/domain"
+	"github.com/joaquinBrassinne/MOVO/internal/platform/clientip"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
 )
 
@@ -412,7 +412,7 @@ func (h *Handlers) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	got, err := h.Generate.Handle(r.Context(), commands.GenerateCodeInput{
-		BenefitID: id, Name: req.Name, Phone: req.Phone, ClientIP: clientIP(r),
+		BenefitID: id, Name: req.Name, Phone: req.Phone, ClientIP: clientip.From(r),
 	})
 	if err != nil {
 		h.fail(w, r, err)
@@ -423,17 +423,6 @@ func (h *Handlers) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		Code: got.Coupon.Code, AccessToken: got.AccessToken, ExpiresAt: got.Coupon.ExpiresAt.UTC(),
 		Benefit: toClaimedBenefitJSON(got.Benefit),
 	})
-}
-
-// clientIP is the address of the TCP peer. Forwarding headers are not trusted because
-// any client can forge them and lift the limit; behind a reverse proxy this must be
-// replaced with a trusted-proxy aware source (SDD task 8.4).
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
 
 // pathID reads {id}; a malformed one answers like a benefit that does not exist.
