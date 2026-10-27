@@ -182,3 +182,35 @@ type CouponExpirer interface {
 	// returns how many. It never touches a redeemed coupon and is safe to repeat.
 	ExpireOverdue(ctx context.Context, now time.Time) (int64, error)
 }
+
+// ActivityKind is what happened to a coupon of the business.
+type ActivityKind string
+
+// The events the panel's "Actividad reciente" lists. Reviews join them in a later phase.
+const (
+	ActivityGenerated ActivityKind = "coupon_generated"
+	ActivityRedeemed  ActivityKind = "coupon_redeemed"
+)
+
+// ActivityEvent is one thing that happened. It names the customer as the business
+// already knows them from the coupon, and never carries the phone.
+type ActivityEvent struct {
+	Kind         ActivityKind
+	At           time.Time
+	CustomerName string
+	Benefit      domain.Benefit
+}
+
+// Activity is the newest events and how many of all of them happened after the mark the
+// panel last saw.
+type Activity struct {
+	Events   []ActivityEvent
+	NewCount int
+}
+
+// ActivityReader reads what happened at a business. It never changes anything.
+type ActivityReader interface {
+	// RecentActivity returns up to limit events, newest first. NewCount counts every
+	// event after since, whatever the limit; with a nil since it is 0.
+	RecentActivity(ctx context.Context, businessID int64, since *time.Time, limit int) (Activity, error)
+}

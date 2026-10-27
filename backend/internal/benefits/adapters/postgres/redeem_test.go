@@ -278,3 +278,58 @@ func TestExpireOverdueMarksOnlyThePendingCouponsPastTheirTime(t *testing.T) {
 		}
 	}
 }
+
+func TestRecentActivityListsGeneratedAndRedeemedCouponsNewestFirstAndCountsTheNewOnes(t *testing.T) {
+	t.Parallel()
+
+	pool := dbtest.New(t)
+	ctx := t.Context()
+	mine := newShop(ctx, t, pool, "mine", "active", 5)
+	other := newShop(ctx, t, pool, "other", "active", 5)
+	owner, _ := ownerOf(ctx, t, pool, mine.business)
+	store := postgres.NewCoupons(pool)
+
+	first := request(mine, "5491111111111", "ABCDEFGH")
+	second := request(mine, "5491122222222", "JKLMNPQR")
+	second.Now = now.Add(30 * time.Minute)
+	second.ExpiresAt = domain.ExpiryFrom(second.Now)
+	for _, req := range []benefits.IssueRequest{first, second, request(other, "5491133333333", "STUVWXYZ")} {
+		if _, err := store.Issue(ctx, req); err != nil {
+			t.Fatalf("issue %s: %v", req.Code, err)
+		}
+	}
+	redeem := redeemRequest(mine, owner, "ABCDEFGH")
+	redeem.Now = now.Add(time.Hour)
+	if _, err := store.Redeem(ctx, redeem); err != nil {
+		t.Fatalf("redeem: %v", err)
+	}
+
+	since := now.Add(20 * time.Minute)
+	got, err := store.RecentActivity(ctx, mine.business, &since, 10)
+	if err != nil {
+		t.Fatalf("RecentActivity: %v", err)
+	}
+	var kinds []benefits.ActivityKind
+	for _, e := range got.Events {
+		kinds = append(kinds, e.Kind)
+	}
+	want := []benefits.ActivityKind{benefits.ActivityRedeemed, benefits.ActivityGenerated, benefits.ActivityGenerated}
+	if len(kinds) != 3 || kinds[0] != want[0] || kinds[1] != want[1] || kinds[2] != want[2] {
+		t.Fatalf("kinds = %v, want %v (the other business's coupon must not show)", kinds, want)
+	}
+	if !got.Events[0].At.Equal(redeem.Now) || got.Events[0].CustomerName != "Ana" || got.Events[0].Benefit.Percent != 10 {
+		t.Errorf("newest event = %+v", got.Events[0])
+	}
+	if got.NewCount != 2 {
+		t.Errorf("new count = %d, want the redemption and the second coupon (2)", got.NewCount)
+	}
+
+	// Without a mark nothing is "new", and the limit trims the list but not the count.
+	if none, err := store.RecentActivity(ctx, mine.business, nil, 10); err != nil || none.NewCount != 0 || len(none.Events) != 3 {
+		t.Errorf("no mark = %+v, %v; want 3 events and no news", none, err)
+	}
+	long := now.Add(-time.Hour)
+	if trimmed, err := store.RecentActivity(ctx, mine.business, &long, 1); err != nil || len(trimmed.Events) != 1 || trimmed.NewCount != 3 {
+		t.Errorf("trimmed = %+v, %v; want 1 event and a count of 3", trimmed, err)
+	}
+}

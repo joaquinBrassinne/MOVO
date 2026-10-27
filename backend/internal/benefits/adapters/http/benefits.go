@@ -55,6 +55,8 @@ type Deps struct {
 	// Preview serves the look at a coupon before redeeming it; without it the route is
 	// not mounted.
 	Preview *queries.PreviewCode
+	// Activity serves the owner's recent activity; without it the route is not mounted.
+	Activity *queries.RecentActivity
 	// View serves the customer's look at their coupon by access token; without it the
 	// route is not mounted.
 	View *queries.ViewMyCoupon
@@ -97,6 +99,9 @@ func (h *Handlers) Mount(r chi.Router) {
 	// Public: the customer has no account. The origin limit lives in the use case.
 	if h.Generate != nil {
 		r.With(noStore).Post("/benefits/{id}/codes", h.handleGenerate)
+	}
+	if h.Activity != nil {
+		owner.Get("/me/business/activity", h.handleActivity)
 	}
 	// The token in the path is the credential, so the answer must never be cached.
 	if h.View != nil {
@@ -446,4 +451,44 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 
 	h.log.Error("benefits request failed", "request_id", httpx.RequestID(r.Context()), "path", r.URL.Path, "error", err)
 	httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, "something went wrong", nil)
+}
+
+type activityItemJSON struct {
+	Type         benefits.ActivityKind `json:"type"`
+	At           time.Time             `json:"at"`
+	CustomerName string                `json:"customer_name"`
+	Benefit      claimedBenefitJSON    `json:"benefit"`
+}
+
+type activityJSON struct {
+	Items    []activityItemJSON `json:"items"`
+	NewCount int                `json:"new_count"`
+}
+
+// handleActivity answers the panel's poll. since is the time of the newest event the
+// panel already showed, in RFC 3339; the panel keeps it, the server keeps nothing.
+func (h *Handlers) handleActivity(w http.ResponseWriter, r *http.Request) {
+	var since *time.Time
+	if raw := r.URL.Query().Get("since"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the since is not valid",
+				map[string]string{"field": "since", "reason": "invalid"})
+			return
+		}
+		since = &parsed
+	}
+
+	got, err := h.Activity.Handle(r.Context(), callerID(r), since)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	out := activityJSON{Items: make([]activityItemJSON, 0, len(got.Events)), NewCount: got.NewCount}
+	for _, e := range got.Events {
+		out.Items = append(out.Items, activityItemJSON{
+			Type: e.Kind, At: e.At.UTC(), CustomerName: e.CustomerName, Benefit: toClaimedBenefitJSON(e.Benefit),
+		})
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
