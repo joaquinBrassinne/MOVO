@@ -71,7 +71,7 @@ test.describe("Customer coupons", () => {
       await page.screenshot({ path: "test-results/shots/coupon-generated.png", fullPage: true });
 
       await page.getByRole("button", { name: "Guardar enlace del cupón" }).click();
-      await expect(page.getByRole("status")).toContainText("guardado en este dispositivo");
+      await expect(page.getByRole("status")).toContainText("Enlace copiado");
       const copied = await page.evaluate(() => navigator.clipboard.readText());
       expect(copied).toMatch(/\/cupon\/[A-Za-z0-9_-]{43}$/);
     },
