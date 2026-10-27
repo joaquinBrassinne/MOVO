@@ -18,6 +18,11 @@ const TABS = [
     label: "Mapa",
     icon: '<path d="M14.1 4.6 9 3 3 5v16l6-2 5.100 1.600L21 19V3l-6.900 1.600Z"/><path d="M9 3v16"/><path d="M15 5v16"/>',
   },
+  {
+    href: "/cupones",
+    label: "Mis cupones",
+    icon: '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>',
+  },
 ] as const;
 
 /** Botón redondo que lleva al ingreso de socios (los clientes no tienen cuenta). */
