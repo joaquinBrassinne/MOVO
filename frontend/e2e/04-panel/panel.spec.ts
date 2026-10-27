@@ -40,18 +40,39 @@ test.describe("Owner panel", () => {
     );
 
     test(
-      "The bottom navigation moves between the sections",
+      "The bottom navigation has four tabs and Mi local leads to the rest of the business",
       { tag: ["@high", "@e2e", "@panel", "@PANEL-E2E-002"] },
       async ({ page }) => {
         const nav = page.getByRole("navigation", { name: "Secciones del panel" });
-
-        await nav.getByRole("link", { name: "Servicios" }).click();
-        await expect(page).toHaveURL(/\/socios\/servicios$/);
-        await expect(page.getByRole("heading", { level: 1 })).toHaveText("Servicios y horarios");
+        const main = page.getByRole("main");
+        await expect(nav.getByRole("link")).toHaveText([
+          "Inicio",
+          "Canjear",
+          "Beneficios",
+          "Mi local",
+        ]);
 
         await nav.getByRole("link", { name: "Mi local" }).click();
+        await expect(page).toHaveURL(/\/socios\/local$/);
+        await expect(page.getByRole("heading", { level: 1 })).toHaveText("Mi local");
+
+        await main.getByRole("link", { name: /Servicios/ }).click();
+        await expect(page).toHaveURL(/\/socios\/servicios$/);
+        await expect(page.getByRole("heading", { level: 1 })).toHaveText("Servicios y horarios");
+        // Las pantallas que cuelgan de Mi local mantienen su pestaña marcada.
+        await expect(nav.getByRole("link", { name: "Mi local" })).toHaveAttribute(
+          "aria-current",
+          "page",
+        );
+
+        await nav.getByRole("link", { name: "Mi local" }).click();
+        await main.getByRole("link", { name: /Sedes y horarios/ }).click();
         await expect(page).toHaveURL(/\/socios\/sedes$/);
         await expect(page.getByRole("heading", { level: 1 })).toHaveText("Mis sedes");
+
+        await nav.getByRole("link", { name: "Mi local" }).click();
+        await main.getByRole("link", { name: /Fotos/ }).click();
+        await expect(page).toHaveURL(/\/socios\/fotos$/);
 
         await nav.getByRole("link", { name: "Inicio" }).click();
         await expect(page).toHaveURL(/\/socios\/panel$/);
