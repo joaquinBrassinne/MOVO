@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -11,6 +12,7 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/benefits"
 	benefitshttp "github.com/joaquinBrassinne/MOVO/internal/benefits/adapters/http"
 	benefitspostgres "github.com/joaquinBrassinne/MOVO/internal/benefits/adapters/postgres"
+	"github.com/joaquinBrassinne/MOVO/internal/benefits/adapters/ratelimit"
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/app/commands"
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/app/queries"
 	"github.com/joaquinBrassinne/MOVO/internal/business"
@@ -38,10 +40,20 @@ func (o ownerBusinesses) EditableBusinessOf(ctx context.Context, ownerID int64) 
 	return b.ID, nil
 }
 
+// Coupon request budget per origin: a customer needs one coupon, so a handful per hour
+// covers a household or a gym's shared Wi-Fi, and a script guessing ids or numbers is
+// stopped quickly. The monthly quota of each benefit remains the cap on the damage.
+const (
+	couponMaxAttempts = 10
+	couponWindow      = time.Hour
+	couponMaxKeys     = 100_000
+)
+
 // newBenefitsRoutes composes the benefits module: adapters, use cases and HTTP.
 func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.TokenVerifier) func(chi.Router) {
 	owners := ownerBusinesses{businesses: businesspostgres.NewBusinesses(pool)}
 	repo := benefitspostgres.NewBenefits(pool)
+	limiter := ratelimit.New(ratelimit.Config{MaxAttempts: couponMaxAttempts, Window: couponWindow, MaxKeys: couponMaxKeys}, nil)
 	return benefitshttp.New(benefitshttp.Deps{
 		Verifier:  verifier,
 		Log:       log,
@@ -49,5 +61,6 @@ func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.Toke
 		Add:       commands.NewAddBenefit(owners, repo),
 		Edit:      commands.NewEditBenefit(owners, repo),
 		SetActive: commands.NewSetBenefitActive(owners, repo),
+		Generate:  commands.NewGenerateCode(benefitspostgres.NewCoupons(pool), limiter, nil, nil),
 	}).Mount
 }

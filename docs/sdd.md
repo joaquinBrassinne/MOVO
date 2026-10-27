@@ -536,7 +536,7 @@ Convenciones de trabajo:
 - [x] 4.2 Dominio `benefits`: tipos (`percent` 10/15/20 o `welcome_gift`), TTL de 48 h, cupo mensual, estados (M)
 - [x] 4.3 CRUD de beneficios y cupo mensual desde el panel del local (M)
 - [x] 4.4 Comando `GenerateCode`: nombre y WhatsApp, un pendiente por cliente y local, cupo, reintento por colisión, token de acceso (M)
-- [ ] 4.5 Anti-abuso: límite por IP en memoria + normalización de contacto (S)
+- [x] 4.5 Anti-abuso: límite por IP en memoria + normalización de contacto (S)
 - [ ] 4.6 Comando `RedeemCode` atómico + test de concurrencia (M)
 - [ ] 4.6b Query de vista previa `GET /me/business/codes/{code}` (solo lectura, `business_admin`): estado, beneficio, nombre del cliente y vencimiento solo si el cupón es de ese negocio (404 si no), sin teléfono y sin efectos secundarios. Tests: la vista previa no canjea, no filtra datos de otro negocio y no devuelve el teléfono; el canje sigue siendo atómico (el test de concurrencia de 4.6 se mantiene) (S)
 - [ ] 4.7 Query `GET /access/{token}` (S)
@@ -623,7 +623,7 @@ Convenciones de trabajo:
 - [ ] 8.1 Checklist de seguridad (sección 7.1) y `govulncheck`/`npm audit` en CI (M)
 - [ ] 8.2 Observabilidad: métricas y trazas (M)
 - [ ] 8.3 Backups automáticos + prueba de restauración (M)
-- [ ] 8.4 Despliegue en VPS con `docker-compose.prod.yml`, HTTPS y proxy reverso; el escáner de QR del panel necesita HTTPS en producción porque el navegador solo da la cámara en contextos seguros (L)
+- [ ] 8.4 Despliegue en VPS con `docker-compose.prod.yml`, HTTPS y proxy reverso; el escáner de QR del panel necesita HTTPS en producción porque el navegador solo da la cámara en contextos seguros; detrás del proxy, la API debe tomar la IP real del cliente de un proxy de confianza para los límites de login y de cupones, que hoy usan la IP del par TCP y pondrían a todos los clientes en el mismo cupo (L)
 - [ ] 8.5 Términos y condiciones (incluyendo reglas de moderación de reseñas), política de privacidad, definición de facturación (S)
 - [ ] 8.6 Runbook: operación manual mensual de pagos (revisar Mercado Pago y registrar pagos), cómo confirmar un alta con los tres chequeos (el mail "nuevo suscriptor" de Mercado Pago tiene el mismo email que declaró el dueño; plan y monto correctos; perfil revisado), cómo restaurar un backup; y, para las actividades outdoor (categoría `trekking-outdoor`), confirmar que el guía esté habilitado y tenga seguro antes de activar el alta (S)
 

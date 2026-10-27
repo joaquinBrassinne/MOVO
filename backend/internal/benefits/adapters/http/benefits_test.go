@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -18,6 +19,7 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/benefits"
 	benefitshttp "github.com/joaquinBrassinne/MOVO/internal/benefits/adapters/http"
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/adapters/postgres"
+	"github.com/joaquinBrassinne/MOVO/internal/benefits/adapters/ratelimit"
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/app/commands"
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/app/queries"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/dbtest"
@@ -64,17 +66,26 @@ type server struct {
 
 func newServer(t *testing.T) *server {
 	t.Helper()
+	return newServerWithLimit(t, 1000)
+}
+
+// newServerWithLimit builds the stack with a coupon request budget per origin. Every
+// request of a test comes from the same address, so the budget is the test's own.
+func newServerWithLimit(t *testing.T, maxAttempts int) *server {
+	t.Helper()
 
 	pool := dbtest.New(t)
 	s := &server{t: t, pool: pool, tokens: tokens{}}
 	repo := postgres.NewBenefits(pool)
 	res := owners{pool: pool}
+	limiter := ratelimit.New(ratelimit.Config{MaxAttempts: maxAttempts, Window: time.Hour, MaxKeys: 100}, nil)
 	handlers := benefitshttp.New(benefitshttp.Deps{
 		Verifier:  s.tokens,
 		List:      queries.NewListMyBenefits(res, repo),
 		Add:       commands.NewAddBenefit(res, repo),
 		Edit:      commands.NewEditBenefit(res, repo),
 		SetActive: commands.NewSetBenefitActive(res, repo),
+		Generate:  commands.NewGenerateCode(postgres.NewCoupons(pool), limiter, nil, nil),
 	})
 
 	// The business module serves /me/business as a mounted router before this one is

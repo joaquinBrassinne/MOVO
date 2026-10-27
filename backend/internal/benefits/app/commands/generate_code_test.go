@@ -41,11 +41,61 @@ func entropy(n int) *bytes.Reader {
 
 var fixedNow = func() time.Time { return time.Date(2028, 3, 15, 12, 0, 0, 0, time.UTC) }
 
+// allowAll is a limiter that never refuses, for the tests that are not about the limit.
+type allowAll struct{}
+
+func (allowAll) Allow(string) (time.Duration, bool) { return 0, true }
+
+// scriptedLimiter records the keys it is asked about and refuses from the nth attempt.
+type scriptedLimiter struct {
+	refuseFrom int
+	keys       []string
+}
+
+func (s *scriptedLimiter) Allow(key string) (time.Duration, bool) {
+	s.keys = append(s.keys, key)
+	if len(s.keys) >= s.refuseFrom {
+		return 90 * time.Second, false
+	}
+	return 0, true
+}
+
+func TestGenerateCodeCountsEveryAttemptAgainstTheOrigin(t *testing.T) {
+	t.Parallel()
+
+	issuer := &fakeIssuer{}
+	limiter := &scriptedLimiter{refuseFrom: 3}
+	cmd := commands.NewGenerateCode(issuer, limiter, entropy(4096), fixedNow)
+	valid := commands.GenerateCodeInput{BenefitID: 1, Name: "Ana", Phone: "5491112345678", ClientIP: "203.0.113.7"}
+	invalid := commands.GenerateCodeInput{BenefitID: 1, Name: " ", Phone: "5491112345678", ClientIP: "203.0.113.7"}
+
+	if _, err := cmd.Handle(t.Context(), invalid); !errors.Is(err, domain.ErrCustomerNameInvalid) {
+		t.Fatalf("invalid attempt: error = %v", err)
+	}
+	if _, err := cmd.Handle(t.Context(), valid); err != nil {
+		t.Fatalf("valid attempt: %v", err)
+	}
+
+	_, err := cmd.Handle(t.Context(), valid)
+	var limited *benefits.RateLimitedError
+	if !errors.As(err, &limited) || limited.RetryAfter != 90*time.Second {
+		t.Fatalf("third attempt error = %v, want a rate limit telling to retry in 90s", err)
+	}
+	if len(issuer.calls) != 1 {
+		t.Errorf("issue calls = %d, want 1: the invalid attempt and the refused one never reach the issuer", len(issuer.calls))
+	}
+	for _, key := range limiter.keys {
+		if key != "203.0.113.7" {
+			t.Errorf("limiter key = %q, want the client IP", key)
+		}
+	}
+}
+
 func TestGenerateCodeIssuesWithTheNormalizedContactAndA48HourExpiry(t *testing.T) {
 	t.Parallel()
 
 	issuer := &fakeIssuer{}
-	got, err := commands.NewGenerateCode(issuer, entropy(1024), fixedNow).Handle(t.Context(),
+	got, err := commands.NewGenerateCode(issuer, allowAll{}, entropy(1024), fixedNow).Handle(t.Context(),
 		commands.GenerateCodeInput{BenefitID: 9, Name: "  Ana ", Phone: "+54 9 11 1234-5678"})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -86,7 +136,7 @@ func TestGenerateCodeRejectsAnInvalidContactWithoutIssuing(t *testing.T) {
 			t.Parallel()
 
 			issuer := &fakeIssuer{}
-			_, err := commands.NewGenerateCode(issuer, entropy(1024), fixedNow).Handle(t.Context(),
+			_, err := commands.NewGenerateCode(issuer, allowAll{}, entropy(1024), fixedNow).Handle(t.Context(),
 				commands.GenerateCodeInput{BenefitID: 1, Name: tc.customer, Phone: tc.phone})
 			if !errors.Is(err, tc.want) || len(issuer.calls) != 0 {
 				t.Errorf("error = %v with %d issue calls, want %v and none", err, len(issuer.calls), tc.want)
@@ -99,7 +149,7 @@ func TestGenerateCodeDrawsAnotherCodeOnACollision(t *testing.T) {
 	t.Parallel()
 
 	issuer := &fakeIssuer{errs: []error{benefits.ErrCodeTaken, benefits.ErrCodeTaken}}
-	got, err := commands.NewGenerateCode(issuer, entropy(1024), fixedNow).Handle(t.Context(),
+	got, err := commands.NewGenerateCode(issuer, allowAll{}, entropy(1024), fixedNow).Handle(t.Context(),
 		commands.GenerateCodeInput{BenefitID: 1, Name: "Ana", Phone: "5491112345678"})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -125,7 +175,7 @@ func TestGenerateCodeGivesUpWhenEveryCodeCollides(t *testing.T) {
 
 	taken := benefits.ErrCodeTaken
 	issuer := &fakeIssuer{errs: []error{taken, taken, taken, taken, taken, taken, taken}}
-	_, err := commands.NewGenerateCode(issuer, entropy(1024), fixedNow).Handle(t.Context(),
+	_, err := commands.NewGenerateCode(issuer, allowAll{}, entropy(1024), fixedNow).Handle(t.Context(),
 		commands.GenerateCodeInput{BenefitID: 1, Name: "Ana", Phone: "5491112345678"})
 	if !errors.Is(err, benefits.ErrCodeTaken) || len(issuer.calls) != 5 {
 		t.Errorf("error = %v after %d calls, want ErrCodeTaken after 5", err, len(issuer.calls))
@@ -137,7 +187,7 @@ func TestGenerateCodePassesTheRuleErrorsThroughWithoutRetrying(t *testing.T) {
 
 	for _, want := range []error{benefits.ErrBenefitNotFound, benefits.ErrPendingCoupon, benefits.ErrQuotaReached} {
 		issuer := &fakeIssuer{errs: []error{want}}
-		_, err := commands.NewGenerateCode(issuer, entropy(1024), fixedNow).Handle(t.Context(),
+		_, err := commands.NewGenerateCode(issuer, allowAll{}, entropy(1024), fixedNow).Handle(t.Context(),
 			commands.GenerateCodeInput{BenefitID: 1, Name: "Ana", Phone: "5491112345678"})
 		if !errors.Is(err, want) || len(issuer.calls) != 1 {
 			t.Errorf("error = %v after %d calls, want %v after exactly one", err, len(issuer.calls), want)
@@ -149,7 +199,7 @@ func TestGenerateCodeFailsWhenThereIsNoEntropy(t *testing.T) {
 	t.Parallel()
 
 	issuer := &fakeIssuer{}
-	_, err := commands.NewGenerateCode(issuer, iotest.ErrReader(errors.New("no entropy")), fixedNow).Handle(t.Context(),
+	_, err := commands.NewGenerateCode(issuer, allowAll{}, iotest.ErrReader(errors.New("no entropy")), fixedNow).Handle(t.Context(),
 		commands.GenerateCodeInput{BenefitID: 1, Name: "Ana", Phone: "5491112345678"})
 	if err == nil || len(issuer.calls) != 0 {
 		t.Errorf("error = %v with %d issue calls, want a failure and no coupon", err, len(issuer.calls))

@@ -61,6 +61,25 @@ type CouponIssuer interface {
 	Issue(ctx context.Context, req IssueRequest) (Issued, error)
 }
 
+// GenerationLimiter caps how often one origin may ask for coupons (SDD 5.2): with no
+// verification of the customer, the only brakes are this limit and the monthly quota.
+// The in-memory adapter is per process; the port lets Redis replace it when the API
+// runs several instances.
+type GenerationLimiter interface {
+	// Allow counts one attempt of key, successful or not, and reports whether it may
+	// go on. When it may not, retryAfter is how long until the key can try again.
+	Allow(key string) (retryAfter time.Duration, ok bool)
+}
+
+// RateLimitedError is returned when an origin asked for coupons too often.
+type RateLimitedError struct {
+	RetryAfter time.Duration
+}
+
+func (e *RateLimitedError) Error() string {
+	return "benefits: too many coupon requests, retry in " + e.RetryAfter.Round(time.Second).String()
+}
+
 // OwnerBusinesses resolves the business an owner may change. The composition root
 // builds it from the business module, so benefits never reads businesses and the
 // business id always comes from the session, never from a request.

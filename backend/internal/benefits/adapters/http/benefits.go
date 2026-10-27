@@ -1,12 +1,15 @@
 // Package benefitshttp exposes the benefit use cases: the owner endpoints under
-// /me/business/benefits.
+// /me/business/benefits and the public coupon endpoints.
 package benefitshttp
 
 import (
 	"errors"
 	"log/slog"
+	"math"
+	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -27,6 +30,9 @@ const (
 	CodeBusinessNotFound = "business_not_found"
 	CodeBenefitNotFound  = "benefit_not_found"
 	CodeBusinessDeleted  = "business_deleted"
+	CodePendingCoupon    = "pending_coupon"
+	CodeQuotaReached     = "quota_reached"
+	CodeRateLimited      = "rate_limited"
 )
 
 // Deps are the use cases and the token verifier the handlers need.
@@ -38,6 +44,9 @@ type Deps struct {
 	Add       *commands.AddBenefit
 	Edit      *commands.EditBenefit
 	SetActive *commands.SetBenefitActive
+
+	// Generate serves the public coupon endpoint; without it the route is not mounted.
+	Generate *commands.GenerateCode
 }
 
 // Handlers serves the benefit endpoints.
@@ -65,6 +74,11 @@ func (h *Handlers) Mount(r chi.Router) {
 	owner.Post("/me/business/benefits", h.handleAdd)
 	owner.Put("/me/business/benefits/{id}", h.handleEdit)
 	owner.Put("/me/business/benefits/{id}/active", h.handleSetActive)
+
+	// Public: the customer has no account. The origin limit lives in the use case.
+	if h.Generate != nil {
+		r.With(noStore).Post("/benefits/{id}/codes", h.handleGenerate)
+	}
 }
 
 type benefitRequest struct {
@@ -166,6 +180,60 @@ func (h *Handlers) handleSetActive(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, toBenefitJSON(updated))
 }
 
+type generateRequest struct {
+	Name  string `json:"name"`
+	Phone string `json:"phone"`
+}
+
+// generatedJSON is the coupon a customer takes away. The access token appears only
+// here: the server keeps its hash, so a lost link cannot be recovered.
+type generatedJSON struct {
+	Code        string    `json:"code"`
+	AccessToken string    `json:"access_token"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	Benefit     struct {
+		ID              int64       `json:"id"`
+		Type            domain.Type `json:"type"`
+		Percent         *int        `json:"percent"`
+		GiftDescription *string     `json:"gift_description"`
+	} `json:"benefit"`
+}
+
+func (h *Handlers) handleGenerate(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.pathID(w, r)
+	if !ok {
+		return
+	}
+	var req generateRequest
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+
+	got, err := h.Generate.Handle(r.Context(), commands.GenerateCodeInput{
+		BenefitID: id, Name: req.Name, Phone: req.Phone, ClientIP: clientIP(r),
+	})
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	out := generatedJSON{Code: got.Coupon.Code, AccessToken: got.AccessToken, ExpiresAt: got.Coupon.ExpiresAt.UTC()}
+	shown := toBenefitJSON(got.Benefit)
+	out.Benefit.ID, out.Benefit.Type, out.Benefit.Percent, out.Benefit.GiftDescription = shown.ID, shown.Type, shown.Percent, shown.GiftDescription
+	httpx.WriteJSON(w, http.StatusCreated, out)
+}
+
+// clientIP is the address of the TCP peer. Forwarding headers are not trusted because
+// any client can forge them and lift the limit; behind a reverse proxy this must be
+// replaced with a trusted-proxy aware source (SDD task 8.4).
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
 // pathID reads {id}; a malformed one answers like a benefit that does not exist.
 func (h *Handlers) pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -198,13 +266,29 @@ var validation = map[error]struct{ field, reason string }{
 	domain.ErrPercentInvalid:         {"percent", "invalid"},
 	domain.ErrGiftDescriptionInvalid: {"gift_description", "invalid"},
 	domain.ErrMonthlyLimitInvalid:    {"monthly_limit", "invalid"},
+	domain.ErrCustomerNameInvalid:    {"name", "invalid"},
+	domain.ErrPhoneInvalid:           {"phone", "invalid"},
 }
 
 // fail maps a use case error to its HTTP answer. Anything unexpected is logged with
 // the request id and reported as a generic 500: the error text may name internals and
 // never reaches the client.
 func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
+	var limited *benefits.RateLimitedError
+	if errors.As(err, &limited) {
+		seconds := int(math.Ceil(limited.RetryAfter.Seconds()))
+		w.Header().Set("Retry-After", strconv.Itoa(seconds))
+		httpx.WriteError(w, http.StatusTooManyRequests, CodeRateLimited, "too many requests, try again later", map[string]int{"retry_after_seconds": seconds})
+		return
+	}
+
 	switch {
+	case errors.Is(err, benefits.ErrPendingCoupon):
+		httpx.WriteError(w, http.StatusConflict, CodePendingCoupon, "you already have a pending coupon at this business", nil)
+		return
+	case errors.Is(err, benefits.ErrQuotaReached):
+		httpx.WriteError(w, http.StatusConflict, CodeQuotaReached, "this business has no coupons left this month", nil)
+		return
 	case errors.Is(err, benefits.ErrBenefitNotFound):
 		httpx.WriteError(w, http.StatusNotFound, CodeBenefitNotFound, "benefit not found", nil)
 		return
