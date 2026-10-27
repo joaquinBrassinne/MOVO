@@ -23,8 +23,15 @@ func (f fakeOwners) EditableBusinessOf(context.Context, int64) (int64, error) {
 // fakeReader answers a fixed preview and records what it was asked.
 type fakeReader struct {
 	preview benefits.CouponPreview
+	held    benefits.HeldCoupon
 	err     error
 	asked   []string
+	hash    []byte
+}
+
+func (f *fakeReader) ByToken(_ context.Context, tokenHash []byte) (benefits.HeldCoupon, error) {
+	f.hash = tokenHash
+	return f.held, f.err
 }
 
 func (f *fakeReader) Preview(_ context.Context, businessID int64, code string) (benefits.CouponPreview, error) {

@@ -10,6 +10,42 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/platform/dbtest"
 )
 
+func TestByTokenFindsTheCouponOfThatTokenOnly(t *testing.T) {
+	t.Parallel()
+
+	pool := dbtest.New(t)
+	ctx := t.Context()
+	shop := newShop(ctx, t, pool, "mine", "active", 5)
+	other := newShop(ctx, t, pool, "other", "active", 5)
+	store := postgres.NewCoupons(pool)
+
+	// The same customer holds a coupon at each business, with its own token.
+	first := request(shop, "5491112345678", "ABCDEFGH")
+	second := request(other, "5491112345678", "JKLMNPQR")
+	for _, req := range []benefits.IssueRequest{first, second} {
+		if _, err := store.Issue(ctx, req); err != nil {
+			t.Fatalf("issue %s: %v", req.Code, err)
+		}
+	}
+
+	got, err := store.ByToken(ctx, first.TokenHash)
+	if err != nil {
+		t.Fatalf("ByToken: %v", err)
+	}
+	if got.Coupon.Code != "ABCDEFGH" || got.Coupon.Status != domain.StatusPending || got.CustomerName != "Ana" ||
+		got.Benefit.Percent != 10 || got.BusinessName == "" || got.Coupon.BusinessID != shop.business {
+		t.Errorf("held = %+v", got)
+	}
+
+	// Another token of the same customer does not reveal this coupon, and nothing else matches.
+	if again, err := store.ByToken(ctx, second.TokenHash); err != nil || again.Coupon.Code != "JKLMNPQR" {
+		t.Errorf("second token = %+v, %v; want only its own coupon", again, err)
+	}
+	if _, err := store.ByToken(ctx, domain.HashAccessToken("unknown")); !errors.Is(err, benefits.ErrCouponNotFound) {
+		t.Errorf("unknown token error = %v, want ErrCouponNotFound", err)
+	}
+}
+
 func TestPreviewReadsTheCouponOfTheBusinessAndChangesNothing(t *testing.T) {
 	t.Parallel()
 

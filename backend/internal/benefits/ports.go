@@ -116,11 +116,22 @@ type CouponPreview struct {
 	RedeemedAt   *time.Time // nil until redeemed
 }
 
-// CouponReader reads coupons for the panel. It never changes anything.
+// HeldCoupon is a coupon as its customer sees it: the preview plus the business that
+// offers it. It never carries the phone.
+type HeldCoupon struct {
+	CouponPreview
+	BusinessName string
+}
+
+// CouponReader reads coupons. It never changes anything.
 type CouponReader interface {
 	// Preview returns the coupon of the business with that code, or ErrCouponNotFound
 	// when there is none, including a code that belongs to another business.
 	Preview(ctx context.Context, businessID int64, code string) (CouponPreview, error)
+	// ByToken returns the one coupon whose access token has that hash, or
+	// ErrCouponNotFound. A token opens its own coupon only, never the other coupons of
+	// the same customer: the phone is not verified, so it proves nothing about who holds it.
+	ByToken(ctx context.Context, tokenHash []byte) (HeldCoupon, error)
 }
 
 // GenerationLimiter caps how often one origin may ask for coupons (SDD 5.2): with no

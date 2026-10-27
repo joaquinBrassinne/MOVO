@@ -65,5 +65,6 @@ func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.Toke
 		Generate:  commands.NewGenerateCode(coupons, limiter, nil, nil),
 		Redeem:    commands.NewRedeemCode(owners, coupons, nil),
 		Preview:   queries.NewPreviewCode(owners, coupons, nil),
+		View:      queries.NewViewMyCoupon(coupons, nil),
 	}).Mount
 }
