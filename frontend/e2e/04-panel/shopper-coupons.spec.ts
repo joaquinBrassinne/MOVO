@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 import { BUSINESS, OWNER } from "../helpers";
+import { freshClient } from "../support/client";
 import { failOnConsoleErrors } from "../support/console";
 import { PORTS } from "../support/env.mjs";
 
@@ -34,6 +35,9 @@ async function generate(sheet: ReturnType<Page["getByRole"]>, name: string, phon
 
 test.describe("Customer coupons", () => {
   failOnConsoleErrors();
+
+  // Cada test es un cliente distinto, como lo verían los límites por origen de la API.
+  test.beforeEach(({ page }) => page.setExtraHTTPHeaders(freshClient()));
 
   test(
     "The profile lists the benefits on offer, best first, with a button to get each coupon",

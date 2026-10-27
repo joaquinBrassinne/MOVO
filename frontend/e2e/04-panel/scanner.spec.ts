@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 import { OWNER, signIn } from "../helpers";
+import { freshClient } from "../support/client";
 import { failOnConsoleErrors } from "../support/console";
 import { PORTS } from "../support/env.mjs";
 import { writeQrVideo } from "../support/fake-camera.mjs";
@@ -22,6 +23,7 @@ async function newCoupon(request: APIRequestContext, name: string, phone: string
   const { benefits: list } = (await benefits.json()) as { benefits: { id: number }[] };
   const response = await request.post(`${API}/benefits/${list[0].id}/codes`, {
     data: { name, phone },
+    headers: freshClient(),
   });
   expect(response.status()).toBe(201);
   return { token, code: ((await response.json()) as { code: string }).code };

@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 import { OWNER, signIn } from "../helpers";
+import { freshClient } from "../support/client";
 import { failOnConsoleErrors } from "../support/console";
 import { PORTS } from "../support/env.mjs";
 
@@ -22,7 +23,10 @@ async function benefitId(request: APIRequestContext): Promise<{ token: string; i
 }
 
 async function generate(request: APIRequestContext, id: number, name: string, phone: string) {
-  const response = await request.post(`${API}/benefits/${id}/codes`, { data: { name, phone } });
+  const response = await request.post(`${API}/benefits/${id}/codes`, {
+    data: { name, phone },
+    headers: freshClient(),
+  });
   expect(response.status()).toBe(201);
   return ((await response.json()) as { code: string }).code;
 }

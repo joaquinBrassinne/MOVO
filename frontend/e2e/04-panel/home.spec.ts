@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
 import { BUSINESS, OWNER, signIn } from "../helpers";
+import { freshClient } from "../support/client";
 import { failOnConsoleErrors } from "../support/console";
 import { PORTS } from "../support/env.mjs";
 
@@ -32,6 +33,7 @@ async function loadOwner(request: APIRequestContext): Promise<Owner> {
 async function generate(request: APIRequestContext, owner: Owner, name: string, phone: string) {
   const response = await request.post(`${API}/benefits/${owner.benefitId}/codes`, {
     data: { name, phone },
+    headers: freshClient(),
   });
   expect(response.status()).toBe(201);
   return ((await response.json()) as { code: string }).code;
