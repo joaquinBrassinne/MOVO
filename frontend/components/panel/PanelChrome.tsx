@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
-import { TicketIcon } from "@/components/benefits/icons";
+import { QrIcon, TicketIcon } from "@/components/benefits/icons";
 import { Logo } from "@/components/Logo";
 import {
   GridIcon,
@@ -19,6 +19,7 @@ import { useSession } from "@/lib/session/SessionProvider";
 
 const NAV = [
   { href: "/socios/panel", label: "Inicio", icon: GridIcon },
+  { href: "/socios/canjear", label: "Canjear", icon: QrIcon },
   { href: "/socios/beneficios", label: "Beneficios", icon: TicketIcon },
   { href: "/socios/servicios", label: "Servicios", icon: SearchIcon },
   { href: "/socios/sedes", label: "Mi local", icon: StoreIcon },
@@ -28,6 +29,7 @@ const NAV = [
 /** El título del encabezado según la vista en la que está el dueño. */
 function titleOf(pathname: string): string {
   if (pathname === "/socios/beneficios") return "Beneficios";
+  if (pathname === "/socios/canjear") return "Canjear cupón";
   if (pathname === "/socios/servicios") return "Servicios y horarios";
   if (pathname === "/socios/fotos") return "Fotos del local";
   if (pathname === "/socios/sedes") return "Mis sedes";
