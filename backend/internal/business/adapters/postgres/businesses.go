@@ -166,3 +166,44 @@ func encodeReturnParams(params map[string]string) ([]byte, error) {
 	}
 	return raw, nil
 }
+
+// SaveProfile updates only the profile fields and appends the audit entry in the same
+// transaction, so a change that cannot be recorded is not applied either.
+func (r *Businesses) SaveProfile(ctx context.Context, b domain.Business, entry business.AuditEntry) error {
+	metadata, err := json.Marshal(entry.Metadata)
+	if err != nil {
+		return fmt.Errorf("postgres: encode audit metadata: %w", err)
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("postgres: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	tag, err := tx.Exec(ctx, `
+UPDATE businesses
+SET category_id = $2, name = $3, description = $4, whatsapp_number = $5, updated_at = now()
+WHERE id = $1`,
+		b.ID, b.CategoryID, b.Name, b.Description, b.WhatsApp)
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == foreignKeyViolation && pgErr.ConstraintName == "businesses_category_id_fkey" {
+		return business.ErrCategoryNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("postgres: update business profile: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return business.ErrBusinessNotFound
+	}
+
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO audit_log (actor_id, action, entity, entity_id, metadata) VALUES ($1, $2, $3, $4, $5)`,
+		entry.ActorID, entry.Action, entry.Entity, entry.EntityID, metadata); err != nil {
+		return fmt.Errorf("postgres: append audit entry: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("postgres: commit: %w", err)
+	}
+	return nil
+}

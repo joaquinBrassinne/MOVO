@@ -30,6 +30,10 @@ func (s stubBusinesses) Save(context.Context, domain.Business) error {
 	panic("not used by the query")
 }
 
+func (s stubBusinesses) SaveProfile(context.Context, domain.Business, business.AuditEntry) error {
+	panic("not used by the query")
+}
+
 type stubBranches struct {
 	branches []domain.Branch
 	hours    map[int64][]domain.Slot

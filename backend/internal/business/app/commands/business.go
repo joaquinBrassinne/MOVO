@@ -102,10 +102,40 @@ func (c *UpdateBusiness) Handle(ctx context.Context, in UpdateBusinessInput) (do
 		return domain.Business{}, err
 	}
 
-	if err := c.businesses.Save(ctx, updated); err != nil {
+	// Nothing to save, and nothing to record, when the owner sent what was already there.
+	changes := profileChanges(current, updated)
+	if len(changes) == 0 {
+		return updated, nil
+	}
+	entry := business.AuditEntry{
+		ActorID:  in.OwnerID,
+		Action:   ActionProfileUpdate,
+		Entity:   "business",
+		EntityID: current.ID,
+		Metadata: map[string]any{"changes": changes},
+	}
+	if err := c.businesses.SaveProfile(ctx, updated, entry); err != nil {
 		return domain.Business{}, fmt.Errorf("save business: %w", err)
 	}
 	return updated, nil
+}
+
+// ActionProfileUpdate is the audit action of an owner changing the profile of the business.
+const ActionProfileUpdate = "business.profile_update"
+
+// profileChanges lists each field of the profile that differs, with its old and new value.
+func profileChanges(before, after domain.Business) map[string]map[string]any {
+	changes := map[string]map[string]any{}
+	note := func(field string, from, to any) {
+		if from != to {
+			changes[field] = map[string]any{"from": from, "to": to}
+		}
+	}
+	note("name", before.Name, after.Name)
+	note("category_id", before.CategoryID, after.CategoryID)
+	note("description", before.Description, after.Description)
+	note("whatsapp", before.WhatsApp, after.WhatsApp)
+	return changes
 }
 
 // SubmitBusinessInput asks for the manual review.
