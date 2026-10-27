@@ -533,7 +533,7 @@ Convenciones de trabajo:
 **Objetivo:** generar y canjear cupones de forma segura y atómica, sin cuenta de cliente.
 
 - [x] 4.1 Migraciones `customers`, `benefits`, `benefit_codes` + índice único parcial (S)
-- [ ] 4.2 Dominio `benefits`: tipos (`percent` 10/15/20 o `welcome_gift`), TTL de 48 h, cupo mensual, estados (M)
+- [x] 4.2 Dominio `benefits`: tipos (`percent` 10/15/20 o `welcome_gift`), TTL de 48 h, cupo mensual, estados (M)
 - [ ] 4.3 CRUD de beneficios y cupo mensual desde el panel del local (M)
 - [ ] 4.4 Comando `GenerateCode`: nombre y WhatsApp, un pendiente por cliente y local, cupo, reintento por colisión, token de acceso (M)
 - [ ] 4.5 Anti-abuso: límite por IP en memoria + normalización de contacto (S)
