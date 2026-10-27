@@ -18,12 +18,34 @@ const UPSTREAM_UNAVAILABLE = {
   },
 };
 
-/** POST JSON a `/api/v1<path>`. Una caída de red se informa como 502 con el mismo sobre de error. */
-export async function postToBackend(path: string, payload: unknown): Promise<BackendResponse> {
+/**
+ * Cadena de `X-Forwarded-For` de una petición del navegador. Next ya agrega la dirección
+ * del par que se conectó cuando nadie la puso antes, y el proxy HTTPS de delante agrega la
+ * suya al final: se reenvía tal cual, sin reemplazarla, para que la API vea al visitante y
+ * no a este servidor (que es un proxy de confianza para ella). Ver TRUSTED_PROXIES.
+ */
+function forwardedFor(request: Request): string | null {
+  return request.headers.get("x-forwarded-for")?.trim() || null;
+}
+
+/**
+ * POST JSON a `/api/v1<path>`. `request` es la petición del navegador, de la que sale la IP
+ * del visitante para los límites de la API. Una caída de red se informa como 502 con el
+ * mismo sobre de error.
+ */
+export async function postToBackend(
+  request: Request,
+  path: string,
+  payload: unknown,
+): Promise<BackendResponse> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const chain = forwardedFor(request);
+  if (chain) headers.set("X-Forwarded-For", chain);
+
   try {
     const response = await fetch(`${API_URL}/api/v1${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(payload),
       cache: "no-store",
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -64,8 +86,15 @@ const PROXIED = [
 /**
  * Cabeceras que el navegador puede mandar a la API; el resto no se reenvía. El user-agent
  * viaja para que el backend descarte bots en las vistas y los clics: sin él vería al proxy.
+ * `x-forwarded-for` viaja para que los límites por origen cuenten al visitante.
  */
-const FORWARDED_REQUEST_HEADERS = ["authorization", "content-type", "accept", "user-agent"];
+const FORWARDED_REQUEST_HEADERS = [
+  "authorization",
+  "content-type",
+  "accept",
+  "user-agent",
+  "x-forwarded-for",
+];
 const FORWARDED_RESPONSE_HEADERS = [
   "content-type",
   "cache-control",
