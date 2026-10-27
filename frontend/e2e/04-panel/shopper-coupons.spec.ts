@@ -32,6 +32,22 @@ async function generate(sheet: ReturnType<Page["getByRole"]>, name: string, phon
 }
 
 test.describe("Customer coupons", () => {
+  // Ninguna pantalla del cliente debe dejar errores en la consola (por ejemplo, de hidratación).
+  // Una respuesta 404 de la API es esperable en algún test y no es un error de la pantalla.
+  let problems: string[] = [];
+  test.beforeEach(({ page }) => {
+    problems = [];
+    page.on("console", (message) => {
+      if (message.type() === "error" && !message.text().includes("Failed to load resource")) {
+        problems.push(message.text());
+      }
+    });
+    page.on("pageerror", (error) => problems.push(error.message));
+  });
+  test.afterEach(() => {
+    expect(problems).toEqual([]);
+  });
+
   test(
     "The profile lists the benefits on offer, best first, with a button to get each coupon",
     { tag: ["@critical", "@e2e", "@coupons", "@COUPONS-E2E-001"] },
