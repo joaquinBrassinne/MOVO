@@ -33,6 +33,9 @@ const (
 	CodePendingCoupon    = "pending_coupon"
 	CodeQuotaReached     = "quota_reached"
 	CodeRateLimited      = "rate_limited"
+	CodeCouponNotFound   = "coupon_not_found"
+	CodeCouponRedeemed   = "coupon_redeemed"
+	CodeCouponExpired    = "coupon_expired"
 )
 
 // Deps are the use cases and the token verifier the handlers need.
@@ -47,6 +50,8 @@ type Deps struct {
 
 	// Generate serves the public coupon endpoint; without it the route is not mounted.
 	Generate *commands.GenerateCode
+	// Redeem serves the owner's redemption; without it the route is not mounted.
+	Redeem *commands.RedeemCode
 }
 
 // Handlers serves the benefit endpoints.
@@ -74,6 +79,11 @@ func (h *Handlers) Mount(r chi.Router) {
 	owner.Post("/me/business/benefits", h.handleAdd)
 	owner.Put("/me/business/benefits/{id}", h.handleEdit)
 	owner.Put("/me/business/benefits/{id}/active", h.handleSetActive)
+
+	// The business comes from the session, never from the body.
+	if h.Redeem != nil {
+		owner.Post("/me/business/codes/redeem", h.handleRedeem)
+	}
 
 	// Public: the customer has no account. The origin limit lives in the use case.
 	if h.Generate != nil {
@@ -188,15 +198,60 @@ type generateRequest struct {
 // generatedJSON is the coupon a customer takes away. The access token appears only
 // here: the server keeps its hash, so a lost link cannot be recovered.
 type generatedJSON struct {
-	Code        string    `json:"code"`
-	AccessToken string    `json:"access_token"`
-	ExpiresAt   time.Time `json:"expires_at"`
-	Benefit     struct {
-		ID              int64       `json:"id"`
-		Type            domain.Type `json:"type"`
-		Percent         *int        `json:"percent"`
-		GiftDescription *string     `json:"gift_description"`
-	} `json:"benefit"`
+	Code        string             `json:"code"`
+	AccessToken string             `json:"access_token"`
+	ExpiresAt   time.Time          `json:"expires_at"`
+	Benefit     claimedBenefitJSON `json:"benefit"`
+}
+
+// claimedBenefitJSON is a benefit as a coupon shows it: what it is worth, nothing about
+// the business's limits.
+type claimedBenefitJSON struct {
+	ID              int64       `json:"id"`
+	Type            domain.Type `json:"type"`
+	Percent         *int        `json:"percent"`
+	GiftDescription *string     `json:"gift_description"`
+}
+
+func toClaimedBenefitJSON(b domain.Benefit) claimedBenefitJSON {
+	shown := toBenefitJSON(b)
+	return claimedBenefitJSON{ID: shown.ID, Type: shown.Type, Percent: shown.Percent, GiftDescription: shown.GiftDescription}
+}
+
+type redeemRequest struct {
+	Code string `json:"code"`
+	// BranchID is where the customer redeemed; null or absent means the business's only
+	// active branch.
+	BranchID *int64 `json:"branch_id"`
+}
+
+type redeemedJSON struct {
+	Code         string             `json:"code"`
+	RedeemedAt   time.Time          `json:"redeemed_at"`
+	CustomerName string             `json:"customer_name"`
+	BranchID     int64              `json:"branch_id"`
+	Benefit      claimedBenefitJSON `json:"benefit"`
+}
+
+func (h *Handlers) handleRedeem(w http.ResponseWriter, r *http.Request) {
+	var req redeemRequest
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	in := commands.RedeemCodeInput{OwnerID: callerID(r), Code: req.Code}
+	if req.BranchID != nil {
+		in.BranchID = *req.BranchID
+	}
+
+	got, err := h.Redeem.Handle(r.Context(), in)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, redeemedJSON{
+		Code: got.Coupon.Code, RedeemedAt: got.RedeemedAt.UTC(), CustomerName: got.CustomerName,
+		BranchID: got.BranchID, Benefit: toClaimedBenefitJSON(got.Benefit),
+	})
 }
 
 func (h *Handlers) handleGenerate(w http.ResponseWriter, r *http.Request) {
@@ -217,10 +272,10 @@ func (h *Handlers) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := generatedJSON{Code: got.Coupon.Code, AccessToken: got.AccessToken, ExpiresAt: got.Coupon.ExpiresAt.UTC()}
-	shown := toBenefitJSON(got.Benefit)
-	out.Benefit.ID, out.Benefit.Type, out.Benefit.Percent, out.Benefit.GiftDescription = shown.ID, shown.Type, shown.Percent, shown.GiftDescription
-	httpx.WriteJSON(w, http.StatusCreated, out)
+	httpx.WriteJSON(w, http.StatusCreated, generatedJSON{
+		Code: got.Coupon.Code, AccessToken: got.AccessToken, ExpiresAt: got.Coupon.ExpiresAt.UTC(),
+		Benefit: toClaimedBenefitJSON(got.Benefit),
+	})
 }
 
 // clientIP is the address of the TCP peer. Forwarding headers are not trusted because
@@ -268,6 +323,8 @@ var validation = map[error]struct{ field, reason string }{
 	domain.ErrMonthlyLimitInvalid:    {"monthly_limit", "invalid"},
 	domain.ErrCustomerNameInvalid:    {"name", "invalid"},
 	domain.ErrPhoneInvalid:           {"phone", "invalid"},
+	benefits.ErrBranchRequired:       {"branch_id", "required"},
+	benefits.ErrBranchNotFound:       {"branch_id", "unknown"},
 }
 
 // fail maps a use case error to its HTTP answer. Anything unexpected is logged with
@@ -285,6 +342,15 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, benefits.ErrPendingCoupon):
 		httpx.WriteError(w, http.StatusConflict, CodePendingCoupon, "you already have a pending coupon at this business", nil)
+		return
+	case errors.Is(err, benefits.ErrCouponNotFound):
+		httpx.WriteError(w, http.StatusNotFound, CodeCouponNotFound, "coupon not found", nil)
+		return
+	case errors.Is(err, benefits.ErrCouponRedeemed):
+		httpx.WriteError(w, http.StatusConflict, CodeCouponRedeemed, "this coupon was already redeemed", nil)
+		return
+	case errors.Is(err, benefits.ErrCouponExpired):
+		httpx.WriteError(w, http.StatusConflict, CodeCouponExpired, "this coupon has expired", nil)
 		return
 	case errors.Is(err, benefits.ErrQuotaReached):
 		httpx.WriteError(w, http.StatusConflict, CodeQuotaReached, "this business has no coupons left this month", nil)

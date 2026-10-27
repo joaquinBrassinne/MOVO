@@ -86,6 +86,7 @@ func newServerWithLimit(t *testing.T, maxAttempts int) *server {
 		Edit:      commands.NewEditBenefit(res, repo),
 		SetActive: commands.NewSetBenefitActive(res, repo),
 		Generate:  commands.NewGenerateCode(postgres.NewCoupons(pool), limiter, nil, nil),
+		Redeem:    commands.NewRedeemCode(res, postgres.NewCoupons(pool), nil),
 	})
 
 	// The business module serves /me/business as a mounted router before this one is

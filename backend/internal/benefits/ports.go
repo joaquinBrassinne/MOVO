@@ -61,6 +61,52 @@ type CouponIssuer interface {
 	Issue(ctx context.Context, req IssueRequest) (Issued, error)
 }
 
+// Errors of redeeming a coupon.
+var (
+	// ErrCouponNotFound covers a code that does not exist, is malformed or belongs to
+	// another business: the three answer the same, so a business cannot probe the
+	// codes of the others.
+	ErrCouponNotFound = errors.New("benefits: coupon not found")
+	// ErrCouponRedeemed means the coupon of this business was already redeemed.
+	ErrCouponRedeemed = errors.New("benefits: coupon was already redeemed")
+	// ErrCouponExpired means the coupon of this business is past its 48 hours.
+	ErrCouponExpired = errors.New("benefits: coupon has expired")
+	// ErrBranchRequired means the business has several active branches (or none) and the
+	// redemption did not say where it happened.
+	ErrBranchRequired = errors.New("benefits: the branch of the redemption must be given")
+	// ErrBranchNotFound means the branch is not an active branch of the business.
+	ErrBranchNotFound = errors.New("benefits: branch not found")
+)
+
+// RedeemRequest is one redemption. BusinessID and UserID come from the session, never
+// from the request body.
+type RedeemRequest struct {
+	BusinessID int64
+	UserID     int64
+	Code       string
+	// BranchID is where the customer redeemed; 0 means the only active branch.
+	BranchID int64
+	Now      time.Time
+}
+
+// Redeemed is the coupon that was redeemed, with what the business needs to hand over
+// the benefit. It never carries the customer's phone.
+type Redeemed struct {
+	Coupon       domain.Coupon
+	Benefit      domain.Benefit
+	CustomerName string
+	BranchID     int64
+	RedeemedAt   time.Time
+}
+
+// CouponRedeemer redeems coupons. Redeem is a single conditional UPDATE, so of any
+// number of simultaneous redemptions of one code exactly one succeeds.
+type CouponRedeemer interface {
+	// Redeem returns ErrCouponNotFound, ErrCouponRedeemed, ErrCouponExpired,
+	// ErrBranchRequired or ErrBranchNotFound.
+	Redeem(ctx context.Context, req RedeemRequest) (Redeemed, error)
+}
+
 // GenerationLimiter caps how often one origin may ask for coupons (SDD 5.2): with no
 // verification of the customer, the only brakes are this limit and the monthly quota.
 // The in-memory adapter is per process; the port lets Redis replace it when the API

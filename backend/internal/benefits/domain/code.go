@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"strings"
 )
 
 const (
@@ -16,6 +17,26 @@ const (
 
 	accessTokenBytes = 32
 )
+
+// NormalizeCode turns a code as a person typed it into the stored form: letters in
+// capitals, without spaces or hyphens ("abcd-efgh" is "ABCDEFGH"). It reports false for
+// anything that cannot be a code, so a lookup is never run with it.
+func NormalizeCode(raw string) (string, bool) {
+	var code strings.Builder
+	for _, r := range strings.ToUpper(raw) {
+		if r == ' ' || r == '-' {
+			continue
+		}
+		if !strings.ContainsRune(codeAlphabet, r) {
+			return "", false
+		}
+		code.WriteRune(r)
+	}
+	if code.Len() != CodeLength {
+		return "", false
+	}
+	return code.String(), true
+}
 
 // NewCode returns a random coupon code drawn from r, which must be a cryptographically
 // secure source (crypto/rand.Reader in production).

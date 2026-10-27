@@ -53,6 +53,7 @@ const (
 func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.TokenVerifier) func(chi.Router) {
 	owners := ownerBusinesses{businesses: businesspostgres.NewBusinesses(pool)}
 	repo := benefitspostgres.NewBenefits(pool)
+	coupons := benefitspostgres.NewCoupons(pool)
 	limiter := ratelimit.New(ratelimit.Config{MaxAttempts: couponMaxAttempts, Window: couponWindow, MaxKeys: couponMaxKeys}, nil)
 	return benefitshttp.New(benefitshttp.Deps{
 		Verifier:  verifier,
@@ -61,6 +62,7 @@ func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.Toke
 		Add:       commands.NewAddBenefit(owners, repo),
 		Edit:      commands.NewEditBenefit(owners, repo),
 		SetActive: commands.NewSetBenefitActive(owners, repo),
-		Generate:  commands.NewGenerateCode(benefitspostgres.NewCoupons(pool), limiter, nil, nil),
+		Generate:  commands.NewGenerateCode(coupons, limiter, nil, nil),
+		Redeem:    commands.NewRedeemCode(owners, coupons, nil),
 	}).Mount
 }
