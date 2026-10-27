@@ -112,7 +112,7 @@ func run() error {
 		return err
 	}
 
-	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount, newSearchRoutes(log, pool, images))
+	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount, newSearchRoutes(log, pool, images), newBenefitsRoutes(log, pool, signer))
 	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, router, pool.Close)
 }
 
