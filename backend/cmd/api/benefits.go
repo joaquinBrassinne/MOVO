@@ -62,6 +62,7 @@ func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.Toke
 		Add:       commands.NewAddBenefit(owners, repo),
 		Edit:      commands.NewEditBenefit(owners, repo),
 		SetActive: commands.NewSetBenefitActive(owners, repo),
+		Pause:     commands.NewPauseBenefit(repo),
 		Generate:  commands.NewGenerateCode(coupons, limiter, nil, nil),
 		Redeem:    commands.NewRedeemCode(owners, coupons, nil),
 		Preview:   queries.NewPreviewCode(owners, coupons, nil),

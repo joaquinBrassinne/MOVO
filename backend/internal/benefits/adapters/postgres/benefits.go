@@ -13,8 +13,9 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/domain"
 )
 
-const selectBenefit = `
-SELECT id, business_id, type, COALESCE(percent, 0), COALESCE(gift_description, ''), active, monthly_limit
+// selectBenefit reads a benefit from benefits, without an alias.
+var selectBenefit = `
+SELECT ` + benefitColumns("") + `
 FROM benefits`
 
 // Benefits implements benefits.BenefitRepository. Every statement filters by
@@ -28,13 +29,13 @@ func NewBenefits(pool *pgxpool.Pool) *Benefits {
 	return &Benefits{pool: pool}
 }
 
-// Create stores b and returns it with ID set.
+// Create stores b and returns it with ID set. A new benefit is never admin-paused.
 func (r *Benefits) Create(ctx context.Context, b domain.Benefit) (domain.Benefit, error) {
 	err := r.pool.QueryRow(ctx, `
-INSERT INTO benefits (business_id, type, percent, gift_description, active, monthly_limit)
-VALUES ($1, $2, NULLIF($3, 0), NULLIF($4, ''), $5, $6)
+INSERT INTO benefits (business_id, type, percent, amount_ars, title, conditions, active, monthly_limit)
+VALUES ($1, $2, NULLIF($3, 0), NULLIF($4, 0), NULLIF($5, ''), NULLIF($6, ''), $7, $8)
 RETURNING id`,
-		b.BusinessID, b.Type, b.Percent, b.GiftDescription, b.Active, b.MonthlyLimit,
+		b.BusinessID, b.Type, b.Percent, b.AmountARS, b.Title, b.Conditions, b.Active, b.MonthlyLimit,
 	).Scan(&b.ID)
 	if err != nil {
 		return domain.Benefit{}, fmt.Errorf("postgres: create benefit: %w", err)
@@ -73,13 +74,16 @@ func (r *Benefits) Find(ctx context.Context, businessID, benefitID int64) (domai
 	return b, err
 }
 
-// Save persists the details and the active flag of an existing benefit.
+// Save persists the details and the owner's switch of an existing benefit. It never
+// writes admin_paused: that belongs to the super admin, and an owner saving a stale copy
+// must not lift a pause that happened in between.
 func (r *Benefits) Save(ctx context.Context, b domain.Benefit) error {
 	tag, err := r.pool.Exec(ctx, `
 UPDATE benefits
-SET type = $3, percent = NULLIF($4, 0), gift_description = NULLIF($5, ''), active = $6, monthly_limit = $7, updated_at = now()
+SET type = $3, percent = NULLIF($4, 0), amount_ars = NULLIF($5, 0), title = NULLIF($6, ''), conditions = NULLIF($7, ''),
+    active = $8, monthly_limit = $9, updated_at = now()
 WHERE id = $1 AND business_id = $2`,
-		b.ID, b.BusinessID, b.Type, b.Percent, b.GiftDescription, b.Active, b.MonthlyLimit)
+		b.ID, b.BusinessID, b.Type, b.Percent, b.AmountARS, b.Title, b.Conditions, b.Active, b.MonthlyLimit)
 	if err != nil {
 		return fmt.Errorf("postgres: save benefit: %w", err)
 	}
@@ -91,7 +95,7 @@ WHERE id = $1 AND business_id = $2`,
 
 func scanBenefit(row pgx.Row) (domain.Benefit, error) {
 	var b domain.Benefit
-	if err := row.Scan(&b.ID, &b.BusinessID, &b.Type, &b.Percent, &b.GiftDescription, &b.Active, &b.MonthlyLimit); err != nil {
+	if err := row.Scan(benefitDest(&b)...); err != nil {
 		return domain.Benefit{}, fmt.Errorf("postgres: scan benefit: %w", err)
 	}
 	return b, nil

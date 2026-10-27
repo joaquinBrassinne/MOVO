@@ -9,40 +9,58 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/domain"
 )
 
-func TestNewBenefit(t *testing.T) {
+func TestNewBenefitAcceptsAnyPercentFromOneToOneHundred(t *testing.T) {
 	t.Parallel()
 
-	for _, percent := range []int{10, 15, 20} {
+	for _, percent := range []int{1, 10, 15, 20, 37, 100} {
 		got, err := domain.NewBenefit(domain.BenefitInput{Type: domain.TypePercent, Percent: percent, MonthlyLimit: 30})
 		if err != nil {
 			t.Fatalf("percent %d: %v", percent, err)
 		}
-		if got.Type != domain.TypePercent || got.Percent != percent || got.GiftDescription != "" || got.MonthlyLimit != 30 {
+		if got.Type != domain.TypePercent || got.Percent != percent || got.AmountARS != 0 || got.Title != "" || got.MonthlyLimit != 30 {
 			t.Errorf("percent %d: benefit = %+v", percent, got)
 		}
-		if !got.Active {
-			t.Error("a new benefit must be active")
+		if !got.Active || got.AdminPaused {
+			t.Errorf("percent %d: a new benefit must be active and not paused, got %+v", percent, got)
 		}
 	}
+}
 
-	gift, err := domain.NewBenefit(domain.BenefitInput{Type: domain.TypeWelcomeGift, GiftDescription: "  Una clase gratis ", MonthlyLimit: 5})
-	if err != nil {
-		t.Fatalf("welcome gift: %v", err)
-	}
-	if gift.Type != domain.TypeWelcomeGift || gift.GiftDescription != "Una clase gratis" || gift.Percent != 0 {
-		t.Errorf("welcome gift = %+v, want the trimmed description and no percent", gift)
+func TestNewBenefitOfEachType(t *testing.T) {
+	t.Parallel()
+
+	amount, err := domain.NewBenefit(domain.BenefitInput{Type: domain.TypeAmount, AmountARS: 2000, Conditions: "  Solo lunes ", MonthlyLimit: 5})
+	if err != nil || amount.AmountARS != 2000 || amount.Percent != 0 || amount.Conditions != "Solo lunes" {
+		t.Errorf("amount = %+v, %v", amount, err)
 	}
 
+	custom, err := domain.NewBenefit(domain.BenefitInput{Type: domain.TypeCustom, Title: "  Una clase gratis ", MonthlyLimit: 5})
+	if err != nil || custom.Title != "Una clase gratis" || custom.Percent != 0 || custom.AmountARS != 0 || custom.Conditions != "" {
+		t.Errorf("custom = %+v, %v", custom, err)
+	}
+
+	// The fields of another type are dropped, not stored.
+	pct, err := domain.NewBenefit(domain.BenefitInput{Type: domain.TypePercent, Percent: 10, AmountARS: 5, Title: "x", MonthlyLimit: 1})
+	if err != nil || pct.AmountARS != 0 || pct.Title != "" {
+		t.Errorf("percent = %+v, %v; want the amount and the title dropped", pct, err)
+	}
+}
+
+func TestNewBenefitRejectsWhatDoesNotFit(t *testing.T) {
+	t.Parallel()
+
+	long := func(n int) string { return strings.Repeat("a", n) }
 	tests := []struct {
 		name  string
 		input domain.BenefitInput
 		want  error
 	}{
-		{"percent 25", domain.BenefitInput{Type: domain.TypePercent, Percent: 25, MonthlyLimit: 1}, domain.ErrPercentInvalid},
-		{"percent missing", domain.BenefitInput{Type: domain.TypePercent, MonthlyLimit: 1}, domain.ErrPercentInvalid},
-		{"gift missing", domain.BenefitInput{Type: domain.TypeWelcomeGift, MonthlyLimit: 1}, domain.ErrGiftDescriptionInvalid},
-		{"gift blank", domain.BenefitInput{Type: domain.TypeWelcomeGift, GiftDescription: "  ", MonthlyLimit: 1}, domain.ErrGiftDescriptionInvalid},
-		{"gift too long", domain.BenefitInput{Type: domain.TypeWelcomeGift, GiftDescription: strings.Repeat("a", 201), MonthlyLimit: 1}, domain.ErrGiftDescriptionInvalid},
+		{"percent zero", domain.BenefitInput{Type: domain.TypePercent, Percent: 0, MonthlyLimit: 1}, domain.ErrPercentInvalid},
+		{"percent negative", domain.BenefitInput{Type: domain.TypePercent, Percent: -5, MonthlyLimit: 1}, domain.ErrPercentInvalid},
+		{"percent 101", domain.BenefitInput{Type: domain.TypePercent, Percent: 101, MonthlyLimit: 1}, domain.ErrPercentInvalid},
+		{"amount zero", domain.BenefitInput{Type: domain.TypeAmount, AmountARS: 0, MonthlyLimit: 1}, domain.ErrAmountInvalid},
+		{"amount negative", domain.BenefitInput{Type: domain.TypeAmount, AmountARS: -100, MonthlyLimit: 1}, domain.ErrAmountInvalid},
+		{"old welcome gift", domain.BenefitInput{Type: "welcome_gift", Title: "x", MonthlyLimit: 1}, domain.ErrBenefitTypeInvalid},
 		{"unknown type", domain.BenefitInput{Type: "two_for_one", MonthlyLimit: 1}, domain.ErrBenefitTypeInvalid},
 		{"no limit", domain.BenefitInput{Type: domain.TypePercent, Percent: 10}, domain.ErrMonthlyLimitInvalid},
 		{"negative limit", domain.BenefitInput{Type: domain.TypePercent, Percent: 10, MonthlyLimit: -1}, domain.ErrMonthlyLimitInvalid},
@@ -56,37 +74,130 @@ func TestNewBenefit(t *testing.T) {
 			}
 		})
 	}
+
+	texts := []struct {
+		name   string
+		input  domain.BenefitInput
+		field  string
+		reason domain.TextReason
+	}{
+		{"custom without title", domain.BenefitInput{Type: domain.TypeCustom, MonthlyLimit: 1}, "title", domain.TextInvalid},
+		{"custom blank title", domain.BenefitInput{Type: domain.TypeCustom, Title: "   ", MonthlyLimit: 1}, "title", domain.TextInvalid},
+		{"title of 81", domain.BenefitInput{Type: domain.TypeCustom, Title: long(81), MonthlyLimit: 1}, "title", domain.TextInvalid},
+		{"conditions of 121", domain.BenefitInput{Type: domain.TypePercent, Percent: 10, Conditions: long(121), MonthlyLimit: 1}, "conditions", domain.TextInvalid},
+		{"title with a line break", domain.BenefitInput{Type: domain.TypeCustom, Title: "uno\ndos", MonthlyLimit: 1}, "title", domain.TextInvalid},
+		{"title with a url", domain.BenefitInput{Type: domain.TypeCustom, Title: "Mirá https://promo.example", MonthlyLimit: 1}, "title", domain.TextHasLink},
+		{"title with www", domain.BenefitInput{Type: domain.TypeCustom, Title: "entrá a www.promo", MonthlyLimit: 1}, "title", domain.TextHasLink},
+		{"title with a bare domain", domain.BenefitInput{Type: domain.TypeCustom, Title: "promo.com.ar gratis", MonthlyLimit: 1}, "title", domain.TextHasLink},
+		{"conditions with a link", domain.BenefitInput{Type: domain.TypeAmount, AmountARS: 5, Conditions: "más en wa.me/549111", MonthlyLimit: 1}, "conditions", domain.TextHasLink},
+		{"title with a phone", domain.BenefitInput{Type: domain.TypeCustom, Title: "Llamá al 11 4567-8901", MonthlyLimit: 1}, "title", domain.TextHasPhone},
+		{"conditions with a phone", domain.BenefitInput{Type: domain.TypePercent, Percent: 10, Conditions: "escribí +54 9 351 123 4567", MonthlyLimit: 1}, "conditions", domain.TextHasPhone},
+	}
+	for _, tt := range texts {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := domain.NewBenefit(tt.input)
+			var text *domain.TextError
+			if !errors.As(err, &text) || text.Field != tt.field || text.Reason != tt.reason {
+				t.Fatalf("error = %v, want %s/%s", err, tt.field, tt.reason)
+			}
+		})
+	}
+}
+
+func TestPlainTextThatLooksHarmlessIsAccepted(t *testing.T) {
+	t.Parallel()
+
+	for _, text := range []string{
+		"2x1 en clases de lunes a viernes",
+		"Válido de 18.30 a 20 hs",
+		"Compra mínima $10.000",
+		"Hasta agotar stock. Comprando hoy",
+	} {
+		if _, err := domain.NewBenefit(domain.BenefitInput{Type: domain.TypeCustom, Title: text, Conditions: text, MonthlyLimit: 1}); err != nil {
+			t.Errorf("%q rejected: %v", text, err)
+		}
+	}
+	// The limit counts characters, not bytes.
+	if _, err := domain.NewBenefit(domain.BenefitInput{Type: domain.TypeCustom, Title: strings.Repeat("ñ", 80), MonthlyLimit: 1}); err != nil {
+		t.Errorf("80 multi-byte characters rejected: %v", err)
+	}
+}
+
+func TestShortLabelOfEachType(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		benefit domain.Benefit
+		want    string
+	}{
+		{domain.Benefit{Type: domain.TypePercent, Percent: 15}, "-15%"},
+		{domain.Benefit{Type: domain.TypePercent, Percent: 100}, "-100%"},
+		{domain.Benefit{Type: domain.TypeAmount, AmountARS: 150}, "-$150"},
+		{domain.Benefit{Type: domain.TypeAmount, AmountARS: 2000}, "-$2.000"},
+		{domain.Benefit{Type: domain.TypeAmount, AmountARS: 1234567}, "-$1.234.567"},
+		{domain.Benefit{Type: domain.TypeCustom, Title: "Una clase gratis"}, "Beneficio"},
+	} {
+		if got := tt.benefit.ShortLabel(); got != tt.want {
+			t.Errorf("ShortLabel(%+v) = %q, want %q", tt.benefit, got, tt.want)
+		}
+	}
 }
 
 func TestBenefitUpdateKeepsIdentityAndState(t *testing.T) {
 	t.Parallel()
 
-	current := domain.Benefit{ID: 7, BusinessID: 3, Type: domain.TypePercent, Percent: 10, MonthlyLimit: 20}.Deactivate()
+	current := domain.Benefit{ID: 7, BusinessID: 3, Type: domain.TypePercent, Percent: 10, MonthlyLimit: 20, AdminPaused: true}.Deactivate()
 
-	got, err := current.Update(domain.BenefitInput{Type: domain.TypeWelcomeGift, GiftDescription: "Mate", MonthlyLimit: 8})
+	got, err := current.Update(domain.BenefitInput{Type: domain.TypeCustom, Title: "Mate", MonthlyLimit: 8})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if got.ID != 7 || got.BusinessID != 3 || got.Active {
-		t.Errorf("benefit = %+v, want identity and inactive state kept", got)
+	if got.ID != 7 || got.BusinessID != 3 || got.Active || !got.AdminPaused {
+		t.Errorf("benefit = %+v, want identity, the inactive state and the admin pause kept", got)
 	}
-	if got.Percent != 0 || got.GiftDescription != "Mate" {
-		t.Errorf("benefit = %+v, want the percent dropped when it becomes a gift", got)
+	if got.Percent != 0 || got.Title != "Mate" {
+		t.Errorf("benefit = %+v, want the percent dropped when it becomes a custom benefit", got)
 	}
 
 	back, err := got.Update(domain.BenefitInput{Type: domain.TypePercent, Percent: 15, MonthlyLimit: 8})
 	if err != nil {
 		t.Fatalf("Update back: %v", err)
 	}
-	if back.GiftDescription != "" || back.Percent != 15 {
-		t.Errorf("benefit = %+v, want the gift dropped when it becomes a percent", back)
+	if back.Title != "" || back.Percent != 15 {
+		t.Errorf("benefit = %+v, want the title dropped when it becomes a percent", back)
 	}
 
-	if _, err := current.Update(domain.BenefitInput{Type: domain.TypePercent, Percent: 99, MonthlyLimit: 1}); err == nil {
+	if _, err := current.Update(domain.BenefitInput{Type: domain.TypePercent, Percent: 101, MonthlyLimit: 1}); err == nil {
 		t.Fatal("an invalid update must fail")
 	}
 	if current.Percent != 10 {
 		t.Error("a failed update must not change the benefit")
+	}
+}
+
+func TestOwnerAndAdminHaveTheirOwnSwitch(t *testing.T) {
+	t.Parallel()
+
+	b := domain.Benefit{ID: 1, Active: true}
+	if !b.Offered() {
+		t.Error("an active, unpaused benefit must be offered")
+	}
+	paused := b.PauseByAdmin()
+	if paused.Offered() || !paused.AdminPaused || !paused.Active {
+		t.Errorf("paused = %+v, want it hidden while the owner's switch stays on", paused)
+	}
+	// The owner turning it off and on again does not lift the admin's pause.
+	if again := paused.Deactivate().Activate(); again.Offered() || !again.AdminPaused {
+		t.Errorf("after the owner toggles = %+v, want it still paused", again)
+	}
+	if resumed := paused.ResumeByAdmin(); !resumed.Offered() || resumed.AdminPaused {
+		t.Errorf("resumed = %+v", resumed)
+	}
+	// Lifting the pause does not turn on what the owner turned off.
+	if off := paused.Deactivate().ResumeByAdmin(); off.Offered() || off.AdminPaused {
+		t.Errorf("resumed but owner-off = %+v, want it not offered", off)
 	}
 }
 

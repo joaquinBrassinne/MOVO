@@ -60,7 +60,7 @@ func TestCustomerGeneratesACouponWithoutAnAccount(t *testing.T) {
 		t.Errorf("expires_at = %v, %v; want about 48 hours from now", got.body["expires_at"], err)
 	}
 	benefit, _ := got.body["benefit"].(map[string]any)
-	if benefit["type"] != "percent" || benefit["percent"] != float64(15) || benefit["gift_description"] != nil {
+	if benefit["type"] != "percent" || benefit["percent"] != float64(15) || benefit["title"] != nil {
 		t.Errorf("benefit = %v, want the 15%% it claims", benefit)
 	}
 	if got.header.Get("Cache-Control") != "no-store" {

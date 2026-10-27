@@ -2,10 +2,12 @@ package migrations_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/joaquinBrassinne/MOVO/internal/platform/db"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/dbtest"
 )
 
@@ -39,8 +41,8 @@ func insertCode(ctx context.Context, pool *pgxpool.Pool, code string, benefit, b
 	return err
 }
 
-// TestBenefitShapeFollowsTheType pins that a percent benefit carries 10/15/20 and no
-// gift, and a welcome gift carries a description and no percent.
+// TestBenefitShapeFollowsTheType pins the fields each benefit type carries: a percent of
+// 1 to 100, a positive amount, or a custom title, each with optional conditions.
 func TestBenefitShapeFollowsTheType(t *testing.T) {
 	t.Parallel()
 
@@ -52,36 +54,164 @@ func TestBenefitShapeFollowsTheType(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name      string
-		kind      string
-		percent   any
-		gift      any
-		limit     int
-		wantCheck bool
+		name       string
+		kind       string
+		percent    any
+		amount     any
+		title      any
+		conditions any
+		limit      int
+		wantCheck  bool
 	}{
-		{"percent 10", "percent", 10, nil, 5, false},
-		{"percent 15", "percent", 15, nil, 5, false},
-		{"percent 20", "percent", 20, nil, 5, false},
-		{"percent 25", "percent", 25, nil, 5, true},
-		{"percent without a value", "percent", nil, nil, 5, true},
-		{"percent with a gift", "percent", 10, "Mate", 5, true},
-		{"gift with a description", "welcome_gift", nil, "Una clase gratis", 5, false},
-		{"gift without a description", "welcome_gift", nil, nil, 5, true},
-		{"gift with a blank description", "welcome_gift", nil, "  ", 5, true},
-		{"gift with a percent", "welcome_gift", 10, "Mate", 5, true},
-		{"unknown type", "two_for_one", nil, "Mate", 5, true},
-		{"zero monthly limit", "percent", 10, nil, 0, true},
+		{"percent 1", "percent", 1, nil, nil, nil, 5, false},
+		{"percent 37", "percent", 37, nil, nil, nil, 5, false},
+		{"percent 100", "percent", 100, nil, nil, nil, 5, false},
+		{"percent 0", "percent", 0, nil, nil, nil, 5, true},
+		{"percent 101", "percent", 101, nil, nil, nil, 5, true},
+		{"percent without a value", "percent", nil, nil, nil, nil, 5, true},
+		{"percent with a title", "percent", 10, nil, "Mate", nil, 5, true},
+		{"percent with an amount", "percent", 10, 500, nil, nil, 5, true},
+		{"percent with conditions", "percent", 10, nil, nil, "Solo lunes", 5, false},
+		{"amount", "amount", nil, 2000, nil, nil, 5, false},
+		{"amount zero", "amount", nil, 0, nil, nil, 5, true},
+		{"amount negative", "amount", nil, -1, nil, nil, 5, true},
+		{"amount without a value", "amount", nil, nil, nil, nil, 5, true},
+		{"amount with a percent", "amount", 10, 2000, nil, nil, 5, true},
+		{"custom", "custom", nil, nil, "Una clase gratis", nil, 5, false},
+		{"custom with conditions", "custom", nil, nil, "Una clase gratis", strings.Repeat("a", 120), 5, false},
+		{"custom without a title", "custom", nil, nil, nil, nil, 5, true},
+		{"custom with a blank title", "custom", nil, nil, "  ", nil, 5, true},
+		{"custom with a title of 81", "custom", nil, nil, strings.Repeat("a", 81), nil, 5, true},
+		{"custom with a percent", "custom", 10, nil, "Mate", nil, 5, true},
+		{"conditions of 121", "custom", nil, nil, "Mate", strings.Repeat("a", 121), 5, true},
+		{"blank conditions", "custom", nil, nil, "Mate", "  ", 5, true},
+		{"old welcome gift", "welcome_gift", nil, nil, "Mate", nil, 5, true},
+		{"unknown type", "two_for_one", nil, nil, "Mate", nil, 5, true},
+		{"zero monthly limit", "percent", 10, nil, nil, nil, 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := pool.Exec(ctx,
-				`INSERT INTO benefits (business_id, type, percent, gift_description, monthly_limit) VALUES ($1, $2, $3, $4, $5)`,
-				business, tc.kind, tc.percent, tc.gift, tc.limit)
+				`INSERT INTO benefits (business_id, type, percent, amount_ars, title, conditions, monthly_limit) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+				business, tc.kind, tc.percent, tc.amount, tc.title, tc.conditions, tc.limit)
 			if tc.wantCheck {
 				requireSQLState(t, err, checkViolation)
 			} else if err != nil {
 				t.Errorf("must be allowed: %v", err)
 			}
 		})
+	}
+
+	var paused bool
+	if err := pool.QueryRow(ctx, `SELECT admin_paused FROM benefits LIMIT 1`).Scan(&paused); err != nil || paused {
+		t.Errorf("admin_paused default = %v, %v; want false", paused, err)
+	}
+}
+
+// TestBenefitTypesMigrationKeepsTheOldBenefits rolls the migration back, stores benefits
+// the old way, and applies it again: percents stay and a welcome gift becomes a custom
+// benefit without losing a character of its description.
+func TestBenefitTypesMigrationKeepsTheOldBenefits(t *testing.T) {
+	t.Parallel()
+
+	pool := dbtest.New(t)
+	ctx := t.Context()
+	business, err := insertBusiness(ctx, pool, insertOwner(ctx, t, pool, "owner@example.com"), "studio", "5491112345678", "active")
+	if err != nil {
+		t.Fatalf("insert business: %v", err)
+	}
+	if err := db.Migrate(ctx, pool, "down"); err != nil {
+		t.Fatalf("roll back: %v", err)
+	}
+
+	long := strings.Repeat("a", 80) + strings.Repeat("b", 120)
+	for _, old := range []struct {
+		kind    string
+		percent any
+		gift    any
+	}{{"percent", 15, nil}, {"welcome_gift", nil, "Una clase gratis"}, {"welcome_gift", nil, long}} {
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO benefits (business_id, type, percent, gift_description, monthly_limit) VALUES ($1, $2, $3, $4, 5)`,
+			business, old.kind, old.percent, old.gift); err != nil {
+			t.Fatalf("insert old benefit %v: %v", old.kind, err)
+		}
+	}
+	if err := db.Migrate(ctx, pool, "up"); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	type stored struct {
+		kind       string
+		percent    *int
+		title      *string
+		conditions *string
+		paused     bool
+	}
+	var got []stored
+	rows, err := pool.Query(ctx, `SELECT type, percent, title, conditions, admin_paused FROM benefits ORDER BY id`)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var s stored
+		if err := rows.Scan(&s.kind, &s.percent, &s.title, &s.conditions, &s.paused); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, s)
+	}
+	if len(got) != 3 || got[0].kind != "percent" || *got[0].percent != 15 || got[0].title != nil || got[0].paused {
+		t.Fatalf("rows = %+v", got)
+	}
+	if got[1].kind != "custom" || *got[1].title != "Una clase gratis" || got[1].conditions != nil || got[1].percent != nil {
+		t.Errorf("short gift = %+v", got[1])
+	}
+	if got[2].kind != "custom" || *got[2].title != strings.Repeat("a", 80) || got[2].conditions == nil || *got[2].conditions != strings.Repeat("b", 120) {
+		t.Errorf("long gift = %+v; want it split into the title and the conditions", got[2])
+	}
+}
+
+// TestBenefitTypesRollbackRefusesWhatItCannotRepresent pins that going back never changes
+// what an owner offers, and that a paused benefit never comes back visible.
+func TestBenefitTypesRollbackRefusesWhatItCannotRepresent(t *testing.T) {
+	t.Parallel()
+
+	pool := dbtest.New(t)
+	ctx := t.Context()
+	business, err := insertBusiness(ctx, pool, insertOwner(ctx, t, pool, "owner@example.com"), "studio", "5491112345678", "active")
+	if err != nil {
+		t.Fatalf("insert business: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx, `INSERT INTO benefits (business_id, type, amount_ars, monthly_limit) VALUES ($1, 'amount', 2000, 5)`, business); err != nil {
+		t.Fatalf("insert amount: %v", err)
+	}
+	if err := db.Migrate(ctx, pool, "down"); err == nil {
+		t.Fatal("rolling back with a fixed-amount benefit must fail")
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM benefits WHERE type = 'amount'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("after a refused rollback: %d amount benefits, %v; want it untouched", n, err)
+	}
+
+	if _, err := pool.Exec(ctx, `DELETE FROM benefits`); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO benefits (business_id, type, title, conditions, admin_paused, monthly_limit) VALUES ($1, 'custom', 'Mate', 'Solo hoy', true, 5)`, business); err != nil {
+		t.Fatalf("insert paused: %v", err)
+	}
+	if err := db.Migrate(ctx, pool, "down"); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	var kind, gift string
+	var active bool
+	if err := pool.QueryRow(ctx, `SELECT type, gift_description, active FROM benefits`).Scan(&kind, &gift, &active); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if kind != "welcome_gift" || gift != "Mate Solo hoy" || active {
+		t.Errorf("after rollback = %q %q active=%v; want the text kept and the paused benefit off", kind, gift, active)
+	}
+	if err := db.Migrate(ctx, pool, "up"); err != nil {
+		t.Fatalf("apply again: %v", err)
 	}
 }
 

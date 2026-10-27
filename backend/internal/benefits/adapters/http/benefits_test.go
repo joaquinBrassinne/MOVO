@@ -85,6 +85,7 @@ func newServerWithLimit(t *testing.T, maxAttempts int) *server {
 		Add:       commands.NewAddBenefit(res, repo),
 		Edit:      commands.NewEditBenefit(res, repo),
 		SetActive: commands.NewSetBenefitActive(res, repo),
+		Pause:     commands.NewPauseBenefit(repo),
 		Generate:  commands.NewGenerateCode(postgres.NewCoupons(pool), limiter, nil, nil),
 		Redeem:    commands.NewRedeemCode(res, postgres.NewCoupons(pool), nil),
 		Preview:   queries.NewPreviewCode(res, postgres.NewCoupons(pool), nil),
@@ -201,17 +202,17 @@ func TestOwnerManagesBenefitsAndTheMonthlyLimit(t *testing.T) {
 
 	percent := s.do(http.MethodPost, "/me/business/benefits", owner, map[string]any{"type": "percent", "percent": 15, "monthly_limit": 40})
 	if percent.status != http.StatusCreated || percent.body["type"] != "percent" || percent.body["percent"] != float64(15) ||
-		percent.body["gift_description"] != nil || percent.body["active"] != true || percent.body["monthly_limit"] != float64(40) {
+		percent.body["title"] != nil || percent.body["amount_ars"] != nil || percent.body["short_label"] != "-15%" || percent.body["admin_paused"] != false || percent.body["active"] != true || percent.body["monthly_limit"] != float64(40) {
 		t.Fatalf("create percent = %d %v", percent.status, percent.body)
 	}
-	gift := s.do(http.MethodPost, "/me/business/benefits", owner, map[string]any{"type": "welcome_gift", "gift_description": " Una clase gratis ", "monthly_limit": 10})
-	if gift.status != http.StatusCreated || gift.body["percent"] != nil || gift.body["gift_description"] != "Una clase gratis" {
+	gift := s.do(http.MethodPost, "/me/business/benefits", owner, map[string]any{"type": "custom", "title": " Una clase gratis ", "conditions": "Solo lunes", "monthly_limit": 10})
+	if gift.status != http.StatusCreated || gift.body["percent"] != nil || gift.body["title"] != "Una clase gratis" || gift.body["conditions"] != "Solo lunes" || gift.body["short_label"] != "Beneficio" {
 		t.Fatalf("create gift = %d %v", gift.status, gift.body)
 	}
 
 	// Turning the percent benefit into a gift drops the percent, and the limit changes.
-	edited := s.do(http.MethodPut, benefitPath(percent), owner, map[string]any{"type": "welcome_gift", "gift_description": "Mate", "monthly_limit": 25})
-	if edited.status != http.StatusOK || edited.body["percent"] != nil || edited.body["gift_description"] != "Mate" || edited.body["monthly_limit"] != float64(25) {
+	edited := s.do(http.MethodPut, benefitPath(percent), owner, map[string]any{"type": "custom", "title": "Mate", "monthly_limit": 25})
+	if edited.status != http.StatusOK || edited.body["percent"] != nil || edited.body["title"] != "Mate" || edited.body["monthly_limit"] != float64(25) {
 		t.Fatalf("edit = %d %v", edited.status, edited.body)
 	}
 	if off := s.do(http.MethodPut, benefitPath(percent)+"/active", owner, map[string]any{"active": false}); off.status != http.StatusOK || off.body["active"] != false {
@@ -221,7 +222,7 @@ func TestOwnerManagesBenefitsAndTheMonthlyLimit(t *testing.T) {
 		t.Fatalf("deactivate twice = %d %v, want it idempotent", again.status, again.body)
 	}
 	// Editing keeps the active flag.
-	if kept := s.do(http.MethodPut, benefitPath(percent), owner, map[string]any{"type": "percent", "percent": 20, "monthly_limit": 5}); kept.body["active"] != false || kept.body["gift_description"] != nil {
+	if kept := s.do(http.MethodPut, benefitPath(percent), owner, map[string]any{"type": "percent", "percent": 20, "monthly_limit": 5}); kept.body["active"] != false || kept.body["title"] != nil {
 		t.Errorf("edit = %v, want it to stay inactive with no gift", kept.body)
 	}
 
@@ -261,9 +262,14 @@ func TestBenefitValidationNamesTheField(t *testing.T) {
 		body  map[string]any
 		field string
 	}{
-		{"percent 25", map[string]any{"type": "percent", "percent": 25, "monthly_limit": 5}, "percent"},
+		{"percent 0", map[string]any{"type": "percent", "percent": 0, "monthly_limit": 5}, "percent"},
 		{"percent missing", map[string]any{"type": "percent", "monthly_limit": 5}, "percent"},
-		{"gift missing", map[string]any{"type": "welcome_gift", "monthly_limit": 5}, "gift_description"},
+		{"percent 101", map[string]any{"type": "percent", "percent": 101, "monthly_limit": 5}, "percent"},
+		{"amount zero", map[string]any{"type": "amount", "amount_ars": 0, "monthly_limit": 5}, "amount_ars"},
+		{"custom without title", map[string]any{"type": "custom", "monthly_limit": 5}, "title"},
+		{"title with a link", map[string]any{"type": "custom", "title": "visitá www.promo.com", "monthly_limit": 5}, "title"},
+		{"conditions with a phone", map[string]any{"type": "percent", "percent": 10, "conditions": "llamá al 351 123 4567", "monthly_limit": 5}, "conditions"},
+		{"old welcome gift", map[string]any{"type": "welcome_gift", "title": "Mate", "monthly_limit": 5}, "type"},
 		{"unknown type", map[string]any{"type": "two_for_one", "monthly_limit": 5}, "type"},
 		{"no type", map[string]any{"percent": 10, "monthly_limit": 5}, "type"},
 		{"no limit", map[string]any{"type": "percent", "percent": 10}, "monthly_limit"},

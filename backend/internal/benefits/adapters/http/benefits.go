@@ -22,7 +22,10 @@ import (
 
 // roleOwner is the plain string stored in the token, so this package needs no
 // knowledge of the identity module.
-const roleOwner = "business_admin"
+const (
+	roleOwner      = "business_admin"
+	roleSuperAdmin = "super_admin"
+)
 
 // Codes specific to the benefit endpoints.
 const (
@@ -60,6 +63,8 @@ type Deps struct {
 	// View serves the customer's look at their coupon by access token; without it the
 	// route is not mounted.
 	View *queries.ViewMyCoupon
+	// Pause serves the super admin's pause of a benefit; without it the route is not mounted.
+	Pause *commands.PauseBenefit
 }
 
 // Handlers serves the benefit endpoints.
@@ -107,41 +112,77 @@ func (h *Handlers) Mount(r chi.Router) {
 	if h.View != nil {
 		r.With(noStore).Get("/access/{token}", h.handleView)
 	}
+	// Only a super_admin token gets past this group; the owner has no way to reach it.
+	if h.Pause != nil {
+		admin := r.With(httpx.Authenticate(h.Verifier), httpx.RequireRole(roleSuperAdmin), noStore)
+		admin.Put("/admin/benefits/{id}/paused", h.handlePause)
+	}
 }
 
 type benefitRequest struct {
-	Type            domain.Type `json:"type"`
-	Percent         int         `json:"percent"`
-	GiftDescription string      `json:"gift_description"`
-	MonthlyLimit    int         `json:"monthly_limit"`
+	Type         domain.Type `json:"type"`
+	Percent      int         `json:"percent"`
+	AmountARS    int         `json:"amount_ars"`
+	Title        string      `json:"title"`
+	Conditions   string      `json:"conditions"`
+	MonthlyLimit int         `json:"monthly_limit"`
 }
 
 func (b benefitRequest) input() domain.BenefitInput {
-	return domain.BenefitInput{Type: b.Type, Percent: b.Percent, GiftDescription: b.GiftDescription, MonthlyLimit: b.MonthlyLimit}
+	return domain.BenefitInput{
+		Type: b.Type, Percent: b.Percent, AmountARS: b.AmountARS, Title: b.Title,
+		Conditions: b.Conditions, MonthlyLimit: b.MonthlyLimit,
+	}
 }
 
 type activeRequest struct {
 	Active bool `json:"active"`
 }
 
-// benefitJSON is a benefit as the panel reads it. The field of the other type is null.
+type pausedRequest struct {
+	Paused bool `json:"paused"`
+}
+
+// claimedBenefitJSON is a benefit as a customer reads it: what it is worth and under
+// which conditions, nothing about the business's limits. The fields of the other types
+// are null; short_label is what cards and pills show.
+type claimedBenefitJSON struct {
+	ID         int64       `json:"id"`
+	Type       domain.Type `json:"type"`
+	Percent    *int        `json:"percent"`
+	AmountARS  *int        `json:"amount_ars"`
+	Title      *string     `json:"title"`
+	Conditions *string     `json:"conditions"`
+	ShortLabel string      `json:"short_label"`
+}
+
+func toClaimedBenefitJSON(b domain.Benefit) claimedBenefitJSON {
+	out := claimedBenefitJSON{ID: b.ID, Type: b.Type, ShortLabel: b.ShortLabel()}
+	switch b.Type {
+	case domain.TypePercent:
+		out.Percent = &b.Percent
+	case domain.TypeAmount:
+		out.AmountARS = &b.AmountARS
+	case domain.TypeCustom:
+		out.Title = &b.Title
+	}
+	if b.Conditions != "" {
+		out.Conditions = &b.Conditions
+	}
+	return out
+}
+
+// benefitJSON is a benefit as the panel reads it: what a customer sees, plus the owner's
+// switch, whether the super admin paused it, and the monthly limit.
 type benefitJSON struct {
-	ID              int64       `json:"id"`
-	Type            domain.Type `json:"type"`
-	Percent         *int        `json:"percent"`
-	GiftDescription *string     `json:"gift_description"`
-	Active          bool        `json:"active"`
-	MonthlyLimit    int         `json:"monthly_limit"`
+	claimedBenefitJSON
+	Active       bool `json:"active"`
+	AdminPaused  bool `json:"admin_paused"`
+	MonthlyLimit int  `json:"monthly_limit"`
 }
 
 func toBenefitJSON(b domain.Benefit) benefitJSON {
-	out := benefitJSON{ID: b.ID, Type: b.Type, Active: b.Active, MonthlyLimit: b.MonthlyLimit}
-	if b.Type == domain.TypePercent {
-		out.Percent = &b.Percent
-	} else {
-		out.GiftDescription = &b.GiftDescription
-	}
-	return out
+	return benefitJSON{claimedBenefitJSON: toClaimedBenefitJSON(b), Active: b.Active, AdminPaused: b.AdminPaused, MonthlyLimit: b.MonthlyLimit}
 }
 
 func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
@@ -222,18 +263,23 @@ type generatedJSON struct {
 	Benefit     claimedBenefitJSON `json:"benefit"`
 }
 
-// claimedBenefitJSON is a benefit as a coupon shows it: what it is worth, nothing about
-// the business's limits.
-type claimedBenefitJSON struct {
-	ID              int64       `json:"id"`
-	Type            domain.Type `json:"type"`
-	Percent         *int        `json:"percent"`
-	GiftDescription *string     `json:"gift_description"`
-}
+// handlePause is the super admin's pause of any benefit. The actor comes from the token.
+func (h *Handlers) handlePause(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.pathID(w, r)
+	if !ok {
+		return
+	}
+	var req pausedRequest
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
 
-func toClaimedBenefitJSON(b domain.Benefit) claimedBenefitJSON {
-	shown := toBenefitJSON(b)
-	return claimedBenefitJSON{ID: shown.ID, Type: shown.Type, Percent: shown.Percent, GiftDescription: shown.GiftDescription}
+	got, err := h.Pause.Handle(r.Context(), callerID(r), id, req.Paused)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, toBenefitJSON(got))
 }
 
 type redeemRequest struct {
@@ -393,14 +439,14 @@ func noStore(next http.Handler) http.Handler {
 // validation maps each domain validation error to the field it is about. Anything not
 // listed here is not a client mistake.
 var validation = map[error]struct{ field, reason string }{
-	domain.ErrBenefitTypeInvalid:     {"type", "invalid"},
-	domain.ErrPercentInvalid:         {"percent", "invalid"},
-	domain.ErrGiftDescriptionInvalid: {"gift_description", "invalid"},
-	domain.ErrMonthlyLimitInvalid:    {"monthly_limit", "invalid"},
-	domain.ErrCustomerNameInvalid:    {"name", "invalid"},
-	domain.ErrPhoneInvalid:           {"phone", "invalid"},
-	benefits.ErrBranchRequired:       {"branch_id", "required"},
-	benefits.ErrBranchNotFound:       {"branch_id", "unknown"},
+	domain.ErrBenefitTypeInvalid:  {"type", "invalid"},
+	domain.ErrPercentInvalid:      {"percent", "invalid"},
+	domain.ErrAmountInvalid:       {"amount_ars", "invalid"},
+	domain.ErrMonthlyLimitInvalid: {"monthly_limit", "invalid"},
+	domain.ErrCustomerNameInvalid: {"name", "invalid"},
+	domain.ErrPhoneInvalid:        {"phone", "invalid"},
+	benefits.ErrBranchRequired:    {"branch_id", "required"},
+	benefits.ErrBranchNotFound:    {"branch_id", "unknown"},
 }
 
 // fail maps a use case error to its HTTP answer. Anything unexpected is logged with
@@ -439,6 +485,12 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	case errors.Is(err, benefits.ErrBusinessNotEditable):
 		httpx.WriteError(w, http.StatusConflict, CodeBusinessDeleted, "this business was deleted and can no longer change", nil)
+		return
+	}
+	var text *domain.TextError
+	if errors.As(err, &text) {
+		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the "+text.Field+" is not valid",
+			map[string]string{"field": text.Field, "reason": string(text.Reason)})
 		return
 	}
 	for known, field := range validation {

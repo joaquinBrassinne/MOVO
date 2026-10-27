@@ -21,7 +21,7 @@ WITH events AS (
     FROM benefit_codes c WHERE c.business_id = $1 AND c.status = 'redeemed'
 )
 SELECT e.kind, e.at, cu.name,
-       b.id, b.business_id, b.type, COALESCE(b.percent, 0), COALESCE(b.gift_description, ''), b.active, b.monthly_limit,
+       ` + benefitColumns("b") + `,
        count(*) FILTER (WHERE e.at > $2) OVER ()
 FROM events e
 JOIN customers cu ON cu.id = e.customer_id
@@ -37,8 +37,7 @@ LIMIT $3`, businessID, since, limit)
 	for rows.Next() {
 		var e benefits.ActivityEvent
 		b := &e.Benefit
-		if err := rows.Scan(&e.Kind, &e.At, &e.CustomerName,
-			&b.ID, &b.BusinessID, &b.Type, &b.Percent, &b.GiftDescription, &b.Active, &b.MonthlyLimit, &out.NewCount); err != nil {
+		if err := rows.Scan(append(append([]any{&e.Kind, &e.At, &e.CustomerName}, benefitDest(b)...), &out.NewCount)...); err != nil {
 			return benefits.Activity{}, fmt.Errorf("postgres: scan activity: %w", err)
 		}
 		out.Events = append(out.Events, e)

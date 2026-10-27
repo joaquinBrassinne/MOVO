@@ -21,13 +21,13 @@ func (r *Coupons) Preview(ctx context.Context, businessID int64, code string) (b
 	b := &out.Benefit
 	err := r.pool.QueryRow(ctx, `
 SELECT c.id, c.code, c.status, c.expires_at, c.redeemed_at, cu.name,
-       b.id, b.business_id, b.type, COALESCE(b.percent, 0), COALESCE(b.gift_description, ''), b.active, b.monthly_limit
+       ` + benefitColumns("b") + `
 FROM benefit_codes c
 JOIN customers cu ON cu.id = c.customer_id
 JOIN benefits b ON b.id = c.benefit_id
 WHERE c.code = $1 AND c.business_id = $2`, code, businessID,
-	).Scan(&out.Coupon.ID, &out.Coupon.Code, &status, &out.Coupon.ExpiresAt, &out.RedeemedAt, &out.CustomerName,
-		&b.ID, &b.BusinessID, &b.Type, &b.Percent, &b.GiftDescription, &b.Active, &b.MonthlyLimit)
+	).Scan(append([]any{&out.Coupon.ID, &out.Coupon.Code, &status, &out.Coupon.ExpiresAt, &out.RedeemedAt, &out.CustomerName},
+		benefitDest(b)...)...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return benefits.CouponPreview{}, benefits.ErrCouponNotFound
 	}

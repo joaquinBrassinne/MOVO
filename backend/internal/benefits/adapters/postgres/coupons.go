@@ -41,9 +41,10 @@ func (r *Coupons) Issue(ctx context.Context, req benefits.IssueRequest) (benefit
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	// Only an active benefit of a business with a visible branch can be claimed.
+	// Only a benefit the owner has on and the admin has not paused, of a business with a
+	// visible branch, can be claimed.
 	benefit, err := scanBenefit(tx.QueryRow(ctx, selectBenefit+`
-WHERE id = $1 AND active
+WHERE id = $1 AND active AND NOT admin_paused
   AND EXISTS (SELECT 1 FROM visible_branches v WHERE v.business_id = benefits.business_id)
 FOR UPDATE`, req.BenefitID))
 	if errors.Is(err, pgx.ErrNoRows) {

@@ -35,13 +35,13 @@ WITH redeemed AS (
     RETURNING id, code, benefit_id, business_id, customer_id, expires_at, redeemed_at
 )
 SELECT r.id, r.code, r.expires_at, r.redeemed_at, cu.name,
-       b.id, b.business_id, b.type, COALESCE(b.percent, 0), COALESCE(b.gift_description, ''), b.active, b.monthly_limit
+       ` + benefitColumns("b") + `
 FROM redeemed r
 JOIN customers cu ON cu.id = r.customer_id
 JOIN benefits b ON b.id = r.benefit_id`,
 		req.Code, req.BusinessID, req.Now, req.UserID, branchID,
-	).Scan(&out.Coupon.ID, &out.Coupon.Code, &out.Coupon.ExpiresAt, &redeemed, &out.CustomerName,
-		&benefit.ID, &benefit.BusinessID, &benefit.Type, &benefit.Percent, &benefit.GiftDescription, &benefit.Active, &benefit.MonthlyLimit)
+	).Scan(append([]any{&out.Coupon.ID, &out.Coupon.Code, &out.Coupon.ExpiresAt, &redeemed, &out.CustomerName},
+		benefitDest(&benefit)...)...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return benefits.Redeemed{}, r.whyNotRedeemed(ctx, req)
 	}

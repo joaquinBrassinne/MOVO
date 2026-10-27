@@ -214,3 +214,11 @@ type ActivityReader interface {
 	// event after since, whatever the limit; with a nil since it is 0.
 	RecentActivity(ctx context.Context, businessID int64, since *time.Time, limit int) (Activity, error)
 }
+
+// BenefitModerator lets the super admin pause any benefit, whichever business owns it.
+type BenefitModerator interface {
+	// SetAdminPaused sets the pause and records actorID in the audit log, atomically,
+	// and returns the benefit. Repeating the current state changes nothing. It returns
+	// ErrBenefitNotFound when there is no such benefit.
+	SetAdminPaused(ctx context.Context, actorID, benefitID int64, paused bool) (domain.Benefit, error)
+}
