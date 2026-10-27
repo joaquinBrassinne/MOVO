@@ -107,6 +107,22 @@ type CouponRedeemer interface {
 	Redeem(ctx context.Context, req RedeemRequest) (Redeemed, error)
 }
 
+// CouponPreview is what an owner may see of a coupon before confirming its redemption:
+// the benefit, the customer's name and the dates. It never carries the phone.
+type CouponPreview struct {
+	Coupon       domain.Coupon // Status is the stored one; use StatusAt for what to show
+	Benefit      domain.Benefit
+	CustomerName string
+	RedeemedAt   *time.Time // nil until redeemed
+}
+
+// CouponReader reads coupons for the panel. It never changes anything.
+type CouponReader interface {
+	// Preview returns the coupon of the business with that code, or ErrCouponNotFound
+	// when there is none, including a code that belongs to another business.
+	Preview(ctx context.Context, businessID int64, code string) (CouponPreview, error)
+}
+
 // GenerationLimiter caps how often one origin may ask for coupons (SDD 5.2): with no
 // verification of the customer, the only brakes are this limit and the monthly quota.
 // The in-memory adapter is per process; the port lets Redis replace it when the API

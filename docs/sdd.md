@@ -538,7 +538,7 @@ Convenciones de trabajo:
 - [x] 4.4 Comando `GenerateCode`: nombre y WhatsApp, un pendiente por cliente y local, cupo, reintento por colisión, token de acceso (M)
 - [x] 4.5 Anti-abuso: límite por IP en memoria + normalización de contacto (S)
 - [x] 4.6 Comando `RedeemCode` atómico + test de concurrencia (M)
-- [ ] 4.6b Query de vista previa `GET /me/business/codes/{code}` (solo lectura, `business_admin`): estado, beneficio, nombre del cliente y vencimiento solo si el cupón es de ese negocio (404 si no), sin teléfono y sin efectos secundarios. Tests: la vista previa no canjea, no filtra datos de otro negocio y no devuelve el teléfono; el canje sigue siendo atómico (el test de concurrencia de 4.6 se mantiene) (S)
+- [x] 4.6b Query de vista previa `GET /me/business/codes/{code}` (solo lectura, `business_admin`): estado, beneficio, nombre del cliente y vencimiento solo si el cupón es de ese negocio (404 si no), sin teléfono y sin efectos secundarios. Tests: la vista previa no canjea, no filtra datos de otro negocio y no devuelve el teléfono; el canje sigue siendo atómico (el test de concurrencia de 4.6 se mantiene) (S)
 - [ ] 4.7 Query `GET /access/{token}` (S)
 - [ ] 4.8 Vencimiento de cupones al leer y marcado diario en bloque (S)
 - [ ] 4.9 `GET /me/business/activity` (cupones generados, canjes) (S)

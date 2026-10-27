@@ -52,6 +52,9 @@ type Deps struct {
 	Generate *commands.GenerateCode
 	// Redeem serves the owner's redemption; without it the route is not mounted.
 	Redeem *commands.RedeemCode
+	// Preview serves the look at a coupon before redeeming it; without it the route is
+	// not mounted.
+	Preview *queries.PreviewCode
 }
 
 // Handlers serves the benefit endpoints.
@@ -83,6 +86,9 @@ func (h *Handlers) Mount(r chi.Router) {
 	// The business comes from the session, never from the body.
 	if h.Redeem != nil {
 		owner.Post("/me/business/codes/redeem", h.handleRedeem)
+	}
+	if h.Preview != nil {
+		owner.Get("/me/business/codes/{code}", h.handlePreview)
 	}
 
 	// Public: the customer has no account. The origin limit lives in the use case.
@@ -231,6 +237,35 @@ type redeemedJSON struct {
 	CustomerName string             `json:"customer_name"`
 	BranchID     int64              `json:"branch_id"`
 	Benefit      claimedBenefitJSON `json:"benefit"`
+}
+
+// previewJSON is a coupon as the owner sees it before confirming. It has no phone: the
+// business only needs the name to greet the customer.
+type previewJSON struct {
+	Code         string             `json:"code"`
+	Status       domain.Status      `json:"status"`
+	CustomerName string             `json:"customer_name"`
+	ExpiresAt    time.Time          `json:"expires_at"`
+	RedeemedAt   *time.Time         `json:"redeemed_at"`
+	Benefit      claimedBenefitJSON `json:"benefit"`
+}
+
+func (h *Handlers) handlePreview(w http.ResponseWriter, r *http.Request) {
+	view, err := h.Preview.Handle(r.Context(), callerID(r), chi.URLParam(r, "code"))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+
+	out := previewJSON{
+		Code: view.Code, Status: view.Status, CustomerName: view.CustomerName,
+		ExpiresAt: view.ExpiresAt.UTC(), Benefit: toClaimedBenefitJSON(view.Benefit),
+	}
+	if view.RedeemedAt != nil {
+		redeemedAt := view.RedeemedAt.UTC()
+		out.RedeemedAt = &redeemedAt
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 func (h *Handlers) handleRedeem(w http.ResponseWriter, r *http.Request) {
