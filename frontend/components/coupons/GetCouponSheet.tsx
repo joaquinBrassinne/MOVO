@@ -65,6 +65,9 @@ export function GetCouponSheet({ businessName, benefit, onClose }: Props) {
 
     // El token solo viene en esta respuesta: se guarda antes de salir de la pantalla.
     saveToken(result.data.access_token);
+    // Un diálogo modal abierto deja inerte toda la página aunque Next conserve la pantalla anterior
+    // oculta: se cierra antes de navegar.
+    dialog.current?.close();
     router.push(`/cupon/${result.data.access_token}?nuevo=1`);
   }
 
