@@ -42,19 +42,20 @@ func (o ownerBusinesses) EditableBusinessOf(ctx context.Context, ownerID int64) 
 
 // Coupon request budget per origin: a customer needs one coupon, so a handful per hour
 // covers a household or a gym's shared Wi-Fi, and a script guessing ids or numbers is
-// stopped quickly. The monthly quota of each benefit remains the cap on the damage.
+// stopped quickly. How many is COUPON_RATE_LIMIT_ATTEMPTS (config.Coupons); the window and
+// the table size are fixed here. The monthly quota of the business remains the cap on the
+// damage.
 const (
-	couponMaxAttempts = 10
-	couponWindow      = time.Hour
-	couponMaxKeys     = 100_000
+	couponWindow  = time.Hour
+	couponMaxKeys = 100_000
 )
 
 // newBenefitsRoutes composes the benefits module: adapters, use cases and HTTP.
-func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.TokenVerifier) func(chi.Router) {
+func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.TokenVerifier, couponAttempts int) func(chi.Router) {
 	owners := ownerBusinesses{businesses: businesspostgres.NewBusinesses(pool)}
 	repo := benefitspostgres.NewBenefits(pool)
 	coupons := benefitspostgres.NewCoupons(pool)
-	limiter := ratelimit.New(ratelimit.Config{MaxAttempts: couponMaxAttempts, Window: couponWindow, MaxKeys: couponMaxKeys}, nil)
+	limiter := ratelimit.New(ratelimit.Config{MaxAttempts: couponAttempts, Window: couponWindow, MaxKeys: couponMaxKeys}, nil)
 	return benefitshttp.New(benefitshttp.Deps{
 		Verifier:  verifier,
 		Log:       log,

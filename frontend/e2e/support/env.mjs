@@ -33,6 +33,8 @@ export const API_ENV = {
   S3_CORS_ORIGINS: `http://localhost:${PORTS.web}`,
   // Los specs de fotos suben seis y chocan con el límite: se fija acá para que no dependa del valor por defecto.
   MAX_BUSINESS_IMAGES: "6",
+  // Los specs generan decenas de cupones desde una sola dirección: el límite por IP no es lo que se prueba acá.
+  COUPON_RATE_LIMIT_ATTEMPTS: "1000",
   GEOCODER_URL: `http://localhost:${PORTS.geocoder}`,
   GEOCODER_USER_AGENT: "MOVO-e2e/0.1 (e2e@example.com)",
 };

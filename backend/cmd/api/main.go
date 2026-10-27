@@ -83,6 +83,11 @@ func run() error {
 		return err
 	}
 
+	coupons, err := config.LoadCoupons(os.Getenv)
+	if err != nil {
+		return err
+	}
+
 	signer, err := tokens.NewSigner(auth.JWTSecret, auth.AccessTokenTTL, nil)
 	if err != nil {
 		return err
@@ -112,7 +117,7 @@ func run() error {
 		return err
 	}
 
-	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount, newSearchRoutes(log, pool, images), newBenefitsRoutes(log, pool, signer))
+	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount, newSearchRoutes(log, pool, images), newBenefitsRoutes(log, pool, signer, coupons.MaxAttempts))
 	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, router, pool.Close)
 }
 
