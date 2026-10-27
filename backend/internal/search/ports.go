@@ -54,6 +54,9 @@ type Branch struct {
 	Featured     bool
 	CategorySlug string
 	CategoryName string
+	// BenefitLabel is the label of the best benefit the business offers (a percent over
+	// an amount over a custom one), empty when it offers none.
+	BenefitLabel string
 }
 
 // BranchFinder lists the visible branches around a point, ordered by distance band,

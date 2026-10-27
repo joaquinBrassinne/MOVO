@@ -353,9 +353,9 @@ El vencimiento se evalúa por `expires_at` al leer; una tarea diaria marca como 
 |---|---|---|---|
 | POST | `/auth/register` · `/auth/login` · `/auth/refresh` · `/auth/logout` | público | Autenticación de dueños |
 | GET | `/plans` | público | Planes con precio y URL de contratación |
-| GET | `/search/businesses` | público | Búsqueda geoespacial |
-| GET | `/home/featured` | público | Destacados cerca tuyo |
-| GET | `/businesses/{slug}` | público | Ficha del local (solo sedes públicas y servicios activos; 404 `business_not_found` si no es público; sin número de WhatsApp; no cuenta vistas) |
+| GET | `/search/businesses` | público | Búsqueda geoespacial; cada tarjeta lleva `benefit_label` (la etiqueta del beneficio activo más alto: porcentaje sobre monto, monto sobre personalizado; `null` si no tiene) |
+| GET | `/home/featured` | público | Destacados cerca tuyo; con `benefit_label` igual que la búsqueda |
+| GET | `/businesses/{slug}` | público | Ficha del local (solo sedes públicas y servicios activos; 404 `business_not_found` si no es público; sin número de WhatsApp; con `benefits`: solo los activos y no pausados, con id, tipo, valor, título, condiciones y etiqueta corta, sin datos de cupo; no cuenta vistas) |
 | POST | `/businesses/{slug}/view` | público | Cuenta una vista de la ficha (`profile_view`, sin sede). Siempre `204` sin cuerpo ni cookies, aunque el negocio no sea visible; ignora bots |
 | GET | `/r/wa/{branch_id}` | público | Cuenta el clic y redirige a WhatsApp |
 | POST/PUT | `/me/business` | business_admin | Crear/editar mi negocio |
@@ -556,6 +556,8 @@ Convenciones de trabajo:
 - [x] 4.8 Vencimiento de cupones al leer y marcado diario en bloque: la lectura y el canje ya muestran un cupón vencido como `expired`; `cmd/worker` lo marca en bloque una vez por día con lock consultivo (`make run-worker`) (S)
 - [x] 4.9 `GET /me/business/activity?since=`: últimos 20 eventos (cupón generado, cupón canjeado) del negocio de la sesión y cuántos son posteriores a `since`; sin teléfono. Las reseñas nuevas se suman en la fase de reseñas (S)
 - [x] 4.9b Estadísticas simples: por beneficio, generados y canjeados este mes en `GET /me/business/benefits`; `GET /me/business/overview` con cupones activos, canjes de hoy y la suma de 7 días de vistas de perfil y clics a WhatsApp desde `metric_daily`; la vista previa de un código suma cuántos cupones canjeó ese cliente en el negocio. El resto de las métricas sigue en la Fase 6 (S)
+- [x] 4.9c La ficha pública `GET /businesses/{slug}` suma `benefits` (activos y no pausados, sin datos de cupo) y las tarjetas de `/search/businesses` y `/home/featured` suman `benefit_label`, que Home y Mapa muestran como pill (S)
+- [ ] 4.9d Pantalla "Datos del negocio" dentro de Mi local: nombre, categoría, descripción (500) y WhatsApp; cada cambio queda en `audit_log` (M)
 - [x] 4.10 Frontend del dueño: Beneficios y cupo (tarjeta de cupo del local, formulario Porcentaje/Monto fijo/Otro beneficio, hoja de cupo), Panel de inicio con actividad, Canjear cupón con vista previa, y después el escáner de QR dentro del panel (cámara con `getUserMedia`), con ingreso manual siempre disponible (L)
 - [ ] 4.11 Frontend del cliente: Obtener cupón, Cupón generado y Mis cupones, con el QR del cupón (solo el código) (L)
 

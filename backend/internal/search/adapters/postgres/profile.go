@@ -45,6 +45,15 @@ FROM service_schedules
 WHERE service_id = ANY($1)
 ORDER BY service_id, weekday, starts_at`
 
+	// Only the benefits offered right now, best first: a percent before an amount before a
+	// custom one. Nothing about the business's monthly limit is read.
+	profileBenefitsSQL = `
+SELECT id, type, COALESCE(percent, 0), COALESCE(amount_ars, 0), COALESCE(title, ''), COALESCE(conditions, '')
+FROM benefits
+WHERE business_id = $1 AND active AND NOT admin_paused
+ORDER BY CASE type WHEN 'percent' THEN 0 WHEN 'amount' THEN 1 ELSE 2 END,
+         percent DESC NULLS LAST, amount_ars DESC NULLS LAST, id`
+
 	profileImagesSQL = `SELECT object_key FROM business_images WHERE business_id = $1 ORDER BY position`
 )
 
@@ -65,6 +74,9 @@ func (r *Branches) Profile(ctx context.Context, slug string) (search.Profile, er
 		return search.Profile{}, err
 	}
 	if err := readProfileServices(ctx, tx, &p); err != nil {
+		return search.Profile{}, err
+	}
+	if err := readProfileBenefits(ctx, tx, &p); err != nil {
 		return search.Profile{}, err
 	}
 	if err := readProfileImages(ctx, tx, &p); err != nil {
@@ -199,4 +211,25 @@ func (r *Branches) PublicBusinessID(ctx context.Context, slug string) (int64, er
 		return 0, fmt.Errorf("postgres: public business %q: %w", slug, err)
 	}
 	return id, nil
+}
+
+func readProfileBenefits(ctx context.Context, tx pgx.Tx, p *search.Profile) error {
+	rows, err := tx.Query(ctx, profileBenefitsSQL, p.BusinessID)
+	if err != nil {
+		return fmt.Errorf("postgres: profile benefits: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var b search.ProfileBenefit
+		if err := rows.Scan(&b.ID, &b.Kind, &b.Percent, &b.AmountARS, &b.Title, &b.Conditions); err != nil {
+			return fmt.Errorf("postgres: scan profile benefit: %w", err)
+		}
+		b.ShortLabel = search.BenefitLabel(b.Kind, b.Percent, b.AmountARS)
+		p.Benefits = append(p.Benefits, b)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("postgres: read profile benefits: %w", err)
+	}
+	return nil
 }

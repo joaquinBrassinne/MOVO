@@ -55,6 +55,8 @@ type Profile struct {
 	Verified     bool
 	Branches     []ProfileBranch
 	Services     []ProfileService
+	// Benefits are the ones offered right now: active and not paused by the super admin.
+	Benefits []ProfileBenefit
 	// ImageKeys are the object keys of the photos, in the order the owner chose.
 	ImageKeys []string
 }
