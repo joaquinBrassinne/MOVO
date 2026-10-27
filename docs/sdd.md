@@ -385,6 +385,7 @@ Convenciones: errores en el sobre JSON único de §7.2 (`code`, `message`, `deta
 
 ### 7.1 Seguridad
 - Contraseñas con argon2id (o bcrypt con costo adecuado); rate limiting en login, generación y canje.
+- **IP del cliente para los límites por origen (login y generación de cupones):** la API usa el middleware `platform/clientip`. Por defecto la IP es la de la conexión y `X-Forwarded-For` se ignora, porque cualquier cliente puede escribirla. Con `TRUSTED_PROXIES` (lista de IPs o CIDR separados por coma, validada al arrancar; vacía = nadie) y solo si la conexión viene de uno de esos proxies, se lee `X-Forwarded-For` de derecha a izquierda y se toma la primera IP que no sea de un proxy de confianza; si la cadena no se puede seguir (entrada vacía o inválida) se queda en el último proxy de confianza, nunca en una IP elegida por el cliente. El servidor de Next reenvía la cadena que recibe sin reemplazarla. El canje no tiene límite por IP: exige sesión del dueño y es atómico.
 - JWT firmado con rotación de claves planificada; refresh tokens hasheados y rotativos.
 - Autorización por recurso (un admin solo toca **su** local): se verifica `owner_user_id`/`business_id` en cada comando.
 - Validación de uploads (tipo MIME real, tamaño máx.), URLs prefirmadas con expiración corta.
@@ -639,7 +640,7 @@ Convenciones de trabajo:
 - [ ] 8.1 Checklist de seguridad (sección 7.1) y `govulncheck`/`npm audit` en CI (M)
 - [ ] 8.2 Observabilidad: métricas y trazas (M)
 - [ ] 8.3 Backups automáticos + prueba de restauración (M)
-- [ ] 8.4 Despliegue en VPS con `docker-compose.prod.yml`, HTTPS y proxy reverso; el escáner de QR del panel necesita HTTPS en producción porque el navegador solo da la cámara en contextos seguros; detrás del proxy, la API debe tomar la IP real del cliente de un proxy de confianza para los límites de login y de cupones, que hoy usan la IP del par TCP y pondrían a todos los clientes en el mismo cupo (L)
+- [ ] 8.4 Despliegue en VPS con `docker-compose.prod.yml`, HTTPS y proxy reverso; el escáner de QR del panel necesita HTTPS en producción porque el navegador solo da la cámara en contextos seguros; detrás del proxy, la API toma la IP real del cliente con `TRUSTED_PROXIES` (ver 7.1), que en producción debe listar **todos** los saltos entre el cliente y la API: el proxy HTTPS (que debe agregar la IP que ve a `X-Forwarded-For`, no confiar en la que trae el cliente) y el servidor de Next, que no debe quedar expuesto sin ese proxy delante. Sin la variable los límites cuentan al último salto y ponen a todos los clientes en el mismo cupo. Verificar con dos clientes distintos que los contadores de login y de cupones son independientes (L)
 - [ ] 8.5 Términos y condiciones (incluyendo reglas de moderación de reseñas), política de privacidad, definición de facturación (S)
 - [ ] 8.6 Runbook: operación manual mensual de pagos (revisar Mercado Pago y registrar pagos), cómo confirmar un alta con los tres chequeos (el mail "nuevo suscriptor" de Mercado Pago tiene el mismo email que declaró el dueño; plan y monto correctos; perfil revisado), cómo restaurar un backup; y, para las actividades outdoor (categoría `trekking-outdoor`), confirmar que el guía esté habilitado y tenga seguro antes de activar el alta (S)
 
