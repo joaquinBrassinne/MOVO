@@ -174,3 +174,11 @@ type BenefitRepository interface {
 	// Save persists the details and the active flag; ErrBenefitNotFound as in Find.
 	Save(ctx context.Context, b domain.Benefit) error
 }
+
+// CouponExpirer marks overdue coupons in bulk. Reads already show an overdue coupon as
+// expired, so this only keeps the stored status honest for reports.
+type CouponExpirer interface {
+	// ExpireOverdue marks every pending coupon whose time is up at now as expired and
+	// returns how many. It never touches a redeemed coupon and is safe to repeat.
+	ExpireOverdue(ctx context.Context, now time.Time) (int64, error)
+}

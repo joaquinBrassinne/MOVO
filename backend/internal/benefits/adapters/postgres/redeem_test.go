@@ -234,3 +234,47 @@ func TestRedeemRedeemsExactlyOnceWhenManyTryAtTheSameTime(t *testing.T) {
 		t.Errorf("redeemed rows = %d, %v; want 1", count, err)
 	}
 }
+
+func TestExpireOverdueMarksOnlyThePendingCouponsPastTheirTime(t *testing.T) {
+	t.Parallel()
+
+	pool := dbtest.New(t)
+	ctx := t.Context()
+	s := newShop(ctx, t, pool, "mine", "active", 5)
+	owner, _ := ownerOf(ctx, t, pool, s.business)
+	store := postgres.NewCoupons(pool)
+
+	for phone, code := range map[string]string{"5491111111111": "ABCDEFGH", "5491122222222": "JKLMNPQR", "5491133333333": "STUVWXYZ"} {
+		if _, err := store.Issue(ctx, request(s, phone, code)); err != nil {
+			t.Fatalf("issue %s: %v", code, err)
+		}
+	}
+	if _, err := store.Redeem(ctx, redeemRequest(s, owner, "STUVWXYZ")); err != nil {
+		t.Fatalf("redeem: %v", err)
+	}
+	// One more pending coupon, issued a day later, is still in time when the others are not.
+	later := request(s, "5491144444444", "23456789")
+	later.Now = now.Add(24 * time.Hour)
+	later.ExpiresAt = domain.ExpiryFrom(later.Now)
+	if _, err := store.Issue(ctx, later); err != nil {
+		t.Fatalf("issue later: %v", err)
+	}
+
+	if n, err := store.ExpireOverdue(ctx, now.Add(47*time.Hour)); err != nil || n != 0 {
+		t.Fatalf("before the deadline = %d, %v; want nothing expired", n, err)
+	}
+	n, err := store.ExpireOverdue(ctx, now.Add(49*time.Hour))
+	if err != nil || n != 2 {
+		t.Fatalf("after the deadline = %d, %v; want the two overdue pending coupons", n, err)
+	}
+	if again, err := store.ExpireOverdue(ctx, now.Add(49*time.Hour)); err != nil || again != 0 {
+		t.Errorf("second sweep = %d, %v; want it idempotent", again, err)
+	}
+
+	for code, want := range map[string]string{"ABCDEFGH": "expired", "JKLMNPQR": "expired", "STUVWXYZ": "redeemed", "23456789": "pending"} {
+		var got string
+		if err := pool.QueryRow(ctx, `SELECT status FROM benefit_codes WHERE code = $1`, code).Scan(&got); err != nil || got != want {
+			t.Errorf("%s status = %q, %v; want %q", code, got, err, want)
+		}
+	}
+}

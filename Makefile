@@ -26,7 +26,7 @@ GOLANGCI_LINT         ?= golangci-lint
 TESTFLAGS ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help env up down ps logs wait-db migrate migrate-up migrate-down migrate-status run-api seed-dev fmtfmt-check tidy lint test build
+.PHONY: help env up down ps logs wait-db migrate migrate-up migrate-down migrate-status run-api run-worker seed-dev fmtfmt-check tidy lint test build
 
 # --- Entorno ----------------------------------------------------------------
 
@@ -73,6 +73,9 @@ migrate-status: env ## Muestra qué migraciones están aplicadas
 
 run-api: env ## Levanta la API cargando .env (go run no lo lee solo)
 	@set -a; . ./.env; set +a; cd $(BACKEND) && $(GO) run ./cmd/api
+
+run-worker: env ## Levanta el worker de tareas diarias cargando .env
+	@set -a; . ./.env; set +a; cd $(BACKEND) && $(GO) run ./cmd/worker
 
 seed-dev: env ## Carga locales de prueba (uno por categoría) en la base local
 	@set -a; [ -n "$$DATABASE_URL" ] || . ./.env; set +a; cd $(BACKEND) && $(GO) run ./cmd/seed-dev
