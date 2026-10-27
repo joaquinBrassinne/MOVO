@@ -122,6 +122,37 @@ test.describe("Redeem", () => {
       await page.screenshot({ path: "test-results/shots/redeem-error.png" });
     },
   );
+
+  test(
+    "With several branches the last one chosen on this device is remembered",
+    { tag: ["@high", "@e2e", "@redeem", "@REDEEM-E2E-004"] },
+    async ({ page, request }) => {
+      const { id } = await benefitId(request);
+      const first = await generate(request, id, "Camila Soto", "5493571000023");
+
+      await open(page);
+      await look(page, first);
+      const branch = page.getByLabel("Sede donde se canjea");
+      await expect(page.getByRole("region", { name: "Cupón" })).toBeVisible();
+      test.skip((await branch.count()) === 0, "El negocio tiene una sola sede activa");
+
+      // Se elige la segunda sede y se canjea.
+      const options = await branch
+        .locator("option")
+        .evaluateAll((all) =>
+          all.map((option) => (option as HTMLOptionElement).value).filter(Boolean),
+        );
+      await branch.selectOption(options[1]);
+      await page.getByRole("button", { name: "Confirmar canje" }).click();
+      await expect(page.getByRole("heading", { name: "Canje confirmado" })).toBeVisible();
+
+      // Otro cupón, otra visita: la sede ya viene elegida.
+      const second = await generate(request, id, "Camila Soto", "5493571000023");
+      await page.reload();
+      await look(page, second);
+      await expect(page.getByLabel("Sede donde se canjea")).toHaveValue(options[1]);
+    },
+  );
 });
 
 async function firstBranch(request: APIRequestContext, token: string) {

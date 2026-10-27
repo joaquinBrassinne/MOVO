@@ -80,7 +80,7 @@ export function OwnerHome() {
           Canjear cupón
         </Link>
         <p className="mt-2 text-center text-sm text-movo-slate">
-          Validá el cupón de tu cliente en segundos.
+          Escaneá el QR de tu cliente en segundos.
         </p>
       </div>
 

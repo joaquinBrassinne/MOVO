@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState, type SubmitEvent } from "react";
 
 import { QrIcon } from "@/components/benefits/icons";
@@ -7,24 +8,34 @@ import { Field, Notice } from "@/components/onboarding/fields";
 import { CheckCircleIcon } from "@/components/socios/icons";
 import { benefitHeadline } from "@/lib/benefits/format";
 import { displayCode } from "@/lib/benefits/code";
+import { readLastBranch, writeLastBranch } from "@/lib/benefits/lastBranch";
 import { problemOfStatus } from "@/lib/benefits/redeem";
 import { useRedeem } from "@/lib/benefits/useRedeem";
 import { useBusiness } from "@/lib/business/BusinessProvider";
 
 import { PreviewCard } from "./PreviewCard";
 
+// El escáner y su librería se bajan recién cuando el dueño toca "Escanear QR".
+const QrScanner = dynamic(() => import("./QrScanner"), {
+  ssr: false,
+  loading: () => <p className="text-center text-sm text-movo-slate">Abriendo la cámara…</p>,
+});
+
 /** Canjear cupón: se escribe el código, se ve el cupón y se confirma. Buscar no canjea nada. */
 export function RedeemView() {
   const { business } = useBusiness();
   const redeem = useRedeem();
   const [code, setCode] = useState("");
-  const [branch, setBranch] = useState("");
+  const [chosen, setChosen] = useState(() => readLastBranch());
+  const [scanning, setScanning] = useState(false);
   const { state } = redeem;
 
   const branches =
     business.status === "ready" ? business.data.branches.filter((b) => b.active) : [];
   // Con una sola sede activa la API la elige; con varias, el dueño dice dónde canjeó.
   const needsBranch = branches.length > 1;
+  // La última sede elegida en este dispositivo, mientras siga siendo una sede activa.
+  const branch = branches.some((item) => String(item.id) === chosen) ? chosen : "";
   const busy = state.step === "looking" || state.step === "confirming";
 
   function lookup(event: SubmitEvent<HTMLFormElement>) {
@@ -32,9 +43,14 @@ export function RedeemView() {
     void redeem.lookup(code);
   }
 
+  function scanned(scannedCode: string) {
+    setScanning(false);
+    setCode(displayCode(scannedCode));
+    void redeem.lookup(scannedCode);
+  }
+
   function again() {
     setCode("");
-    setBranch("");
     redeem.reset();
   }
 
@@ -70,9 +86,23 @@ export function RedeemView() {
       <div>
         <h2 className="font-display text-3xl leading-tight font-extrabold">Canjear cupón</h2>
         <p className="mt-1 text-base text-movo-slate">
-          Pedile el código a tu cliente y ingresalo para ver su cupón antes de confirmar.
+          Escaneá el QR de tu cliente o ingresá su código para ver el cupón antes de confirmar.
         </p>
       </div>
+
+      {scanning ? (
+        <QrScanner onCode={scanned} onClose={() => setScanning(false)} />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setScanning(true)}
+          disabled={busy}
+          className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-movo-accent font-display text-lg font-bold outline-none focus-visible:ring-2 focus-visible:ring-movo-ink disabled:opacity-50"
+        >
+          <QrIcon className="size-5" />
+          Escanear QR
+        </button>
+      )}
 
       <form onSubmit={lookup} noValidate className="space-y-4 rounded-3xl bg-white p-5 shadow-sm">
         <Field
@@ -128,7 +158,10 @@ export function RedeemView() {
               <select
                 id="redeem-branch"
                 value={branch}
-                onChange={(event) => setBranch(event.target.value)}
+                onChange={(event) => {
+                  setChosen(event.target.value);
+                  writeLastBranch(event.target.value);
+                }}
                 disabled={busy}
                 className="h-14 w-full rounded-2xl bg-movo-sand px-4 text-base text-movo-ink outline-none focus:ring-2 focus:ring-movo-accent"
               >
