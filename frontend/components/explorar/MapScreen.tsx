@@ -14,6 +14,7 @@ import { DEFAULT_POINT, useLocation, useNearby } from "@/lib/search/hooks";
 import type { Point, SearchResult } from "@/lib/search/types";
 
 import { AccountLink, AppFrame } from "./AppFrame";
+import { BenefitPill } from "./BenefitPill";
 import { CategoryChips } from "./CategoryChips";
 import { CategoryIcon, VerifiedIcon } from "./icons";
 
@@ -238,6 +239,7 @@ function ResultCard({
         </div>
         <h3 className="truncate font-display text-xl font-extrabold">{item.business_name}</h3>
         <p className="truncate text-sm text-movo-slate">{item.category_name}</p>
+        <BenefitPill label={item.benefit_label} className="mt-1" />
         <div className="mt-1 flex items-center justify-between gap-2">
           <span className="text-sm text-movo-slate">a {formatDistance(item.distance_m)}</span>
           <Link

@@ -1,6 +1,7 @@
 // Contrato de GET /businesses/{slug} y lo que la ficha hace con esos datos (horarios
 // agrupados, estado "abierto ahora"). Sin React: se prueba con node:test.
 
+import type { ClaimedBenefit } from "../benefits/types.ts";
 import type { Slot } from "../business/types.ts";
 
 export interface ProfileCategory {
@@ -47,6 +48,8 @@ export interface Profile {
   verified: boolean;
   branches: ProfileBranch[];
   services: ProfileService[];
+  /** Los beneficios que el local ofrece hoy (activos y no pausados), el mejor primero. */
+  benefits: ClaimedBenefit[];
   images: string[];
 }
 
