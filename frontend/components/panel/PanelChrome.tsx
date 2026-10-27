@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
+import { TicketIcon } from "@/components/benefits/icons";
 import { Logo } from "@/components/Logo";
 import {
   GridIcon,
@@ -18,6 +19,7 @@ import { useSession } from "@/lib/session/SessionProvider";
 
 const NAV = [
   { href: "/socios/panel", label: "Inicio", icon: GridIcon },
+  { href: "/socios/beneficios", label: "Beneficios", icon: TicketIcon },
   { href: "/socios/servicios", label: "Servicios", icon: SearchIcon },
   { href: "/socios/sedes", label: "Mi local", icon: StoreIcon },
   { href: "/socios/fotos", label: "Fotos", icon: ImageIcon },
@@ -25,6 +27,7 @@ const NAV = [
 
 /** El título del encabezado según la vista en la que está el dueño. */
 function titleOf(pathname: string): string {
+  if (pathname === "/socios/beneficios") return "Beneficios";
   if (pathname === "/socios/servicios") return "Servicios y horarios";
   if (pathname === "/socios/fotos") return "Fotos del local";
   if (pathname === "/socios/sedes") return "Mis sedes";
@@ -67,11 +70,11 @@ export function PanelChrome({ children }: { children: ReactNode }) {
             const current =
               href === "/socios/panel" ? pathname === href : pathname.startsWith(href);
             return (
-              <li key={href}>
+              <li key={href} className="min-w-0 flex-1">
                 <Link
                   href={href}
                   aria-current={current ? "page" : undefined}
-                  className={`flex w-20 flex-col items-center gap-1 rounded-2xl py-2 text-xs font-bold outline-none focus-visible:ring-2 focus-visible:ring-movo-accent ${
+                  className={`flex w-full flex-col items-center gap-1 rounded-2xl py-2 text-[11px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-movo-accent ${
                     current ? "bg-movo-accent/30 text-movo-ink" : "text-movo-slate"
                   }`}
                 >

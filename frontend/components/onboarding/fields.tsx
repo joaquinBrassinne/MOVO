@@ -58,6 +58,8 @@ interface InputProps {
   autoComplete?: string;
   inputMode?: "text" | "tel" | "numeric" | "url" | "email";
   maxLength?: number;
+  /** Clases extra para el control, por ejemplo un margen para un prefijo. */
+  className?: string;
 }
 
 export function TextInput({
@@ -71,6 +73,7 @@ export function TextInput({
   autoComplete,
   inputMode,
   maxLength,
+  className = "",
 }: InputProps) {
   return (
     <input
@@ -86,7 +89,7 @@ export function TextInput({
       maxLength={maxLength}
       aria-invalid={error ? true : undefined}
       aria-describedby={error ? `${id}-error` : undefined}
-      className={`h-14 ${CONTROL} ${error ? "ring-2 ring-movo-danger" : ""}`}
+      className={`h-14 ${CONTROL} ${error ? "ring-2 ring-movo-danger" : ""} ${className}`}
     />
   );
 }

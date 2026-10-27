@@ -26,7 +26,7 @@ GOLANGCI_LINT         ?= golangci-lint
 TESTFLAGS ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help env up down ps logs wait-db migrate migrate-up migrate-down migrate-status run-api run-worker seed-dev fmtfmt-check tidy lint test build
+.PHONY: help env up down ps logs wait-db migrate migrate-up migrate-down migrate-status run-api run-worker seed-dev fmtfmt-check tidy lint test build frontend-lint frontend-test frontend-build
 
 # --- Entorno ----------------------------------------------------------------
 
@@ -116,3 +116,12 @@ perf-search: ## Mide la búsqueda con 10k locales falsos (necesita Docker); impr
 
 build: ## Compila los binarios del backend en backend/bin
 	cd $(BACKEND) && $(GO) build -o bin/ ./cmd/...
+
+frontend-lint: ## Corre eslint, el chequeo de tipos y el de formato del frontend
+	cd frontend && npm run lint && npm run typecheck && npm run format:check
+
+frontend-test: ## Corre los tests unitarios del frontend
+	cd frontend && npm test
+
+frontend-build: ## Compila el frontend para producción
+	cd frontend && npm run build
