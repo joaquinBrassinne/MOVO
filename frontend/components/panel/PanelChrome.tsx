@@ -32,6 +32,7 @@ const NAV = [
 function titleOf(pathname: string): string {
   if (pathname === "/socios/beneficios") return "Beneficios";
   if (pathname === "/socios/canjear") return "Canjear cupón";
+  if (pathname === "/socios/local/datos") return "Datos del negocio";
   if (pathname === "/socios/local") return "Mi local";
   if (pathname === "/socios/servicios") return "Servicios y horarios";
   if (pathname === "/socios/fotos") return "Fotos del local";

@@ -557,7 +557,7 @@ Convenciones de trabajo:
 - [x] 4.9 `GET /me/business/activity?since=`: últimos 20 eventos (cupón generado, cupón canjeado) del negocio de la sesión y cuántos son posteriores a `since`; sin teléfono. Las reseñas nuevas se suman en la fase de reseñas (S)
 - [x] 4.9b Estadísticas simples: por beneficio, generados y canjeados este mes en `GET /me/business/benefits`; `GET /me/business/overview` con cupones activos, canjes de hoy y la suma de 7 días de vistas de perfil y clics a WhatsApp desde `metric_daily`; la vista previa de un código suma cuántos cupones canjeó ese cliente en el negocio. El resto de las métricas sigue en la Fase 6 (S)
 - [x] 4.9c La ficha pública `GET /businesses/{slug}` suma `benefits` (activos y no pausados, sin datos de cupo) y las tarjetas de `/search/businesses` y `/home/featured` suman `benefit_label`, que Home y Mapa muestran como pill (S)
-- [ ] 4.9d Pantalla "Datos del negocio" dentro de Mi local: nombre, categoría, descripción (500) y WhatsApp; cada cambio queda en `audit_log` (M)
+- [x] 4.9d Pantalla "Datos del negocio" dentro de Mi local: nombre, categoría, descripción (500) y WhatsApp; cada cambio queda en `audit_log` (M)
 - [x] 4.10 Frontend del dueño: Beneficios y cupo (tarjeta de cupo del local, formulario Porcentaje/Monto fijo/Otro beneficio, hoja de cupo), Panel de inicio con actividad, Canjear cupón con vista previa, y después el escáner de QR dentro del panel (cámara con `getUserMedia`), con ingreso manual siempre disponible (L)
 - [ ] 4.11 Frontend del cliente: Obtener cupón, Cupón generado y Mis cupones, con el QR del cupón (solo el código) (L)
 

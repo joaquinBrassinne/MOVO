@@ -1,8 +1,20 @@
 import Link from "next/link";
 
-import { ArrowRightIcon, ClockIcon, ImageIcon, MapPinIcon } from "@/components/socios/icons";
+import {
+  ArrowRightIcon,
+  ClockIcon,
+  ImageIcon,
+  MapPinIcon,
+  StoreIcon,
+} from "@/components/socios/icons";
 
 const SECTIONS = [
+  {
+    href: "/socios/local/datos",
+    title: "Datos del negocio",
+    body: "Nombre, categoría, descripción y WhatsApp de tu local.",
+    icon: StoreIcon,
+  },
   {
     href: "/socios/sedes",
     title: "Sedes y horarios",
