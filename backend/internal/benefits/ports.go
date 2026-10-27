@@ -6,6 +6,7 @@ package benefits
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/domain"
 )
@@ -19,6 +20,46 @@ var (
 	// ErrBusinessNotEditable means the business was deleted and can no longer change.
 	ErrBusinessNotEditable = errors.New("benefits: business can no longer change")
 )
+
+// Errors of issuing a coupon.
+var (
+	// ErrQuotaReached means the benefit already generated its monthly limit of coupons.
+	ErrQuotaReached = errors.New("benefits: monthly limit of coupons reached")
+	// ErrPendingCoupon means the customer already holds a pending coupon at the business.
+	ErrPendingCoupon = errors.New("benefits: customer already has a pending coupon at this business")
+	// ErrCodeTaken means the random code collided with an existing one; the caller
+	// draws another and tries again.
+	ErrCodeTaken = errors.New("benefits: coupon code is already taken")
+)
+
+// IssueRequest is everything needed to generate one coupon. The code, the token hash
+// and the clock come from the caller so the adapter stays a plain transaction.
+type IssueRequest struct {
+	BenefitID int64
+	Contact   domain.Contact
+	Code      string
+	TokenHash []byte
+	Now       time.Time
+	ExpiresAt time.Time
+	// MonthStart and MonthEnd bound the calendar month the monthly limit counts in.
+	MonthStart, MonthEnd time.Time
+}
+
+// Issued is the coupon that was generated and the benefit it claims.
+type Issued struct {
+	Coupon  domain.Coupon
+	Benefit domain.Benefit
+}
+
+// CouponIssuer generates coupons. Issue is one transaction: it finds the benefit, which
+// must be active and belong to a visible business, files the customer, enforces the
+// one-pending-coupon rule and the monthly limit, and stores the coupon, so two
+// customers racing for the last slot cannot both get it.
+type CouponIssuer interface {
+	// Issue returns ErrBenefitNotFound when the benefit is inactive, does not exist or
+	// its business is not visible; ErrPendingCoupon; ErrQuotaReached; or ErrCodeTaken.
+	Issue(ctx context.Context, req IssueRequest) (Issued, error)
+}
 
 // OwnerBusinesses resolves the business an owner may change. The composition root
 // builds it from the business module, so benefits never reads businesses and the

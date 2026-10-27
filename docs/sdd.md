@@ -535,7 +535,7 @@ Convenciones de trabajo:
 - [x] 4.1 Migraciones `customers`, `benefits`, `benefit_codes` + índice único parcial (S)
 - [x] 4.2 Dominio `benefits`: tipos (`percent` 10/15/20 o `welcome_gift`), TTL de 48 h, cupo mensual, estados (M)
 - [x] 4.3 CRUD de beneficios y cupo mensual desde el panel del local (M)
-- [ ] 4.4 Comando `GenerateCode`: nombre y WhatsApp, un pendiente por cliente y local, cupo, reintento por colisión, token de acceso (M)
+- [x] 4.4 Comando `GenerateCode`: nombre y WhatsApp, un pendiente por cliente y local, cupo, reintento por colisión, token de acceso (M)
 - [ ] 4.5 Anti-abuso: límite por IP en memoria + normalización de contacto (S)
 - [ ] 4.6 Comando `RedeemCode` atómico + test de concurrencia (M)
 - [ ] 4.6b Query de vista previa `GET /me/business/codes/{code}` (solo lectura, `business_admin`): estado, beneficio, nombre del cliente y vencimiento solo si el cupón es de ese negocio (404 si no), sin teléfono y sin efectos secundarios. Tests: la vista previa no canjea, no filtra datos de otro negocio y no devuelve el teléfono; el canje sigue siendo atómico (el test de concurrencia de 4.6 se mantiene) (S)
@@ -628,6 +628,14 @@ Convenciones de trabajo:
 - [ ] 8.6 Runbook: operación manual mensual de pagos (revisar Mercado Pago y registrar pagos), cómo confirmar un alta con los tres chequeos (el mail "nuevo suscriptor" de Mercado Pago tiene el mismo email que declaró el dueño; plan y monto correctos; perfil revisado), cómo restaurar un backup; y, para las actividades outdoor (categoría `trekking-outdoor`), confirmar que el guía esté habilitado y tenga seguro antes de activar el alta (S)
 
 **DoD:** sistema en producción, monitoreado y con piloto activo.
+
+---
+
+### Correcciones de frontend pendientes
+Problemas detectados probando a mano; se arreglan con test que los reproduzca y no pertenecen a una fase puntual.
+
+- [ ] F.1 Mapa de búsqueda (`/mapa`): al entrar a la ficha de un local y volver atrás, el mapa rompe con `Cannot read properties of undefined (reading 'appendChild')` en `<TileLayer>` de `components/explorar/SearchMap.tsx` (visto en Next.js 16.4.2 con Turbopack). Causa sin confirmar: reproducir primero (dev y build de producción), y comprobar si el `MapContainer` se vuelve a montar al restaurar la página. (M)
+- [ ] F.2 Home (`/`, `localhost:3000`): rediseñar la portada con una cara más cuidada. Necesita la imagen del diseño antes de implementarse; hasta entonces no se toca la vista actual. (M)
 
 ---
 
