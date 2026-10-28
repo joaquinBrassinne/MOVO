@@ -68,6 +68,58 @@ func (r *Reviews) unredeemed(ctx context.Context, tokenHash []byte) (domain.Rede
 	return domain.Redemption{}, nil
 }
 
+// ListPublic reads the reviews of a branch the public can see, newest first. A reported
+// review is listed and a hidden one is not. The order is (created_at, id), which is also
+// the order of the index, so the cursor of a page is the position after its last review.
+// It selects no customer column.
+func (r *Reviews) ListPublic(ctx context.Context, branchID int64, after *domain.Cursor, limit int) ([]reviews.ListedReview, error) {
+	var visible bool
+	if err := r.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM visible_branches WHERE branch_id = $1)`, branchID).Scan(&visible); err != nil {
+		return nil, fmt.Errorf("postgres: branch visibility: %w", err)
+	}
+	if !visible {
+		return nil, reviews.ErrBranchNotFound
+	}
+
+	var (
+		afterAt *time.Time
+		afterID *int64
+	)
+	if after != nil {
+		afterAt, afterID = &after.CreatedAt, &after.ID
+	}
+	rows, err := r.pool.Query(ctx, `
+SELECT id, rating, comment, display_name, created_at
+FROM reviews
+WHERE branch_id = $1 AND status <> 'hidden'
+  AND ($2::timestamptz IS NULL OR (created_at, id) < ($2, $3::bigint))
+ORDER BY created_at DESC, id DESC
+LIMIT $4`, branchID, afterAt, afterID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: list reviews: %w", err)
+	}
+	defer rows.Close()
+
+	var out []reviews.ListedReview
+	for rows.Next() {
+		var (
+			item    reviews.ListedReview
+			comment *string
+		)
+		if err := rows.Scan(&item.ID, &item.Rating, &comment, &item.DisplayName, &item.CreatedAt); err != nil {
+			return nil, fmt.Errorf("postgres: scan review: %w", err)
+		}
+		if comment != nil {
+			item.Comment = *comment
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: list reviews: %w", err)
+	}
+	return out, nil
+}
+
 // Create inserts the review. A second review of the coupon breaks the unique key, which
 // is also what settles two requests racing for the same coupon.
 func (r *Reviews) Create(ctx context.Context, review domain.Review) error {

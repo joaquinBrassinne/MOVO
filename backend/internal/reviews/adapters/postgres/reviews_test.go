@@ -19,7 +19,7 @@ const token = "a-customer-access-token"
 
 // seed is a business with a branch, a customer and a coupon opened by token.
 type seed struct {
-	owner, business, branch, customer, coupon int64
+	owner, business, branch, customer, coupon, benefit int64
 }
 
 // newSeed inserts the rows a review hangs from. The coupon is redeemed at the branch when
@@ -44,8 +44,7 @@ VALUES ($1, 'Centro', 'Calle 1', 'Cordoba', ST_SetSRID(ST_MakePoint(-64.18, -31.
 	if err := pool.QueryRow(ctx, `INSERT INTO customers (name, phone) VALUES ('Ana García', '5491187654321') RETURNING id`).Scan(&s.customer); err != nil {
 		t.Fatalf("insert customer: %v", err)
 	}
-	var benefit int64
-	if err := pool.QueryRow(ctx, `INSERT INTO benefits (business_id, type, percent) VALUES ($1, 'percent', 10) RETURNING id`, s.business).Scan(&benefit); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO benefits (business_id, type, percent) VALUES ($1, 'percent', 10) RETURNING id`, s.business).Scan(&s.benefit); err != nil {
 		t.Fatalf("insert benefit: %v", err)
 	}
 	// The hash is computed here with the database's own SHA-256, as the benefits module
@@ -53,7 +52,7 @@ VALUES ($1, 'Centro', 'Calle 1', 'Cordoba', ST_SetSRID(ST_MakePoint(-64.18, -31.
 	if err := pool.QueryRow(ctx, `
 INSERT INTO benefit_codes (code, benefit_id, business_id, customer_id, access_token_hash, expires_at)
 VALUES ('ABCDEFGH', $1, $2, $3, sha256(convert_to($4::text, 'UTF8')), now() + interval '48 hours') RETURNING id`,
-		benefit, s.business, s.customer, token).Scan(&s.coupon); err != nil {
+		s.benefit, s.business, s.customer, token).Scan(&s.coupon); err != nil {
 		t.Fatalf("insert coupon: %v", err)
 	}
 	if redeemed {
