@@ -11,6 +11,27 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/platform/dbtest"
 )
 
+// rollBackTo steps the schema down, one migration at a time, until version is the last
+// applied one. Counting steps instead would break every test that rolls back whenever a
+// newer migration lands on top.
+func rollBackTo(ctx context.Context, t *testing.T, pool *pgxpool.Pool, version int64) {
+	t.Helper()
+	for {
+		var current int64
+		if err := pool.QueryRow(ctx,
+			`SELECT COALESCE(max(version_id), 0) FROM goose_db_version g
+			 WHERE is_applied AND id = (SELECT max(id) FROM goose_db_version WHERE version_id = g.version_id)`).Scan(&current); err != nil {
+			t.Fatalf("read the schema version: %v", err)
+		}
+		if current <= version {
+			return
+		}
+		if err := db.Migrate(ctx, pool, "down"); err != nil {
+			t.Fatalf("roll back from %d: %v", current, err)
+		}
+	}
+}
+
 func insertBenefit(ctx context.Context, t *testing.T, pool *pgxpool.Pool, business int64) int64 {
 	t.Helper()
 	var id int64
@@ -117,12 +138,7 @@ func TestBenefitTypesMigrationKeepsTheOldBenefits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert business: %v", err)
 	}
-	// Back to the schema of 00014: the metrics migration, the quota one, then the types one.
-	for range 3 {
-		if err := db.Migrate(ctx, pool, "down"); err != nil {
-			t.Fatalf("roll back: %v", err)
-		}
-	}
+	rollBackTo(ctx, t, pool, 14)
 
 	long := strings.Repeat("a", 80) + strings.Repeat("b", 120)
 	for _, old := range []struct {
@@ -186,14 +202,9 @@ func TestBenefitTypesRollbackRefusesWhatItCannotRepresent(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO benefits (business_id, type, amount_ars) VALUES ($1, 'amount', 2000)`, business); err != nil {
 		t.Fatalf("insert amount: %v", err)
 	}
-	// The first step back is the metrics migration and the second the quota one, which
-	// lose nothing; the third one is the types migration, which cannot represent a
-	// fixed amount.
-	for range 2 {
-		if err := db.Migrate(ctx, pool, "down"); err != nil {
-			t.Fatalf("roll back a migration that loses nothing: %v", err)
-		}
-	}
+	// Everything above the types migration loses nothing on the way back; the types
+	// migration cannot represent a fixed amount.
+	rollBackTo(ctx, t, pool, 15)
 	if err := db.Migrate(ctx, pool, "down"); err == nil {
 		t.Fatal("rolling back with a fixed-amount benefit must fail")
 	}
@@ -415,12 +426,7 @@ func TestCouponQuotaLivesOnTheBusiness(t *testing.T) {
 	}
 	insertBenefit(ctx, t, pool, business)
 	insertBenefit(ctx, t, pool, other)
-	// The first step back is the metrics migration; the second is the quota one.
-	for range 2 {
-		if err := db.Migrate(ctx, pool, "down"); err != nil {
-			t.Fatalf("roll back: %v", err)
-		}
-	}
+	rollBackTo(ctx, t, pool, 15)
 	got := map[int64]int{}
 	rows, err := pool.Query(ctx, `SELECT business_id, monthly_limit FROM benefits`)
 	if err != nil {
