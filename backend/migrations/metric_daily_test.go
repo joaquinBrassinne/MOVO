@@ -117,8 +117,8 @@ func TestMetricDailyKeyTreatsNullsAsEqual(t *testing.T) {
 }
 
 // TestMetricDailyKeepsBranchAndServiceInsideTheirBusiness pins that a counter cannot
-// point at a branch or a service of another business, and that deleting the business
-// deletes its counters.
+// point at a branch or a service of another business, and that a business with
+// counters cannot be deleted: its metrics are history.
 func TestMetricDailyKeepsBranchAndServiceInsideTheirBusiness(t *testing.T) {
 	t.Parallel()
 
@@ -147,12 +147,14 @@ func TestMetricDailyKeepsBranchAndServiceInsideTheirBusiness(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO metric_daily (business_id, branch_id, date, metric, count) VALUES ($1, $2, '2026-03-01', 'whatsapp_click', 1)`, mine, myBranch); err != nil {
 		t.Fatalf("own branch must be allowed: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `DELETE FROM businesses WHERE id = $1`, mine); err != nil {
-		t.Fatalf("delete business: %v", err)
+	_, err = pool.Exec(ctx, `DELETE FROM businesses WHERE id = $1`, mine)
+	requireSQLState(t, err, foreignKeyViolation)
+	var kept int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM metric_daily WHERE business_id = $1`, mine).Scan(&kept); err != nil || kept != 1 {
+		t.Errorf("counters after the refused delete = %d, %v; want 1 kept", kept, err)
 	}
-	var left int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM metric_daily WHERE business_id = $1`, mine).Scan(&left); err != nil || left != 0 {
-		t.Errorf("counters left after deleting the business = %d, %v; want 0", left, err)
+	if _, err := pool.Exec(ctx, `DELETE FROM businesses WHERE id = $1`, other); err != nil {
+		t.Errorf("a business with no counters can still be deleted: %v", err)
 	}
 }
 

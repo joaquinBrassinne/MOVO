@@ -117,8 +117,8 @@ func TestBenefitTypesMigrationKeepsTheOldBenefits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert business: %v", err)
 	}
-	// Back to the schema of 00014: the quota migration first, then the types one.
-	for range 2 {
+	// Back to the schema of 00014: the metrics migration, the quota one, then the types one.
+	for range 3 {
 		if err := db.Migrate(ctx, pool, "down"); err != nil {
 			t.Fatalf("roll back: %v", err)
 		}
@@ -186,10 +186,13 @@ func TestBenefitTypesRollbackRefusesWhatItCannotRepresent(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO benefits (business_id, type, amount_ars) VALUES ($1, 'amount', 2000)`, business); err != nil {
 		t.Fatalf("insert amount: %v", err)
 	}
-	// The first step back is the quota migration, which loses nothing; the second one
-	// is the types migration, which cannot represent a fixed amount.
-	if err := db.Migrate(ctx, pool, "down"); err != nil {
-		t.Fatalf("roll back the quota migration: %v", err)
+	// The first step back is the metrics migration and the second the quota one, which
+	// lose nothing; the third one is the types migration, which cannot represent a
+	// fixed amount.
+	for range 2 {
+		if err := db.Migrate(ctx, pool, "down"); err != nil {
+			t.Fatalf("roll back a migration that loses nothing: %v", err)
+		}
 	}
 	if err := db.Migrate(ctx, pool, "down"); err == nil {
 		t.Fatal("rolling back with a fixed-amount benefit must fail")
@@ -412,8 +415,11 @@ func TestCouponQuotaLivesOnTheBusiness(t *testing.T) {
 	}
 	insertBenefit(ctx, t, pool, business)
 	insertBenefit(ctx, t, pool, other)
-	if err := db.Migrate(ctx, pool, "down"); err != nil {
-		t.Fatalf("roll back: %v", err)
+	// The first step back is the metrics migration; the second is the quota one.
+	for range 2 {
+		if err := db.Migrate(ctx, pool, "down"); err != nil {
+			t.Fatalf("roll back: %v", err)
+		}
 	}
 	got := map[int64]int{}
 	rows, err := pool.Query(ctx, `SELECT business_id, monthly_limit FROM benefits`)
