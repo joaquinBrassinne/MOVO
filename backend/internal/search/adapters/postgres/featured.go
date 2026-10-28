@@ -17,7 +17,8 @@ WITH origin AS (SELECT ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::g
      near AS MATERIALIZED (
          SELECT br.id FROM branches br, origin o WHERE ST_DWithin(br.location, o.p, $3::float8))
 SELECT branch_id, business_id, business_name, business_slug, branch_name, address, city, reference,
-       lat, lng, distance_m, rating_avg, rating_count, verified, featured, category_slug, category_name
+       lat, lng, distance_m, rating_avg, rating_count, verified, featured, category_slug, category_name,
+       benefit_kind, benefit_percent, benefit_amount
 FROM (
     SELECT DISTINCT ON (v.business_id)
            v.branch_id, v.business_id, v.business_name, v.business_slug, v.branch_name,
@@ -25,10 +26,13 @@ FROM (
            ST_Y(v.location::geometry) AS lat, ST_X(v.location::geometry) AS lng,
            ST_Distance(v.location, o.p) AS distance_m,
            v.rating_avg::float8 AS rating_avg, v.rating_count, v.verified_at IS NOT NULL AS verified, v.featured,
-           c.slug AS category_slug, c.name AS category_name
+           c.slug AS category_slug, c.name AS category_name,
+           bb.type AS benefit_kind, bb.percent AS benefit_percent, bb.amount_ars AS benefit_amount
     FROM near n
     JOIN visible_branches v ON v.branch_id = n.id
-    JOIN categories c ON c.id = v.category_id, origin o
+    JOIN categories c ON c.id = v.category_id
+    CROSS JOIN origin o
+    ` + bestBenefitLateral + `
     WHERE v.featured
     ORDER BY v.business_id, ST_Distance(v.location, o.p), v.branch_id
 ) nearest

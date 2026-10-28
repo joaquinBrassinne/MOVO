@@ -18,6 +18,7 @@ type fakeBusinesses struct {
 	byID       map[int64]domain.Business
 	categories map[int64]bool
 	saves      int
+	audit      []business.AuditEntry
 }
 
 func newFakeBusinesses(categories ...int64) *fakeBusinesses {
@@ -99,3 +100,14 @@ func ptrTime() *time.Time {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// SaveProfile stores the profile like Save and keeps the audit entries it was given.
+func (f *fakeBusinesses) SaveProfile(ctx context.Context, b domain.Business, entry business.AuditEntry) error {
+	if err := f.Save(ctx, b); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.audit = append(f.audit, entry)
+	return nil
+}

@@ -17,6 +17,8 @@ export interface SearchResult {
   featured: boolean;
   category_slug: string;
   category_name: string;
+  /** La etiqueta del beneficio más alto que ofrece el local ("-15%", "-$2.000", "Beneficio"); `null` si no tiene. */
+  benefit_label: string | null;
 }
 
 export interface SearchPage {

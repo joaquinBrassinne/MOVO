@@ -87,3 +87,33 @@ test("an unknown error code never leaks its text to the owner", () => {
   assert.ok(feedback.form);
   assert.doesNotMatch(JSON.stringify(feedback), /pq:/);
 });
+
+test("a benefit text refused for a link or a phone says so, on its own field", () => {
+  const link = describeFailure(
+    failure("validation_failed", { field: "title", reason: "contains_link" }),
+  );
+  const phone = describeFailure(
+    failure("validation_failed", { field: "conditions", reason: "contains_phone" }),
+  );
+
+  assert.equal(link.fields.title, "No incluyas links");
+  assert.equal(phone.fields.conditions, "No incluyas teléfonos");
+});
+
+test("a quota below what was generated names the number the API sent", () => {
+  const feedback = describeFailure(
+    failure("validation_failed", {
+      field: "limit",
+      reason: "below_generated",
+      generated_this_month: 18,
+    }),
+  );
+
+  assert.match(feedback.fields.limit ?? "", /18 cupones/);
+});
+
+test("a benefit that no longer exists is explained", () => {
+  const feedback = describeFailure(failure("benefit_not_found", undefined, 404));
+
+  assert.equal(feedback.form?.title, "Ese beneficio ya no existe");
+});

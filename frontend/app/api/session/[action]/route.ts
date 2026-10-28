@@ -101,14 +101,16 @@ export async function POST(request: Request, ctx: RouteContext<"/api/session/[ac
     if (!credentials)
       return failure(400, "invalid_request", "request body is not valid for this endpoint");
 
-    const upstream = await postToBackend(BACKEND_PATH[action], credentials);
+    const upstream = await postToBackend(request, BACKEND_PATH[action], credentials);
     return upstream.status < 300 ? respondWithSession(upstream) : passThrough(upstream);
   }
 
   if (action === "refresh") {
     if (!refreshToken) return failure(401, "invalid_session", "there is no session to renew");
 
-    const upstream = await postToBackend(BACKEND_PATH.refresh, { refresh_token: refreshToken });
+    const upstream = await postToBackend(request, BACKEND_PATH.refresh, {
+      refresh_token: refreshToken,
+    });
     if (upstream.status < 300) return respondWithSession(upstream);
 
     // Rechazado de forma definitiva: la cookie ya no sirve. Una caída o un límite no la tocan.
@@ -117,7 +119,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/session/[ac
   }
 
   // logout: es idempotente y la cookie se borra pase lo que pase con la API.
-  if (refreshToken) await postToBackend(BACKEND_PATH.logout, { refresh_token: refreshToken });
+  if (refreshToken) {
+    await postToBackend(request, BACKEND_PATH.logout, { refresh_token: refreshToken });
+  }
   store.delete({ name: REFRESH_COOKIE, path: COOKIE_PATH });
   return new Response(null, { status: 204 });
 }

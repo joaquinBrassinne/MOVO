@@ -12,6 +12,7 @@ import { DEFAULT_POINT, useFeatured, useLocation, useNearby } from "@/lib/search
 import type { SearchResult } from "@/lib/search/types";
 
 import { AccountLink, AppFrame } from "./AppFrame";
+import { BenefitPill } from "./BenefitPill";
 import { CategoryChips } from "./CategoryChips";
 import { CategoryIcon, Icon, VerifiedIcon } from "./icons";
 
@@ -165,6 +166,7 @@ function FeaturedCard({ item }: { item: SearchResult }) {
         slug={item.category_slug}
         className="absolute top-1/3 left-1/2 size-24 -translate-x-1/2 -translate-y-1/2 text-white/15"
       />
+      <BenefitPill label={item.benefit_label} className="mb-2 self-start" />
       <h3 className="font-display text-2xl leading-tight font-extrabold">{item.business_name}</h3>
       <p className="mt-1 flex items-center gap-2 text-sm text-movo-muted">
         <Icon name="pin" className="size-4" />
@@ -195,6 +197,7 @@ function NearbyCard({ item }: { item: SearchResult }) {
         <span className="mt-1 block truncate text-sm text-movo-muted">
           {item.category_name} · a {formatDistance(item.distance_m)}
         </span>
+        <BenefitPill label={item.benefit_label} className="mt-2" />
         <span className="mt-2 block truncate text-sm font-semibold text-movo-accent">
           {item.address}, {item.city}
         </span>

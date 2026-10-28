@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { ProfilePage } from "@/components/locales/ProfilePage";
+import { jsonLd } from "@/lib/jsonld";
 import { getProfile } from "@/lib/server/profile";
 
 export async function generateMetadata({
@@ -54,10 +55,7 @@ export default async function LocalPage({ params }: PageProps<"/locales/[slug]">
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structured).replace(/</g, "\u003c") }}
-      />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(structured) }} />
       <ProfilePage profile={profile} today={today} />
     </>
   );

@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 import { PORTS } from "./e2e/support/env.mjs";
+import { FAKE_CAMERA_FILE } from "./e2e/support/fake-camera.mjs";
 
 // Los E2E levantan su propio entorno: base `movo_e2e` nueva, API, geocodificador falso y
 // la web. Solo necesitan Postgres y RustFS corriendo (`make up`).
@@ -20,6 +21,15 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORTS.web}`,
     locale: "es-AR",
+    // La cámara es un video que cada test escribe (ver support/fake-camera.mjs) y los permisos
+    // se conceden solos: lo que se prueba es la lectura, no el cuadro de permisos del navegador.
+    launchOptions: {
+      args: [
+        "--use-fake-ui-for-media-stream",
+        "--use-fake-device-for-media-stream",
+        `--use-file-for-fake-video-capture=${FAKE_CAMERA_FILE}`,
+      ],
+    },
     actionTimeout: 15_000,
     navigationTimeout: 60_000,
     trace: "retain-on-failure",

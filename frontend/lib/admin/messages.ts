@@ -21,6 +21,7 @@ const ACTION_LABEL: Record<string, string> = {
   "business.revoke_verification": "Verificación quitada",
   "business.mark_pilot": "Marcado como piloto",
   "business.unmark_pilot": "Piloto quitado",
+  "business.profile_update": "Datos del negocio actualizados",
 };
 
 /** El nombre legible de una entrada del historial; una acción que no se conoce se muestra tal cual. */

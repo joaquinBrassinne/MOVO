@@ -26,6 +26,9 @@ const (
 //go:embed seed.sql
 var seedSQL string
 
+//go:embed seed_coupons.sql
+var seedCouponsSQL string
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -51,8 +54,10 @@ func run(ctx context.Context, databaseURL string) error {
 	}
 	defer func() { _ = conn.Close(ctx) }()
 
-	if _, err := conn.Exec(ctx, seedSQL); err != nil {
-		return fmt.Errorf("seed: %w", err)
+	for _, script := range []string{seedSQL, seedCouponsSQL} {
+		if _, err := conn.Exec(ctx, script); err != nil {
+			return fmt.Errorf("seed: %w", err)
+		}
 	}
 
 	// One owner can sign in, to try the panel: the first test business.

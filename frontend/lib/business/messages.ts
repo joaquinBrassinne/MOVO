@@ -33,6 +33,18 @@ export const FIELD_MESSAGES: Record<string, string> = {
   size: "La foto debe pesar hasta 5 MB",
   price: "Ingresá un precio válido en pesos",
   reference: "La referencia puede tener hasta 100 caracteres",
+  type: "Elegí un tipo de beneficio",
+  percent: "Ingresá un porcentaje entero de 1 a 100",
+  amount_ars: "Ingresá un monto en pesos mayor que cero",
+  title: "Escribí el título del beneficio (hasta 80 caracteres)",
+  conditions: "Las condiciones pueden tener hasta 120 caracteres",
+  limit: "Ingresá un cupo entero mayor que cero",
+};
+
+/** Por qué se rechazó un texto libre de un beneficio (`reason` de la API). */
+const TEXT_REASONS: Record<string, string> = {
+  contains_link: "No incluyas links",
+  contains_phone: "No incluyas teléfonos",
 };
 
 const SLOT_MESSAGES: Record<string, string> = {
@@ -92,6 +104,9 @@ export function describeFailure({ error }: Failure): Feedback {
     case "upload_failed":
       return form("No pudimos subir la foto", "Probá de nuevo con otra imagen.");
 
+    case "benefit_not_found":
+      return form("Ese beneficio ya no existe", "Recargá la página para ver tus beneficios.");
+
     case "network_error":
       return form("Sin conexión", "Revisá tu conexión a internet y probá de nuevo.");
 
@@ -109,8 +124,23 @@ function form(title: string, body: string): Feedback {
 }
 
 function validation(details: unknown): Feedback {
-  const { field, reason } = (details ?? {}) as { field?: string; reason?: string };
+  const { field, reason, generated_this_month } = (details ?? {}) as {
+    field?: string;
+    reason?: string;
+    generated_this_month?: number;
+  };
 
+  if (field === "limit" && reason === "below_generated" && generated_this_month !== undefined) {
+    return {
+      fields: {
+        limit: `Ya se generaron ${generated_this_month} cupones este mes: el cupo no puede ser menor.`,
+      },
+    };
+  }
+  const textReason = reason ? TEXT_REASONS[reason] : undefined;
+  if ((field === "title" || field === "conditions") && textReason) {
+    return { fields: { [field]: textReason } };
+  }
   if (field === "slots") {
     return { fields: { slots: SLOT_MESSAGES[reason ?? ""] ?? SLOT_MESSAGES.invalid } };
   }

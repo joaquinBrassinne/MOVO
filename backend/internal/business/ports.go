@@ -49,6 +49,10 @@ type BusinessRepository interface {
 	// The slug and the owner never change. It returns ErrBusinessNotFound and
 	// ErrCategoryNotFound.
 	Save(ctx context.Context, b domain.Business) error
+	// SaveProfile persists the profile of b (category, name, description, WhatsApp) and
+	// appends entry to the audit trail, in one transaction: no change without its record.
+	// It returns the same errors as Save.
+	SaveProfile(ctx context.Context, b domain.Business, entry AuditEntry) error
 }
 
 // BranchRepository stores the branches of a business and their opening hours.

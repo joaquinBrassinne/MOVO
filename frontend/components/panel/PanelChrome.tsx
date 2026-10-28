@@ -4,27 +4,36 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
+import { QrIcon, TicketIcon } from "@/components/benefits/icons";
 import { Logo } from "@/components/Logo";
-import {
-  GridIcon,
-  ImageIcon,
-  LogOutIcon,
-  SearchIcon,
-  StoreIcon,
-  UserIcon,
-} from "@/components/socios/icons";
+import { GridIcon, LogOutIcon, StoreIcon, UserIcon } from "@/components/socios/icons";
 import { useBusiness } from "@/lib/business/BusinessProvider";
 import { useSession } from "@/lib/session/SessionProvider";
 
+/** Las pestañas del panel; "Mi local" abarca la pantalla de accesos y las que cuelgan de ella. */
 const NAV = [
-  { href: "/socios/panel", label: "Inicio", icon: GridIcon },
-  { href: "/socios/servicios", label: "Servicios", icon: SearchIcon },
-  { href: "/socios/sedes", label: "Mi local", icon: StoreIcon },
-  { href: "/socios/fotos", label: "Fotos", icon: ImageIcon },
+  { href: "/socios/panel", label: "Inicio", icon: GridIcon, within: ["/socios/panel"] },
+  { href: "/socios/canjear", label: "Canjear", icon: QrIcon, within: ["/socios/canjear"] },
+  {
+    href: "/socios/beneficios",
+    label: "Beneficios",
+    icon: TicketIcon,
+    within: ["/socios/beneficios"],
+  },
+  {
+    href: "/socios/local",
+    label: "Mi local",
+    icon: StoreIcon,
+    within: ["/socios/local", "/socios/sedes", "/socios/servicios", "/socios/fotos"],
+  },
 ] as const;
 
 /** El título del encabezado según la vista en la que está el dueño. */
 function titleOf(pathname: string): string {
+  if (pathname === "/socios/beneficios") return "Beneficios";
+  if (pathname === "/socios/canjear") return "Canjear cupón";
+  if (pathname === "/socios/local/datos") return "Datos del negocio";
+  if (pathname === "/socios/local") return "Mi local";
   if (pathname === "/socios/servicios") return "Servicios y horarios";
   if (pathname === "/socios/fotos") return "Fotos del local";
   if (pathname === "/socios/sedes") return "Mis sedes";
@@ -63,15 +72,16 @@ export function PanelChrome({ children }: { children: ReactNode }) {
         className="fixed inset-x-0 bottom-0 z-30 border-t border-movo-sand bg-white"
       >
         <ul className="mx-auto flex max-w-md justify-around px-2 py-2">
-          {NAV.map(({ href, label, icon: Icon }) => {
-            const current =
-              href === "/socios/panel" ? pathname === href : pathname.startsWith(href);
+          {NAV.map(({ href, label, icon: Icon, within }) => {
+            const current = within.some(
+              (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+            );
             return (
-              <li key={href}>
+              <li key={href} className="min-w-0 flex-1">
                 <Link
                   href={href}
                   aria-current={current ? "page" : undefined}
-                  className={`flex w-20 flex-col items-center gap-1 rounded-2xl py-2 text-xs font-bold outline-none focus-visible:ring-2 focus-visible:ring-movo-accent ${
+                  className={`flex w-full flex-col items-center gap-1 rounded-2xl py-2 text-[11px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-movo-accent ${
                     current ? "bg-movo-accent/30 text-movo-ink" : "text-movo-slate"
                   }`}
                 >

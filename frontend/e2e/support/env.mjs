@@ -33,6 +33,9 @@ export const API_ENV = {
   S3_CORS_ORIGINS: `http://localhost:${PORTS.web}`,
   // Los specs de fotos suben seis y chocan con el límite: se fija acá para que no dependa del valor por defecto.
   MAX_BUSINESS_IMAGES: "6",
+  // Next llega desde la propia máquina y reenvía la IP de cada test (support/client.ts): así cada
+  // test cuenta contra su propio cupo de cupones, con el límite por defecto.
+  TRUSTED_PROXIES: "127.0.0.1,::1",
   GEOCODER_URL: `http://localhost:${PORTS.geocoder}`,
   GEOCODER_USER_AGENT: "MOVO-e2e/0.1 (e2e@example.com)",
 };

@@ -176,14 +176,14 @@ Todas las tablas con `id` (UUID v7 o `bigserial`), `created_at`, `updated_at`. M
 | `refresh_tokens` | user_id, token_hash, expires_at, revoked_at, replaced_by |
 | `customers` | name, phone (WhatsApp, normalizado), created_at — contacto declarado, **sin verificación ni contraseña** |
 | `categories` | slug, name — seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel; y `trekking-outdoor` ("Trekking y outdoor"), agregada en una migración aparte. En esa categoría la **sede es el punto de encuentro** de la salida y **cada salida se carga como un servicio** (con sus días y horarios) |
-| `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description (≤ 500 caracteres), whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, mp_payer_email (email con el que pagó en Mercado Pago, obligatorio al enviar a revisión), mp_payer_name (nombre completo del titular, obligatorio, mínimo 3 caracteres), mp_return_params (parámetros de la URL de retorno, solo pista para el admin) |
+| `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description (≤ 500 caracteres), whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, mp_payer_email (email con el que pagó en Mercado Pago, obligatorio al enviar a revisión), mp_payer_name (nombre completo del titular, obligatorio, mínimo 3 caracteres), mp_return_params (parámetros de la URL de retorno, solo pista para el admin), monthly_coupon_limit (entero > 0, nullable: null es sin límite; tope de cupones generados en el mes calendario, en hora de Argentina, para todo el negocio; lo configura el dueño) |
 | `branches` | business_id, name, address, city, reference (opcional, ≤ 100), `location geography(Point,4326)`, external_booking_url (opcional), rating_avg, rating_count, active — **la búsqueda se hace por sede** |
 | `business_hours` | branch_id, weekday, opens_at, closes_at (varias franjas por día; no se pisan, no cruzan la medianoche; sin franjas = cerrado) |
 | `business_images` | business_id, object_key, position |
 | `services` | business_id, branch_id (opcional), name, description, price (opcional, pesos enteros; sin duración porque el MVP no tiene agenda), active — lo que el negocio ofrece (clase de yoga, alquiler de cancha, etc.) |
 | `service_schedules` | service_id, weekday, starts_at, ends_at |
 | `subscriptions` | business_id, plan (`starter`/`pro`, lo fija el super admin al confirmar el pago, nunca el dueño), paid_until (vigencia inicial que elige el admin al activar), mp_subscription_ref (opcional: referencia de la suscripción en el panel de Mercado Pago, la que figura en el mail "nuevo suscriptor"), confirmed_by, confirmed_at, notes |
-| `benefits` | business_id, type (`percent`/`welcome_gift`), percent (10/15/20), gift_description, active, monthly_limit (configurable por el dueño) |
+| `benefits` | business_id, type (`percent`/`amount`/`custom`), percent (entero 1–100, solo `percent`), amount_ars (entero > 0, solo `amount`), title (texto plano de 1 a 80, obligatorio en `custom`, ausente en los otros), conditions (opcional, hasta 120), active (lo maneja el dueño), admin_paused (lo maneja el super admin; el dueño lo ve en su panel pero no lo puede cambiar). Un CHECK fija la forma de cada tipo. Se ofrece solo si `active` y no `admin_paused` |
 | `benefit_codes` | code (único), benefit_id, business_id, customer_id, access_token_hash, status (`pending`/`redeemed`/`expired`), expires_at (= creación + 48 h), redeemed_at, redeemed_branch_id, redeemed_by |
 | `reviews` | branch_id, business_id, benefit_code_id (único), customer_id, rating 1–5, comment (≤ 500, opcional), display_name, show_name, status (`visible`/`reported`/`hidden`), created_at |
 | `metric_daily` | business_id, branch_id (nullable), service_id (nullable), date, metric (`profile_view`/`service_view`/`whatsapp_click`), count — contadores agregados, **sin datos personales**. La forma la fija un CHECK: `profile_view` va con `branch_id` y `service_id` nulos (la ficha es por negocio); `whatsapp_click` exige `branch_id` (el servicio es opcional); `service_view` exige ambos. El día se cuenta en hora de Argentina (UTC-3) |
@@ -224,7 +224,7 @@ Cualquier negocio (comercio o profesional) puede contratar cualquier plan; el ti
 | Sedes | 2 | 4 |
 | Botón de WhatsApp (reservar clases) | ✅ | ✅ |
 | Ubicación en el mapa (pin fijo) | ✅ | ✅ |
-| Cupones de descuento (10/15/20 % o regalo de bienvenida) | ✅ | ✅ |
+| Cupones (porcentaje, monto fijo u otro beneficio, definidos por el dueño) | ✅ | ✅ |
 | Reseñas y puntuación | ✅ | ✅ |
 | Métricas | esenciales | **inteligencia comercial** |
 | Soporte | estándar | prioritario |
@@ -272,9 +272,17 @@ Principio: **contar, no seguir**. No se guardan IP, user-agent ni identificadore
 4. **Home:** además de "Cerca tuyo", una query de "Destacados cerca tuyo" (solo Pro dentro del radio, con rotación).
 
 ### 5.2 Generación y canje de cupones
+**Beneficio** (lo define libremente el dueño del local)
+- `percent`: porcentaje entero de 1 a 100. Los botones 10, 15 y 20 de la interfaz son solo atajos, no un límite.
+- `amount`: monto fijo en pesos, entero mayor que 0.
+- `custom` ("Otro beneficio"): `title` obligatorio, texto plano de 1 a 80 caracteres.
+- Todos pueden llevar `conditions` (opcional, hasta 120 caracteres). `title` y `conditions` son texto plano: se rechazan las URLs y los teléfonos con un error claro.
+- Etiqueta corta para tarjetas y pills: `percent` "-15%", `amount` "-$2.000", `custom` "Beneficio". El cupón y la vista previa del canje muestran el título completo y las condiciones.
+- El super admin puede pausar cualquier beneficio con `admin_paused`, aparte de `active`: el dueño no puede deshacer esa pausa. Queda en `audit_log`.
+
 **Generar** (cliente sin cuenta)
 1. El cliente elige un beneficio de un local visible y completa **nombre y WhatsApp** (obligatorios). Sin verificación.
-2. Se valida: beneficio activo, **un solo cupón pendiente por cliente y local** (índice único parcial), y que el local no haya superado su `monthly_limit` (tope de cupones generados por local por mes).
+2. Se valida: beneficio activo y no pausado por el super admin, **un solo cupón pendiente por cliente y local** (índice único parcial), y que el local no haya superado su `monthly_coupon_limit` (tope de cupones generados por local en el mes calendario, hora de Argentina; sin límite si es null). El chequeo del cupo y el alta van en la misma transacción, con la fila del negocio bloqueada (`SELECT ... FOR UPDATE`), así dos generaciones simultáneas no superan el tope.
 3. Código aleatorio criptográficamente seguro (`crypto/rand`), alfabeto sin caracteres ambiguos (sin `0/O/1/I`), 8 caracteres; si hay colisión por `UNIQUE`, se reintenta.
 4. Se guarda `pending` con `expires_at = now() + 48 h` y se devuelve el código en pantalla junto con un enlace de acceso (token no adivinable, se guarda solo su hash) para volver a verlo.
 5. **Anti-abuso (porque no hay verificación):** límite de intentos por IP (en memoria, interfaz lista para Redis), normalización del teléfono para detectar duplicados y el cupo mensual del local como tope de daño. Si aparece abuso real se agrega captcha o verificación.
@@ -345,16 +353,19 @@ El vencimiento se evalúa por `expires_at` al leer; una tarea diaria marca como 
 |---|---|---|---|
 | POST | `/auth/register` · `/auth/login` · `/auth/refresh` · `/auth/logout` | público | Autenticación de dueños |
 | GET | `/plans` | público | Planes con precio y URL de contratación |
-| GET | `/search/businesses` | público | Búsqueda geoespacial |
-| GET | `/home/featured` | público | Destacados cerca tuyo |
-| GET | `/businesses/{slug}` | público | Ficha del local (solo sedes públicas y servicios activos; 404 `business_not_found` si no es público; sin número de WhatsApp; no cuenta vistas) |
+| GET | `/search/businesses` | público | Búsqueda geoespacial; cada tarjeta lleva `benefit_label` (la etiqueta del beneficio activo más alto: porcentaje sobre monto, monto sobre personalizado; `null` si no tiene) |
+| GET | `/home/featured` | público | Destacados cerca tuyo; con `benefit_label` igual que la búsqueda |
+| GET | `/businesses/{slug}` | público | Ficha del local (solo sedes públicas y servicios activos; 404 `business_not_found` si no es público; sin número de WhatsApp; con `benefits`: solo los activos y no pausados, con id, tipo, valor, título, condiciones y etiqueta corta, sin datos de cupo; no cuenta vistas) |
 | POST | `/businesses/{slug}/view` | público | Cuenta una vista de la ficha (`profile_view`, sin sede). Siempre `204` sin cuerpo ni cookies, aunque el negocio no sea visible; ignora bots |
 | GET | `/r/wa/{branch_id}` | público | Cuenta el clic y redirige a WhatsApp |
 | POST/PUT | `/me/business` | business_admin | Crear/editar mi negocio |
 | POST/PUT/DELETE | `/me/business/branches` | business_admin | Sedes (según límite del plan) |
 | POST/PUT | `/me/business/services` | business_admin | Servicios y horarios (según límite del plan) |
 | POST | `/me/business/images/presign` | business_admin | URL prefirmada de subida |
-| POST/PUT | `/me/business/benefits` | business_admin | Beneficios y cupo mensual |
+| GET/POST/PUT | `/me/business/benefits` | business_admin | Beneficios, con generados y canjeados del mes |
+| GET/PUT | `/me/business/coupon-quota` | business_admin | Cupo mensual del local: `{limit, generated_this_month, resets_on}`; PUT acepta un entero > 0 o `null` y rechaza uno menor a lo ya generado |
+| GET | `/me/business/overview` | business_admin | Panel de inicio: cupones activos, canjes de hoy, vistas de perfil y clics a WhatsApp de los últimos 7 días |
+| PUT | `/admin/benefits/{id}/paused` | super_admin | Pausar o reanudar un beneficio |
 | GET | `/me/business/activity` | business_admin | Actividad reciente |
 | GET | `/me/business/metrics` | business_admin | Métricas según plan |
 | POST | `/benefits/{id}/codes` | público (rate limit) | Generar cupón con nombre y WhatsApp |
@@ -374,6 +385,7 @@ Convenciones: errores en el sobre JSON único de §7.2 (`code`, `message`, `deta
 
 ### 7.1 Seguridad
 - Contraseñas con argon2id (o bcrypt con costo adecuado); rate limiting en login, generación y canje.
+- **IP del cliente para los límites por origen (login y generación de cupones):** la API usa el middleware `platform/clientip`. Por defecto la IP es la de la conexión y `X-Forwarded-For` se ignora, porque cualquier cliente puede escribirla. Con `TRUSTED_PROXIES` (lista de IPs o CIDR separados por coma, validada al arrancar; vacía = nadie) y solo si la conexión viene de uno de esos proxies, se lee `X-Forwarded-For` de derecha a izquierda y se toma la primera IP que no sea de un proxy de confianza; si la cadena no se puede seguir (entrada vacía o inválida) se queda en el último proxy de confianza, nunca en una IP elegida por el cliente. El servidor de Next reenvía la cadena que recibe sin reemplazarla. El canje no tiene límite por IP: exige sesión del dueño y es atómico.
 - JWT firmado con rotación de claves planificada; refresh tokens hasheados y rotativos.
 - Autorización por recurso (un admin solo toca **su** local): se verifica `owner_user_id`/`business_id` en cada comando.
 - Validación de uploads (tipo MIME real, tamaño máx.), URLs prefirmadas con expiración corta.
@@ -532,18 +544,23 @@ Convenciones de trabajo:
 ### Fase 4 — Beneficios y cupones (el lazo de valor)
 **Objetivo:** generar y canjear cupones de forma segura y atómica, sin cuenta de cliente.
 
-- [ ] 4.1 Migraciones `customers`, `benefits`, `benefit_codes` + índice único parcial (S)
-- [ ] 4.2 Dominio `benefits`: tipos (`percent` 10/15/20 o `welcome_gift`), TTL de 48 h, cupo mensual, estados (M)
-- [ ] 4.3 CRUD de beneficios y cupo mensual desde el panel del local (M)
-- [ ] 4.4 Comando `GenerateCode`: nombre y WhatsApp, un pendiente por cliente y local, cupo, reintento por colisión, token de acceso (M)
-- [ ] 4.5 Anti-abuso: límite por IP en memoria + normalización de contacto (S)
-- [ ] 4.6 Comando `RedeemCode` atómico + test de concurrencia (M)
-- [ ] 4.6b Query de vista previa `GET /me/business/codes/{code}` (solo lectura, `business_admin`): estado, beneficio, nombre del cliente y vencimiento solo si el cupón es de ese negocio (404 si no), sin teléfono y sin efectos secundarios. Tests: la vista previa no canjea, no filtra datos de otro negocio y no devuelve el teléfono; el canje sigue siendo atómico (el test de concurrencia de 4.6 se mantiene) (S)
-- [ ] 4.7 Query `GET /access/{token}` (S)
-- [ ] 4.8 Vencimiento de cupones al leer y marcado diario en bloque (S)
-- [ ] 4.9 `GET /me/business/activity` (cupones generados, canjes) (S)
-- [ ] 4.10 Frontend del dueño: Beneficios y cupo, Panel de inicio con actividad, Canjear cupón con escáner de QR dentro del panel (cámara con `getUserMedia`), ingreso manual siempre disponible y vista previa antes de "Confirmar canje" (L)
-- [ ] 4.11 Frontend del cliente: Obtener cupón, Cupón generado y Mis cupones, con el QR del cupón (solo el código) (L)
+- [x] 4.1 Migraciones `customers`, `benefits`, `benefit_codes` + índice único parcial (el cupo mensual pasa a `businesses` en 4.4b); `benefits` con tipos `percent` (1–100), `amount` y `custom` (título), `conditions` y `admin_paused` (ajuste en 4.1b) (S)
+- [x] 4.2 Dominio `benefits`: tipos (`percent` 1–100, `amount`, `custom`), textos libres sin URLs ni teléfonos, etiqueta corta, TTL de 48 h, estados; el cupo mensual es del local (M)
+- [x] 4.3 CRUD de beneficios desde el panel del local, y pausa de cualquier beneficio por el super admin (M)
+- [x] 4.1b Ajuste del tipo de beneficio: migración `00015` con down (reemplaza `welcome_gift` y 10/15/20 por lo de §5.2 sin perder datos; el down se niega si hay montos fijos o porcentajes fuera de 10/15/20), dominio con validación de textos sin URLs ni teléfonos, etiqueta corta, y `PUT /admin/benefits/{id}/paused` del super admin con `audit_log` (M)
+- [x] 4.4 Comando `GenerateCode`: nombre y WhatsApp, un pendiente por cliente y local, cupo del local (con la fila del negocio bloqueada, ver 4.4b), reintento por colisión, token de acceso (M)
+- [x] 4.4b Cupo mensual por local: columna `businesses.monthly_coupon_limit` (migración `00016` con down, sin migrar valores: el local arranca sin límite) y se saca `monthly_limit` de `benefits`; los generados del mes (calendario, hora de Argentina) se cuentan para todo el negocio en la misma transacción que el alta, con la fila del negocio bloqueada; `GET/PUT /me/business/coupon-quota`. Tests: con cupo 1 y dos generaciones simultáneas se genera exactamente una (M)
+- [x] 4.5 Anti-abuso: límite por IP en memoria + normalización de contacto (S)
+- [x] 4.6 Comando `RedeemCode` atómico + test de concurrencia (M)
+- [x] 4.6b Query de vista previa `GET /me/business/codes/{code}` (solo lectura, `business_admin`): estado, beneficio, nombre del cliente y vencimiento solo si el cupón es de ese negocio (404 si no), sin teléfono y sin efectos secundarios. Tests: la vista previa no canjea, no filtra datos de otro negocio y no devuelve el teléfono; el canje sigue siendo atómico (el test de concurrencia de 4.6 se mantiene) (S)
+- [x] 4.7 Query `GET /access/{token}`: devuelve solo el cupón de ese token (no los demás del mismo teléfono, que no está verificado), sin teléfono ni token en la respuesta (S)
+- [x] 4.8 Vencimiento de cupones al leer y marcado diario en bloque: la lectura y el canje ya muestran un cupón vencido como `expired`; `cmd/worker` lo marca en bloque una vez por día con lock consultivo (`make run-worker`) (S)
+- [x] 4.9 `GET /me/business/activity?since=`: últimos 20 eventos (cupón generado, cupón canjeado) del negocio de la sesión y cuántos son posteriores a `since`; sin teléfono. Las reseñas nuevas se suman en la fase de reseñas (S)
+- [x] 4.9b Estadísticas simples: por beneficio, generados y canjeados este mes en `GET /me/business/benefits`; `GET /me/business/overview` con cupones activos, canjes de hoy y la suma de 7 días de vistas de perfil y clics a WhatsApp desde `metric_daily`; la vista previa de un código suma cuántos cupones canjeó ese cliente en el negocio. El resto de las métricas sigue en la Fase 6 (S)
+- [x] 4.9c La ficha pública `GET /businesses/{slug}` suma `benefits` (activos y no pausados, sin datos de cupo) y las tarjetas de `/search/businesses` y `/home/featured` suman `benefit_label`, que Home y Mapa muestran como pill (S)
+- [x] 4.9d Pantalla "Datos del negocio" dentro de Mi local: nombre, categoría, descripción (500) y WhatsApp; cada cambio queda en `audit_log` (M)
+- [x] 4.10 Frontend del dueño: Beneficios y cupo (tarjeta de cupo del local, formulario Porcentaje/Monto fijo/Otro beneficio, hoja de cupo), Panel de inicio con actividad, Canjear cupón con vista previa, y después el escáner de QR dentro del panel (cámara con `getUserMedia`), con ingreso manual siempre disponible (L)
+- [x] 4.11 Frontend del cliente: beneficios en la ficha, Obtener cupón (nombre y WhatsApp, sin cuenta), Cupón generado y Mis cupones (los guardados en este dispositivo, cada uno con su enlace de acceso), con el QR del cupón (solo el código) (L)
 
 > **Dependencias nuevas de frontend (QR):** esta fase suma dos paquetes, un generador de QR (para "Cupón generado" y "Mis cupones") y un lector de QR (para el escáner de "Canjear"). Ninguno se instala sin aprobación explícita del responsable del proyecto y con versión exacta fijada en `frontend/package.json` (sin `^` ni `~`). Para escanear, el navegador exige HTTPS en producción (Fase 8, tarea 8.4); en desarrollo `localhost` alcanza.
 
@@ -623,11 +640,19 @@ Convenciones de trabajo:
 - [ ] 8.1 Checklist de seguridad (sección 7.1) y `govulncheck`/`npm audit` en CI (M)
 - [ ] 8.2 Observabilidad: métricas y trazas (M)
 - [ ] 8.3 Backups automáticos + prueba de restauración (M)
-- [ ] 8.4 Despliegue en VPS con `docker-compose.prod.yml`, HTTPS y proxy reverso; el escáner de QR del panel necesita HTTPS en producción porque el navegador solo da la cámara en contextos seguros (L)
+- [ ] 8.4 Despliegue en VPS con `docker-compose.prod.yml`, HTTPS y proxy reverso; el escáner de QR del panel necesita HTTPS en producción porque el navegador solo da la cámara en contextos seguros; detrás del proxy, la API toma la IP real del cliente con `TRUSTED_PROXIES` (ver 7.1), que en producción debe listar **todos** los saltos entre el cliente y la API: el proxy HTTPS (que debe agregar la IP que ve a `X-Forwarded-For`, no confiar en la que trae el cliente) y el servidor de Next, que no debe quedar expuesto sin ese proxy delante. Sin la variable los límites cuentan al último salto y ponen a todos los clientes en el mismo cupo. Verificar con dos clientes distintos que los contadores de login y de cupones son independientes (L)
 - [ ] 8.5 Términos y condiciones (incluyendo reglas de moderación de reseñas), política de privacidad, definición de facturación (S)
 - [ ] 8.6 Runbook: operación manual mensual de pagos (revisar Mercado Pago y registrar pagos), cómo confirmar un alta con los tres chequeos (el mail "nuevo suscriptor" de Mercado Pago tiene el mismo email que declaró el dueño; plan y monto correctos; perfil revisado), cómo restaurar un backup; y, para las actividades outdoor (categoría `trekking-outdoor`), confirmar que el guía esté habilitado y tenga seguro antes de activar el alta (S)
 
 **DoD:** sistema en producción, monitoreado y con piloto activo.
+
+---
+
+### Correcciones de frontend pendientes
+Problemas detectados probando a mano; se arreglan con test que los reproduzca y no pertenecen a una fase puntual.
+
+- [ ] F.1 Mapa de búsqueda (`/mapa`): al entrar a la ficha de un local y volver atrás, el mapa rompe con `Cannot read properties of undefined (reading 'appendChild')` en `<TileLayer>` de `components/explorar/SearchMap.tsx` (visto en Next.js 16.4.2 con Turbopack). Causa sin confirmar: reproducir primero (dev y build de producción), y comprobar si el `MapContainer` se vuelve a montar al restaurar la página. (M)
+- [ ] F.2 Home (`/`, `localhost:3000`): rediseñar la portada con una cara más cuidada. Necesita la imagen del diseño antes de implementarse; hasta entonces no se toca la vista actual. (M)
 
 ---
 
@@ -670,7 +695,7 @@ Convenciones de trabajo:
 |---|---|---|
 | 1 | Producto | Cupones de descuento y contacto por WhatsApp; la reserva se resuelve por WhatsApp, sin estados ni agenda en el MVP |
 | 2 | Cupones | Un cupón pendiente por cliente y local, válido 48 h; el dueño configura el cupo mensual (tope de cupones generados por local por mes) |
-| 3 | Beneficios | 10/15/20 % o regalo de bienvenida, elegido por el dueño; un local puede tener todos los que quiera; valen en todas las sedes |
+| 3 | Beneficios | Porcentaje (1–100 %), monto fijo u otro beneficio con título propio, definidos por el dueño; el super admin puede pausar cualquiera; un local puede tener todos los que quiera; valen en todas las sedes |
 | 4 | Cuenta del cliente | No existe; deja nombre y WhatsApp (obligatorios) al generar un cupón; sin verificación |
 | 5 | Planes | Starter $19.800 · Pro $29.800; cualquier negocio puede contratar cualquiera |
 | 6 | Sedes y servicios | Un dueño = un negocio con sedes: Starter 2, Pro 4; Starter hasta 3 servicios activos, Pro ilimitados; límites por variable de entorno |

@@ -30,6 +30,7 @@ test("unknown failures fall back to the shared wording without leaking the serve
 test("audit actions have readable names and unknown ones are shown as they are", () => {
   assert.equal(describeAuditAction("business.approve"), "Aprobado y publicado");
   assert.equal(describeAuditAction("business.verify"), "Marcado como verificado");
+  assert.equal(describeAuditAction("business.profile_update"), "Datos del negocio actualizados");
   assert.equal(describeAuditAction("business.something_new"), "business.something_new");
 });
 

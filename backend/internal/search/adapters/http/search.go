@@ -78,6 +78,9 @@ type branchJSON struct {
 	Featured     bool    `json:"featured"`
 	CategorySlug string  `json:"category_slug"`
 	CategoryName string  `json:"category_name"`
+	// BenefitLabel is the short label of the best benefit the business offers right now
+	// ("-15%", "-$2.000", "Beneficio"), null when it offers none.
+	BenefitLabel *string `json:"benefit_label"`
 }
 
 func (h *Handlers) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -127,7 +130,7 @@ func cards(branches []search.Branch) []branchJSON {
 			BranchName: b.BranchName, Address: b.Address, City: b.City, Reference: b.Reference,
 			Lat: b.Lat, Lng: b.Lng, DistanceM: int(math.Round(b.DistanceM)),
 			RatingAvg: b.RatingAvg, RatingCount: b.RatingCount, Verified: b.Verified, Featured: b.Featured,
-			CategorySlug: b.CategorySlug, CategoryName: b.CategoryName,
+			CategorySlug: b.CategorySlug, CategoryName: b.CategoryName, BenefitLabel: nilIfEmpty(b.BenefitLabel),
 		})
 	}
 	return items

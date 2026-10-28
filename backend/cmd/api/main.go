@@ -21,6 +21,7 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/identity/adapters/ratelimit"
 	"github.com/joaquinBrassinne/MOVO/internal/identity/adapters/tokens"
 	"github.com/joaquinBrassinne/MOVO/internal/identity/app/commands"
+	"github.com/joaquinBrassinne/MOVO/internal/platform/clientip"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/config"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/db"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
@@ -83,6 +84,16 @@ func run() error {
 		return err
 	}
 
+	coupons, err := config.LoadCoupons(os.Getenv)
+	if err != nil {
+		return err
+	}
+
+	proxies, err := config.LoadProxies(os.Getenv)
+	if err != nil {
+		return err
+	}
+
 	signer, err := tokens.NewSigner(auth.JWTSecret, auth.AccessTokenTTL, nil)
 	if err != nil {
 		return err
@@ -112,8 +123,10 @@ func run() error {
 		return err
 	}
 
-	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount, newSearchRoutes(log, pool, images))
-	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, router, pool.Close)
+	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount, newSearchRoutes(log, pool, images), newBenefitsRoutes(log, pool, signer, coupons.MaxAttempts))
+	// The client address feeds the login and coupon limits, so it is resolved before any route.
+	handler := clientip.Middleware(proxies.Trusted)(router)
+	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, handler, pool.Close)
 }
 
 // ensureBucket creates the development bucket when it is missing. It is bounded

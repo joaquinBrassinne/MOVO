@@ -65,6 +65,7 @@ type profileJSON struct {
 	Verified    bool                 `json:"verified"`
 	Branches    []profileBranchJSON  `json:"branches"`
 	Services    []profileServiceJSON `json:"services"`
+	Benefits    []profileBenefitJSON `json:"benefits"`
 	Images      []string             `json:"images"`
 }
 
@@ -88,6 +89,7 @@ func profileBody(v queries.ProfileView) profileJSON {
 		Category: categoryJSON{Slug: v.CategorySlug, Name: v.CategoryName},
 		Branches: make([]profileBranchJSON, 0, len(v.Branches)),
 		Services: make([]profileServiceJSON, 0, len(v.Services)),
+		Benefits: benefitsJSON(v.Benefits),
 		Images:   v.ImageURLs,
 	}
 	for _, b := range v.Branches {
@@ -143,4 +145,33 @@ func nilIfEmpty(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// profileBenefitJSON is a benefit offered right now. The fields of the other types are
+// null, and there is nothing about the business's monthly limit.
+type profileBenefitJSON struct {
+	ID         int64   `json:"id"`
+	Type       string  `json:"type"`
+	Percent    *int    `json:"percent"`
+	AmountARS  *int    `json:"amount_ars"`
+	Title      *string `json:"title"`
+	Conditions *string `json:"conditions"`
+	ShortLabel string  `json:"short_label"`
+}
+
+func benefitsJSON(in []search.ProfileBenefit) []profileBenefitJSON {
+	out := make([]profileBenefitJSON, 0, len(in))
+	for _, b := range in {
+		item := profileBenefitJSON{ID: b.ID, Type: b.Kind, ShortLabel: b.ShortLabel, Conditions: nilIfEmpty(b.Conditions)}
+		switch b.Kind {
+		case search.BenefitPercent:
+			item.Percent = &b.Percent
+		case search.BenefitAmount:
+			item.AmountARS = &b.AmountARS
+		default:
+			item.Title = nilIfEmpty(b.Title)
+		}
+		out = append(out, item)
+	}
+	return out
 }

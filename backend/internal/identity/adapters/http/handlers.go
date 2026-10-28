@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"math"
-	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/identity"
 	"github.com/joaquinBrassinne/MOVO/internal/identity/app/commands"
 	"github.com/joaquinBrassinne/MOVO/internal/identity/domain"
+	"github.com/joaquinBrassinne/MOVO/internal/platform/clientip"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
 )
 
@@ -120,7 +120,7 @@ func (h *Handlers) handleLogin(w http.ResponseWriter, r *http.Request) {
 	session, err := h.login.Handle(r.Context(), commands.LoginInput{
 		Email:    req.Email,
 		Password: req.Password,
-		ClientIP: clientIP(r),
+		ClientIP: clientip.From(r),
 	})
 	if err != nil {
 		h.fail(w, r, err)
@@ -192,17 +192,6 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 func invalid(w http.ResponseWriter, field, reason string) {
 	httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the "+field+" is not valid",
 		map[string]string{"field": field, "reason": reason})
-}
-
-// clientIP is the address of the TCP peer. Forwarding headers are not trusted
-// because any client can forge them; behind a reverse proxy this must be
-// replaced with a trusted-proxy aware source (see docs/work/phase-1-identity.md).
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
 
 func noStore(next http.Handler) http.Handler {

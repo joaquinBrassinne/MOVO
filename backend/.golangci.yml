@@ -67,6 +67,8 @@ linters:
               desc: app must depend on the ports, not on adapters
             - pkg: github.com/joaquinBrassinne/MOVO/internal/billing/adapters
               desc: app must depend on the ports, not on adapters
+            - pkg: github.com/joaquinBrassinne/MOVO/internal/benefits/adapters
+              desc: app must depend on the ports, not on adapters
             - pkg: github.com/aws
               desc: app must not depend on the object storage SDK
             - pkg: github.com/jackc/pgx

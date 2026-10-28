@@ -57,3 +57,30 @@ export async function requestPublic<T>(path: string): Promise<ApiResult<T>> {
     return { ok: false, status: 0, error: NETWORK_ERROR };
   }
 }
+
+/**
+ * Una petición JSON sin sesión, para lo que hace un cliente que no tiene cuenta (generar un
+ * cupón, ver el que guardó). El token del cupón, si lo hay, va en la ruta.
+ */
+export async function requestAnonymous<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<ApiResult<T>> {
+  try {
+    const response = await fetch(`/api/v1${path}`, {
+      method,
+      headers: body === undefined ? {} : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      cache: "no-store",
+      // Una ruta con un token no debe filtrarse a otro sitio en la cabecera Referer.
+      referrerPolicy: "no-referrer",
+    });
+
+    if (!response.ok)
+      return { ok: false, status: response.status, error: await readError(response) };
+    return { ok: true, data: (await response.json()) as T };
+  } catch {
+    return { ok: false, status: 0, error: NETWORK_ERROR };
+  }
+}

@@ -13,6 +13,7 @@ import {
 } from "@/lib/search/profile";
 
 import { Gallery } from "./Gallery";
+import { ProfileBenefits } from "./ProfileBenefits";
 import { ProfileViewBeacon } from "./ProfileViewBeacon";
 
 /** El botón de WhatsApp pasa por la API, que cuenta el clic y redirige a la conversación. */
@@ -106,6 +107,8 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
             <p className="mt-3 whitespace-pre-line text-movo-slate">{profile.description}</p>
           </section>
         ) : null}
+
+        <ProfileBenefits businessName={profile.name} benefits={profile.benefits} />
 
         {profile.services.length > 0 ? (
           <section aria-labelledby="services" className="mt-8">
