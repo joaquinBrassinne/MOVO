@@ -32,10 +32,11 @@ CREATE TABLE reviews (
     FOREIGN KEY (benefit_code_id, branch_id) REFERENCES benefit_codes (id, redeemed_branch_id)
 );
 
--- The public listing of a branch, newest first.
-CREATE INDEX reviews_branch_visible_idx ON reviews (branch_id, created_at DESC, id DESC) WHERE status = 'visible';
+-- The public listing of a branch, newest first. A reported review stays public: only the
+-- super admin hides one (SDD 5.5), so the owner cannot silence a bad review by reporting it.
+CREATE INDEX reviews_branch_public_idx ON reviews (branch_id, created_at DESC, id DESC) WHERE status <> 'hidden';
 -- The moderation queue.
-CREATE INDEX reviews_moderation_idx ON reviews (created_at DESC) WHERE status <> 'visible';
+CREATE INDEX reviews_moderation_idx ON reviews (created_at DESC) WHERE status = 'reported';
 
 -- +goose Down
 DROP TABLE reviews;
