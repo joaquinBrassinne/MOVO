@@ -107,11 +107,16 @@ func TestReviewShapeIsBounded(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT status, show_name FROM reviews WHERE benefit_code_id = $1`, coupon).Scan(&status, &showName); err != nil || status != "visible" || !showName {
 		t.Errorf("defaults = %q, show_name %v, %v; want visible and true", status, showName, err)
 	}
+	// hidden_at is set exactly while the review is hidden (00019).
 	for _, ok := range []string{"reported", "hidden", "visible"} {
-		if _, err := pool.Exec(ctx, `UPDATE reviews SET status = $2 WHERE benefit_code_id = $1`, coupon, ok); err != nil {
+		if _, err := pool.Exec(ctx, `UPDATE reviews SET status = $2::text, hidden_at = CASE WHEN $2::text = 'hidden' THEN now() END WHERE benefit_code_id = $1`, coupon, ok); err != nil {
 			t.Errorf("status %q must be allowed: %v", ok, err)
 		}
 	}
+	_, err = pool.Exec(ctx, `UPDATE reviews SET status = 'hidden' WHERE benefit_code_id = $1`, coupon)
+	requireSQLState(t, err, checkViolation)
+	_, err = pool.Exec(ctx, `UPDATE reviews SET purged_at = now() WHERE benefit_code_id = $1`, coupon)
+	requireSQLState(t, err, checkViolation)
 	_, err = pool.Exec(ctx, `UPDATE reviews SET status = 'deleted' WHERE benefit_code_id = $1`, coupon)
 	requireSQLState(t, err, checkViolation)
 }

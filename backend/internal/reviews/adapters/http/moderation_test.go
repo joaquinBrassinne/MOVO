@@ -190,6 +190,7 @@ func TestAdminStatusIsRefusedWithAStableCode(t *testing.T) {
 		{"no status", &moderator{}, "/admin/reviews/9/status", `{}`, http.StatusUnprocessableEntity, "validation_failed"},
 		{"unknown field", &moderator{}, "/admin/reviews/9/status", `{"status":"hidden","by":1}`, http.StatusBadRequest, "invalid_request"},
 		{"review that does not exist", &moderator{err: reviews.ErrReviewNotFound}, "/admin/reviews/9/status", `{"status":"hidden"}`, http.StatusNotFound, "review_not_found"},
+		{"restoring a purged review", &moderator{err: reviews.ErrReviewPurged}, "/admin/reviews/9/status", `{"status":"visible"}`, http.StatusConflict, "review_purged"},
 		{"id is not a number", &moderator{}, "/admin/reviews/abc/status", `{"status":"hidden"}`, http.StatusNotFound, "review_not_found"},
 	}
 	for _, tt := range tests {

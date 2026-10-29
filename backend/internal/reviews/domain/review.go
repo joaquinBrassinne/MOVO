@@ -15,6 +15,10 @@ const ReviewWindow = 30 * 24 * time.Hour
 // AnonymousName is shown when the customer chose not to show their name.
 const AnonymousName = "Cliente de MOVO"
 
+// HiddenRetention is how long a hidden review keeps its text before it is purged, so the
+// super admin can still restore one hidden by mistake (SDD 5.5).
+const HiddenRetention = 72 * time.Hour
+
 const maxCommentLen = 500
 
 // Errors a review is refused with.

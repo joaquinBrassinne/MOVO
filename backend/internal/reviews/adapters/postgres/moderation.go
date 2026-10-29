@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -67,6 +68,21 @@ RETURNING branch_id, status`, reviewID, businessID).Scan(&branchID, &status)
 	return reviews.ModeratedReview{ID: reviewID, Status: domain.StatusReported}, nil
 }
 
+// PurgeHidden erases the comment and the name of the reviews hidden at or before
+// hiddenBefore. The row, its rating and its coupon stay: the unique coupon is what stops
+// the customer from reviewing again. The rating of the branch is not recounted, because a
+// hidden review never counted. The hide itself is already in audit_log, and a sweep has
+// no actor to record. The condition keeps it idempotent.
+func (r *Reviews) PurgeHidden(ctx context.Context, hiddenBefore time.Time) (int64, error) {
+	tag, err := r.pool.Exec(ctx, `
+UPDATE reviews SET comment = NULL, display_name = $2, show_name = false, purged_at = now()
+WHERE status = 'hidden' AND purged_at IS NULL AND hidden_at <= $1`, hiddenBefore, domain.AnonymousName)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: purge hidden reviews: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // SetStatus hides a review or makes it visible again, recounts the rating of its branch
 // and records it, in one transaction. The branch row is locked first, in the same order
 // Create locks it, so two changes to the reviews of a branch never recount without each
@@ -93,14 +109,20 @@ func (r *Reviews) SetStatus(ctx context.Context, actorID, reviewID int64, status
 		return reviews.ModeratedReview{}, fmt.Errorf("postgres: lock branch: %w", err)
 	}
 	var current string
-	if err := tx.QueryRow(ctx, `SELECT status FROM reviews WHERE id = $1 FOR UPDATE`, reviewID).Scan(&current); err != nil {
+	var purged bool
+	if err := tx.QueryRow(ctx, `SELECT status, purged_at IS NOT NULL FROM reviews WHERE id = $1 FOR UPDATE`, reviewID).Scan(&current, &purged); err != nil {
 		return reviews.ModeratedReview{}, fmt.Errorf("postgres: lock review: %w", err)
 	}
 	if current == string(status) {
 		return reviews.ModeratedReview{ID: reviewID, Status: status}, nil
 	}
+	if purged {
+		return reviews.ModeratedReview{}, reviews.ErrReviewPurged
+	}
 
-	if _, err := tx.Exec(ctx, `UPDATE reviews SET status = $2, updated_at = now() WHERE id = $1`, reviewID, string(status)); err != nil {
+	if _, err := tx.Exec(ctx, `
+UPDATE reviews SET status = $2::text, hidden_at = CASE WHEN $2::text = 'hidden' THEN now() END, updated_at = now()
+WHERE id = $1`, reviewID, string(status)); err != nil {
 		return reviews.ModeratedReview{}, fmt.Errorf("postgres: set review status: %w", err)
 	}
 	if _, err := tx.Exec(ctx, refreshRating, branchID); err != nil {

@@ -24,6 +24,7 @@ const (
 	CodeCouponNotFound     = "coupon_not_found"
 	CodeBranchNotFound     = "branch_not_found"
 	CodeReviewNotFound     = "review_not_found"
+	CodeReviewPurged       = "review_purged"
 	CodeBusinessNotFound   = "business_not_found"
 	CodeBusinessDeleted    = "business_deleted"
 	CodeCouponNotRedeemed  = "coupon_not_redeemed"
@@ -247,6 +248,9 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	case errors.Is(err, reviews.ErrReviewNotFound):
 		httpx.WriteError(w, http.StatusNotFound, CodeReviewNotFound, "review not found", nil)
+		return
+	case errors.Is(err, reviews.ErrReviewPurged):
+		httpx.WriteError(w, http.StatusConflict, CodeReviewPurged, "the review was hidden for too long and its text was erased", nil)
 		return
 	case errors.Is(err, reviews.ErrBusinessNotFound):
 		httpx.WriteError(w, http.StatusNotFound, CodeBusinessNotFound, "you have not created a business yet", nil)

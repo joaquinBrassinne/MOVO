@@ -19,6 +19,8 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/platform/config"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/db"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/logger"
+	reviewspostgres "github.com/joaquinBrassinne/MOVO/internal/reviews/adapters/postgres"
+	reviewscommands "github.com/joaquinBrassinne/MOVO/internal/reviews/app/commands"
 )
 
 // dailyEvery is how often the daily tasks run. They also run once at start-up, which is
@@ -26,7 +28,10 @@ import (
 const dailyEvery = 24 * time.Hour
 
 // Advisory lock keys, one per task. Never reuse or renumber one.
-const lockExpireCoupons int64 = 4001
+const (
+	lockExpireCoupons      int64 = 4001
+	lockPurgeHiddenReviews int64 = 4002
+)
 
 func main() {
 	if err := run(); err != nil {
@@ -52,13 +57,23 @@ func run() error {
 	defer pool.Close()
 
 	expire := commands.NewExpireCoupons(benefitspostgres.NewCoupons(pool), nil)
-	tasks := []task{{name: "expire-coupons", lock: lockExpireCoupons, run: func(ctx context.Context) error {
-		n, err := expire.Handle(ctx)
-		if err == nil {
-			log.Info("expired overdue coupons", slog.Int64("count", n))
-		}
-		return err
-	}}}
+	purge := reviewscommands.NewPurgeHiddenReviews(reviewspostgres.NewReviews(pool), nil)
+	tasks := []task{
+		{name: "expire-coupons", lock: lockExpireCoupons, run: func(ctx context.Context) error {
+			n, err := expire.Handle(ctx)
+			if err == nil {
+				log.Info("expired overdue coupons", slog.Int64("count", n))
+			}
+			return err
+		}},
+		{name: "purge-hidden-reviews", lock: lockPurgeHiddenReviews, run: func(ctx context.Context) error {
+			n, err := purge.Handle(ctx)
+			if err == nil {
+				log.Info("purged hidden reviews", slog.Int64("count", n))
+			}
+			return err
+		}},
+	}
 
 	log.Info("worker started", slog.Duration("every", dailyEvery))
 	runDaily(ctx, log, pool, tasks)

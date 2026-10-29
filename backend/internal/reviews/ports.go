@@ -29,6 +29,9 @@ var (
 	ErrBusinessNotFound = errors.New("reviews: business not found")
 	// ErrBusinessNotEditable means the business was deleted, so its owner can no longer act.
 	ErrBusinessNotEditable = errors.New("reviews: business can no longer change")
+	// ErrReviewPurged means the review was hidden long enough for its text to be erased,
+	// so it cannot be made visible again.
+	ErrReviewPurged = errors.New("reviews: the review was purged and cannot be restored")
 )
 
 // OwnerBusinesses answers which business an owner may act on. It is the consumer-side
@@ -55,6 +58,15 @@ type ReviewModerator interface {
 	// dismissed, and recounts the rating of its branch in the same transaction. Repeating
 	// the current state changes nothing and records nothing.
 	SetStatus(ctx context.Context, actorID, reviewID int64, status domain.Status) (ModeratedReview, error)
+}
+
+// HiddenReviewPurger erases the text of reviews that stayed hidden long enough.
+type HiddenReviewPurger interface {
+	// PurgeHidden erases the comment and the name of every hidden review hidden at or
+	// before hiddenBefore and returns how many it erased. The row, its rating and its
+	// coupon stay, so the coupon cannot be reviewed again. Running it twice erases nothing
+	// the second time.
+	PurgeHidden(ctx context.Context, hiddenBefore time.Time) (int64, error)
 }
 
 // ListedReview is a review as the public reads it. ID only builds the cursor of the next
