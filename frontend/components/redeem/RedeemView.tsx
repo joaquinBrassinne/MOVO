@@ -49,6 +49,16 @@ export function RedeemView() {
     void redeem.lookup(scannedCode);
   }
 
+  // Con una sola sede activa es esa; con varias, la última que eligió el dueño.
+  const scanBranch = needsBranch
+    ? branches.find((item) => String(item.id) === branch)
+    : branches[0];
+
+  function manual() {
+    setScanning(false);
+    requestAnimationFrame(() => document.getElementById("coupon-code")?.focus());
+  }
+
   function again() {
     setCode("");
     redeem.reset();
@@ -91,7 +101,12 @@ export function RedeemView() {
       </div>
 
       {scanning ? (
-        <QrScanner onCode={scanned} onClose={() => setScanning(false)} />
+        <QrScanner
+          onCode={scanned}
+          onClose={() => setScanning(false)}
+          onManual={manual}
+          branchName={scanBranch?.name}
+        />
       ) : (
         <button
           type="button"
