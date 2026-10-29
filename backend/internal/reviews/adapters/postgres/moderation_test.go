@@ -162,7 +162,7 @@ func TestHidingAReviewRecountsTheRatingAndRestoringBringsItBack(t *testing.T) {
 	if avg, count := rating(ctx, t, pool, s.branch); avg != "5.00" || count != 1 {
 		t.Errorf("after hiding the 2: %s (%d), want 5.00 (1)", avg, count)
 	}
-	list, err := repo.ListPublic(ctx, s.branch, nil, 10)
+	list, err := repo.ListPublic(ctx, s.branch, domain.StarFilter{}, nil, 10)
 	if err != nil || len(list) != 1 {
 		t.Errorf("public list after hiding = %v, %v; want one review", ids(list), err)
 	}

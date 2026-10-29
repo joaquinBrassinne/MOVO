@@ -106,12 +106,35 @@ type ListedReview struct {
 	CreatedAt   time.Time
 }
 
+// RatingSummary is how a branch's reviews add up: how many there are and how many gave
+// each number of stars. Stars[0] counts the 1-star reviews and Stars[4] the 5-star ones.
+type RatingSummary struct {
+	Count int
+	Stars [5]int
+}
+
+// Average is the mean rating, 0 when there are no reviews.
+func (s RatingSummary) Average() float64 {
+	if s.Count == 0 {
+		return 0
+	}
+	sum := 0
+	for i, n := range s.Stars {
+		sum += (i + 1) * n
+	}
+	return float64(sum) / float64(s.Count)
+}
+
 // ReviewReader reads the reviews the public sees.
 type ReviewReader interface {
-	// ListPublic returns up to limit reviews of the branch, newest first, starting after
-	// the cursor when there is one. A reported review is listed: only the super admin
-	// hides one. It returns ErrBranchNotFound when the branch is not publicly visible.
-	ListPublic(ctx context.Context, branchID int64, after *domain.Cursor, limit int) ([]ListedReview, error)
+	// ListPublic returns up to limit reviews of the branch that pass the star filter,
+	// newest first, starting after the cursor when there is one. A reported review is
+	// listed: only the super admin hides one. It returns ErrBranchNotFound when the branch
+	// is not publicly visible.
+	ListPublic(ctx context.Context, branchID int64, stars domain.StarFilter, after *domain.Cursor, limit int) ([]ListedReview, error)
+	// Summary counts the public reviews of the branch by stars, with the same visibility
+	// as ListPublic.
+	Summary(ctx context.Context, branchID int64) (RatingSummary, error)
 }
 
 // RedemptionReader finds the coupon an access token opens.

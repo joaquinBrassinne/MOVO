@@ -68,17 +68,53 @@ func (r *Reviews) unredeemed(ctx context.Context, tokenHash []byte) (domain.Rede
 	return domain.Redemption{}, nil
 }
 
+// requireVisible answers ErrBranchNotFound for a branch the public cannot see, the same
+// for one that does not exist.
+func (r *Reviews) requireVisible(ctx context.Context, branchID int64) error {
+	var visible bool
+	if err := r.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM visible_branches WHERE branch_id = $1)`, branchID).Scan(&visible); err != nil {
+		return fmt.Errorf("postgres: branch visibility: %w", err)
+	}
+	if !visible {
+		return reviews.ErrBranchNotFound
+	}
+	return nil
+}
+
+// Summary counts the reviews the public sees by stars, with the visibility and the rule
+// of ListPublic: a reported review counts and a hidden one does not.
+func (r *Reviews) Summary(ctx context.Context, branchID int64) (reviews.RatingSummary, error) {
+	if err := r.requireVisible(ctx, branchID); err != nil {
+		return reviews.RatingSummary{}, err
+	}
+	rows, err := r.pool.Query(ctx, `SELECT rating, count(*) FROM reviews WHERE branch_id = $1 AND status <> 'hidden' GROUP BY rating`, branchID)
+	if err != nil {
+		return reviews.RatingSummary{}, fmt.Errorf("postgres: rating summary: %w", err)
+	}
+	defer rows.Close()
+
+	var out reviews.RatingSummary
+	for rows.Next() {
+		var stars, n int
+		if err := rows.Scan(&stars, &n); err != nil {
+			return reviews.RatingSummary{}, fmt.Errorf("postgres: scan rating summary: %w", err)
+		}
+		out.Stars[stars-1] = n
+		out.Count += n
+	}
+	if err := rows.Err(); err != nil {
+		return reviews.RatingSummary{}, fmt.Errorf("postgres: rating summary: %w", err)
+	}
+	return out, nil
+}
+
 // ListPublic reads the reviews of a branch the public can see, newest first. A reported
 // review is listed and a hidden one is not. The order is (created_at, id), which is also
 // the order of the index, so the cursor of a page is the position after its last review.
 // It selects no customer column.
-func (r *Reviews) ListPublic(ctx context.Context, branchID int64, after *domain.Cursor, limit int) ([]reviews.ListedReview, error) {
-	var visible bool
-	if err := r.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM visible_branches WHERE branch_id = $1)`, branchID).Scan(&visible); err != nil {
-		return nil, fmt.Errorf("postgres: branch visibility: %w", err)
-	}
-	if !visible {
-		return nil, reviews.ErrBranchNotFound
+func (r *Reviews) ListPublic(ctx context.Context, branchID int64, stars domain.StarFilter, after *domain.Cursor, limit int) ([]reviews.ListedReview, error) {
+	if err := r.requireVisible(ctx, branchID); err != nil {
+		return nil, err
 	}
 
 	var (
@@ -93,8 +129,9 @@ SELECT id, rating, comment, display_name, created_at
 FROM reviews
 WHERE branch_id = $1 AND status <> 'hidden'
   AND ($2::timestamptz IS NULL OR (created_at, id) < ($2, $3::bigint))
+  AND ($5::int = 0 OR rating >= $5::int) AND ($6::int = 0 OR rating <= $6::int)
 ORDER BY created_at DESC, id DESC
-LIMIT $4`, branchID, afterAt, afterID, limit)
+LIMIT $4`, branchID, afterAt, afterID, limit, stars.Min, stars.Max)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: list reviews: %w", err)
 	}

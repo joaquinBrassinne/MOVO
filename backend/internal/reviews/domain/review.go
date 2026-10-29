@@ -31,6 +31,28 @@ var (
 	ErrStatusInvalid = errors.New("reviews: the status must be hidden or visible")
 )
 
+// ErrStarFilterInvalid means a star filter is outside 1 to 5 or asks for no review at all.
+var ErrStarFilterInvalid = errors.New("reviews: the star filter must be from 1 to 5")
+
+// StarFilter narrows a listing by stars: Min is "this many or more" and Max is "this many
+// or fewer". A zero bound is no bound, so the zero value lists everything.
+type StarFilter struct {
+	Min, Max int
+}
+
+// Validate refuses a bound outside 1 to 5 and a range no review can be in.
+func (f StarFilter) Validate() error {
+	for _, bound := range []int{f.Min, f.Max} {
+		if bound < 0 || bound > 5 {
+			return ErrStarFilterInvalid
+		}
+	}
+	if f.Min != 0 && f.Max != 0 && f.Min > f.Max {
+		return ErrStarFilterInvalid
+	}
+	return nil
+}
+
 // Status is where a review is in moderation.
 type Status string
 

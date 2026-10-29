@@ -11,6 +11,21 @@ import (
 
 var redeemedAt = time.Date(2028, 3, 1, 10, 0, 0, 0, time.UTC)
 
+func TestStarFilterRefusesWhatNoReviewCanMatch(t *testing.T) {
+	t.Parallel()
+
+	for _, ok := range []domain.StarFilter{{}, {Min: 4}, {Max: 2}, {Min: 5, Max: 5}, {Min: 2, Max: 3}} {
+		if err := ok.Validate(); err != nil {
+			t.Errorf("%+v = %v, want it valid", ok, err)
+		}
+	}
+	for _, bad := range []domain.StarFilter{{Min: 6}, {Max: 6}, {Min: -1}, {Min: 5, Max: 3}} {
+		if err := bad.Validate(); !errors.Is(err, domain.ErrStarFilterInvalid) {
+			t.Errorf("%+v = %v, want ErrStarFilterInvalid", bad, err)
+		}
+	}
+}
+
 func redemption() domain.Redemption {
 	return domain.Redemption{CouponID: 7, BranchID: 3, BusinessID: 2, CustomerID: 9, CustomerName: "Ana García", RedeemedAt: redeemedAt}
 }

@@ -47,6 +47,7 @@ func newReviewsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.Token
 		Verifier:  verifier,
 		Create:    commands.NewCreateReview(repo, repo, nil),
 		List:      queries.NewListReviews(repo),
+		Summary:   queries.NewGetRatingSummary(repo),
 		Report:    commands.NewReportReview(owners, repo),
 		SetStatus: commands.NewSetReviewStatus(repo),
 		ListOwn:   queries.NewListOwnReviews(owners, repo),

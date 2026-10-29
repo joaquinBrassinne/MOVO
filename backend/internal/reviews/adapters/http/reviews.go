@@ -5,6 +5,7 @@ package reviewshttp
 import (
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -53,6 +54,8 @@ type Deps struct {
 	// SetStatus serves the super admin's hiding of a review; without it the route is not
 	// mounted.
 	SetStatus *commands.SetReviewStatus
+	// Summary serves the stars breakdown of a branch; without it the route is not mounted.
+	Summary *queries.GetRatingSummary
 	// ListOwn serves the owner's reviews with their ids; without it the route is not mounted.
 	ListOwn *queries.ListOwnReviews
 	// ListQueue serves the super admin's moderation queue; without it the route is not
@@ -83,6 +86,9 @@ func (h *Handlers) Mount(r chi.Router) {
 	}
 	if h.List != nil {
 		r.Get("/branches/{id}/reviews", h.handleList)
+	}
+	if h.Summary != nil {
+		r.Get("/branches/{id}/reviews/summary", h.handleSummary)
 	}
 	// The business comes from the session, never from the URL or the body.
 	if h.Report != nil {
@@ -259,6 +265,53 @@ type listJSON struct {
 	NextCursor *string      `json:"next_cursor"`
 }
 
+// starFilter reads rating (exactly that many stars) and min_rating (that many or more). A
+// value that is not a number is as invalid as one outside 1 to 5.
+func starFilter(r *http.Request) (domain.StarFilter, error) {
+	var f domain.StarFilter
+	for name, into := range map[string]func(int){
+		"rating":     func(n int) { f.Min, f.Max = max(f.Min, n), n },
+		"min_rating": func(n int) { f.Min = max(f.Min, n) },
+	} {
+		raw := r.URL.Query().Get(name)
+		if raw == "" {
+			continue
+		}
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			return f, domain.ErrStarFilterInvalid
+		}
+		into(n)
+	}
+	return f, f.Validate()
+}
+
+type summaryJSON struct {
+	Count        int            `json:"count"`
+	Average      float64        `json:"average"`
+	Distribution map[string]int `json:"distribution"`
+}
+
+// handleSummary serves the header of the reviews page: the average and how many reviews
+// gave each number of stars. Every number of stars is there, with 0 when nobody gave it.
+func (h *Handlers) handleSummary(w http.ResponseWriter, r *http.Request) {
+	branchID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || branchID <= 0 {
+		h.fail(w, r, reviews.ErrBranchNotFound)
+		return
+	}
+	got, err := h.Summary.Handle(r.Context(), branchID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	out := summaryJSON{Count: got.Count, Average: math.Round(got.Average()*10) / 10, Distribution: make(map[string]int, 5)}
+	for i, n := range got.Stars {
+		out.Distribution[strconv.Itoa(i+1)] = n
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
 func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 	branchID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil || branchID <= 0 {
@@ -273,6 +326,11 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.Limit = limit
+	}
+	// rating=5 is "5 stars" and min_rating=4 is "4 stars or more", the tabs of the list.
+	if in.Stars, err = starFilter(r); err != nil {
+		h.fail(w, r, err)
+		return
 	}
 
 	page, err := h.List.Handle(r.Context(), in)
@@ -364,6 +422,10 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, queries.ErrQueueStatusInvalid):
 		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the status is not valid",
 			map[string]string{"field": "status", "reason": "invalid"})
+		return
+	case errors.Is(err, domain.ErrStarFilterInvalid):
+		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the star filter is not valid",
+			map[string]string{"field": "rating", "reason": "out_of_range"})
 		return
 	case errors.Is(err, domain.ErrCursorInvalid):
 		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the cursor is not valid",
