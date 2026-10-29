@@ -23,9 +23,24 @@ var created = time.Date(2028, 3, 2, 10, 0, 0, 0, time.UTC)
 func addReview(ctx context.Context, t *testing.T, pool *pgxpool.Pool, s seed, n int, status string, at time.Time) int64 {
 	t.Helper()
 
+	customer, coupon := addRedeemedCoupon(ctx, t, pool, s, n)
+	var review int64
+	if err := pool.QueryRow(ctx, `
+INSERT INTO reviews (branch_id, business_id, benefit_code_id, customer_id, rating, comment, display_name, status, created_at)
+VALUES ($1, $2, $3, $4, 4, $5, $6, $7, $8) RETURNING id`,
+		s.branch, s.business, coupon, customer, fmt.Sprintf("Comment %d", n), fmt.Sprintf("Cliente %d", n), status, at).Scan(&review); err != nil {
+		t.Fatalf("insert review: %v", err)
+	}
+	return review
+}
+
+// addRedeemedCoupon inserts a new customer and a coupon of theirs redeemed at the branch,
+// without a review, returning both ids. n makes the code and the phone distinct.
+func addRedeemedCoupon(ctx context.Context, t *testing.T, pool *pgxpool.Pool, s seed, n int) (customer, coupon int64) {
+	t.Helper()
+
 	const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ" // the alphabet of the coupon codes
 	code := "AAAAAA" + string(letters[n/len(letters)]) + string(letters[n%len(letters)])
-	var customer, coupon, review int64
 	if err := pool.QueryRow(ctx, `INSERT INTO customers (name, phone) VALUES ($1, $2) RETURNING id`,
 		fmt.Sprintf("Cliente %d", n), fmt.Sprintf("54911%08d", n)).Scan(&customer); err != nil {
 		t.Fatalf("insert customer: %v", err)
@@ -36,13 +51,7 @@ VALUES ($1, $2, $3, $4, sha256(convert_to($1::text, 'UTF8')), 'redeemed', now() 
 		code, s.benefit, s.business, customer, s.owner, s.branch).Scan(&coupon); err != nil {
 		t.Fatalf("insert coupon: %v", err)
 	}
-	if err := pool.QueryRow(ctx, `
-INSERT INTO reviews (branch_id, business_id, benefit_code_id, customer_id, rating, comment, display_name, status, created_at)
-VALUES ($1, $2, $3, $4, 4, $5, $6, $7, $8) RETURNING id`,
-		s.branch, s.business, coupon, customer, fmt.Sprintf("Comment %d", n), fmt.Sprintf("Cliente %d", n), status, at).Scan(&review); err != nil {
-		t.Fatalf("insert review: %v", err)
-	}
-	return review
+	return customer, coupon
 }
 
 func ids(list []reviews.ListedReview) []int64 {
