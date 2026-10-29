@@ -15,13 +15,13 @@ Los hallazgos son AUD-0xx de la auditoría técnica de esa rama.
 
 - AUD-008 (parte) argon2 corre de a 4 a la vez (`maxConcurrentHashes`); el resto de las llamadas hace cola en vez de reservar 19 MiB cada una.
 - AUD-010 Borrar un servicio es una baja lógica (`deleted_at`, migración 00021): sale del panel, del perfil público y del conteo del plan, pero conserva sus métricas. La FK de `metric_daily` pasó a `RESTRICT`.
+- AUD-009 El worker corre `purge-objects` (lock 4003, hasta 200 claves por vuelta) y reintenta los borrados que fallaron. Cada tarea tiene un tope de 10 minutos para no retener su lock.
 
 ## Pendiente
 
 - AUD-001 La IP del cliente depende de cómo se despliegue Next. Se cierra en la tarea 8.4 (Next debe agregar la IP de quien se le conecta, y la API no debe arrancar en producción con `TRUSTED_PROXIES` vacío).
 - AUD-005 El downgrade no se aplica al quitar el piloto: entra con la tarea 5.7.
 - AUD-008 (resto) El intento de login se cuenta recién al fallar: ráfagas en paralelo pasan el límite antes de que se registre el primer fallo.
-- AUD-009 y AUD-023 Falta la tarea `purge-objects` del worker.
 - AUD-018 en beneficios: `SetBenefitActive` sigue guardando todo el beneficio.
 - AUD-017 El nombre del cliente se sobrescribe al generar un cupón en otro local.
 - CSP con `script-src` (necesita nonces).
