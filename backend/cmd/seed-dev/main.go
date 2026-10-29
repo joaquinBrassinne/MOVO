@@ -29,6 +29,9 @@ var seedSQL string
 //go:embed seed_coupons.sql
 var seedCouponsSQL string
 
+//go:embed seed_reviews.sql
+var seedReviewsSQL string
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -54,7 +57,7 @@ func run(ctx context.Context, databaseURL string) error {
 	}
 	defer func() { _ = conn.Close(ctx) }()
 
-	for _, script := range []string{seedSQL, seedCouponsSQL} {
+	for _, script := range []string{seedSQL, seedCouponsSQL, seedReviewsSQL} {
 		if _, err := conn.Exec(ctx, script); err != nil {
 			return fmt.Errorf("seed: %w", err)
 		}
