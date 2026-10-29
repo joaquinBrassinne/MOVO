@@ -123,7 +123,7 @@ func run() error {
 		return err
 	}
 
-	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount, newSearchRoutes(log, pool, images), newBenefitsRoutes(log, pool, signer, coupons.MaxAttempts), newReviewsRoutes(log, pool))
+	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount, newSearchRoutes(log, pool, images), newBenefitsRoutes(log, pool, signer, coupons.MaxAttempts), newReviewsRoutes(log, pool, signer))
 	// The client address feeds the login and coupon limits, so it is resolved before any route.
 	handler := clientip.Middleware(proxies.Trusted)(router)
 	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, handler, pool.Close)

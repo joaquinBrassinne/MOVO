@@ -22,6 +22,9 @@ var (
 	ErrNotRedeemed   = errors.New("reviews: the coupon was not redeemed")
 	ErrWindowClosed  = errors.New("reviews: the 30 days to review this coupon are over")
 	ErrRatingInvalid = errors.New("reviews: the rating must be from 1 to 5")
+	// ErrStatusInvalid means the super admin asked for a state only hiding or restoring
+	// can reach: a review is reported by its business, never set by the admin.
+	ErrStatusInvalid = errors.New("reviews: the status must be hidden or visible")
 )
 
 // Status is where a review is in moderation.

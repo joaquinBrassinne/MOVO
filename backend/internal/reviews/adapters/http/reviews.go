@@ -23,19 +23,35 @@ const (
 	CodeValidationFailed   = "validation_failed"
 	CodeCouponNotFound     = "coupon_not_found"
 	CodeBranchNotFound     = "branch_not_found"
+	CodeReviewNotFound     = "review_not_found"
+	CodeBusinessNotFound   = "business_not_found"
+	CodeBusinessDeleted    = "business_deleted"
 	CodeCouponNotRedeemed  = "coupon_not_redeemed"
 	CodeReviewWindowClosed = "review_window_closed"
 	CodeAlreadyReviewed    = "already_reviewed"
 )
 
-// Deps are the use cases the handlers need.
+// roleOwner and roleSuperAdmin are the plain strings stored in the token, so this
+// package needs no knowledge of the identity module.
+const (
+	roleOwner      = "business_admin"
+	roleSuperAdmin = "super_admin"
+)
+
+// Deps are the use cases and the token verifier the handlers need.
 type Deps struct {
-	Log *slog.Logger
+	Log      *slog.Logger
+	Verifier httpx.TokenVerifier
 
 	// Create serves the customer's review; without it the route is not mounted.
 	Create *commands.CreateReview
 	// List serves the public reviews of a branch; without it the route is not mounted.
 	List *queries.ListReviews
+	// Report serves the owner's report of a review; without it the route is not mounted.
+	Report *commands.ReportReview
+	// SetStatus serves the super admin's hiding of a review; without it the route is not
+	// mounted.
+	SetStatus *commands.SetReviewStatus
 }
 
 // Handlers serves the review endpoints.
@@ -62,6 +78,74 @@ func (h *Handlers) Mount(r chi.Router) {
 	if h.List != nil {
 		r.Get("/branches/{id}/reviews", h.handleList)
 	}
+	// The business comes from the session, never from the URL or the body.
+	if h.Report != nil {
+		owner := r.With(httpx.Authenticate(h.Verifier), httpx.RequireRole(roleOwner), noStore)
+		owner.Post("/me/business/reviews/{id}/report", h.handleReport)
+	}
+	// Only a super_admin token gets past this group; an owner has no way to reach it.
+	if h.SetStatus != nil {
+		admin := r.With(httpx.Authenticate(h.Verifier), httpx.RequireRole(roleSuperAdmin), noStore)
+		admin.Put("/admin/reviews/{id}/status", h.handleSetStatus)
+	}
+}
+
+// moderatedJSON is the moderation state of a review after a change.
+type moderatedJSON struct {
+	ID     int64         `json:"id"`
+	Status domain.Status `json:"status"`
+}
+
+type statusRequest struct {
+	Status domain.Status `json:"status"`
+}
+
+func (h *Handlers) handleReport(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.reviewID(w, r)
+	if !ok {
+		return
+	}
+	got, err := h.Report.Handle(r.Context(), callerID(r), id)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, moderatedJSON{ID: got.ID, Status: got.Status})
+}
+
+// handleSetStatus is the super admin's hiding of any review. The actor comes from the token.
+func (h *Handlers) handleSetStatus(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.reviewID(w, r)
+	if !ok {
+		return
+	}
+	var req statusRequest
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	got, err := h.SetStatus.Handle(r.Context(), callerID(r), id, req.Status)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, moderatedJSON{ID: got.ID, Status: got.Status})
+}
+
+// reviewID reads {id}; a malformed one answers like a review that does not exist.
+func (h *Handlers) reviewID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		h.fail(w, r, reviews.ErrReviewNotFound)
+		return 0, false
+	}
+	return id, true
+}
+
+// callerID is the authenticated caller. RequireRole already guaranteed it exists; the id
+// always comes from the token, never from the body or the URL.
+func callerID(r *http.Request) int64 {
+	principal, _ := httpx.PrincipalFrom(r.Context())
+	return principal.UserID
 }
 
 // listedJSON is a review as the public reads it: no id, no customer, no coupon.
@@ -160,6 +244,19 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, reviews.ErrCouponNotFound):
 		httpx.WriteError(w, http.StatusNotFound, CodeCouponNotFound, "coupon not found", nil)
+		return
+	case errors.Is(err, reviews.ErrReviewNotFound):
+		httpx.WriteError(w, http.StatusNotFound, CodeReviewNotFound, "review not found", nil)
+		return
+	case errors.Is(err, reviews.ErrBusinessNotFound):
+		httpx.WriteError(w, http.StatusNotFound, CodeBusinessNotFound, "you have not created a business yet", nil)
+		return
+	case errors.Is(err, reviews.ErrBusinessNotEditable):
+		httpx.WriteError(w, http.StatusConflict, CodeBusinessDeleted, "this business was deleted and can no longer change", nil)
+		return
+	case errors.Is(err, domain.ErrStatusInvalid):
+		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the status is not valid",
+			map[string]string{"field": "status", "reason": "invalid"})
 		return
 	case errors.Is(err, reviews.ErrBranchNotFound):
 		httpx.WriteError(w, http.StatusNotFound, CodeBranchNotFound, "branch not found", nil)

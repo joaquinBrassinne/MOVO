@@ -22,7 +22,40 @@ var (
 	// ErrBranchNotFound covers a branch that does not exist and one the public cannot
 	// see, so a listing never reveals which is which.
 	ErrBranchNotFound = errors.New("reviews: branch not found")
+	// ErrReviewNotFound covers a review that does not exist and, for an owner, one that
+	// belongs to another business, so a report never reveals which is which.
+	ErrReviewNotFound = errors.New("reviews: review not found")
+	// ErrBusinessNotFound means the owner has not created a business yet.
+	ErrBusinessNotFound = errors.New("reviews: business not found")
+	// ErrBusinessNotEditable means the business was deleted, so its owner can no longer act.
+	ErrBusinessNotEditable = errors.New("reviews: business can no longer change")
 )
+
+// OwnerBusinesses answers which business an owner may act on. It is the consumer-side
+// view of the business module, joined in cmd/api so reviews never reads it.
+type OwnerBusinesses interface {
+	// EditableBusinessOf returns the business of the owner, ErrBusinessNotFound when
+	// there is none and ErrBusinessNotEditable when it was deleted.
+	EditableBusinessOf(ctx context.Context, ownerID int64) (int64, error)
+}
+
+// ModeratedReview is the moderation state of a review after a change.
+type ModeratedReview struct {
+	ID     int64
+	Status domain.Status
+}
+
+// ReviewModerator changes the moderation state of reviews, and records who did it.
+type ReviewModerator interface {
+	// Report marks a review of the business as reported. Only a visible review changes
+	// state; repeating the report, or reporting a hidden one, changes nothing and records
+	// nothing. A review of another business answers ErrReviewNotFound.
+	Report(ctx context.Context, actorID, businessID, reviewID int64) (ModeratedReview, error)
+	// SetStatus hides a review or makes it visible again, which is also how a report is
+	// dismissed, and recounts the rating of its branch in the same transaction. Repeating
+	// the current state changes nothing and records nothing.
+	SetStatus(ctx context.Context, actorID, reviewID int64, status domain.Status) (ModeratedReview, error)
+}
 
 // ListedReview is a review as the public reads it. ID only builds the cursor of the next
 // page and never leaves the application layer. There is no customer: the name to show
