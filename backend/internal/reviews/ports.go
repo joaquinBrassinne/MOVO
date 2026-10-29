@@ -6,6 +6,7 @@ package reviews
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/joaquinBrassinne/MOVO/internal/reviews/domain"
 )
@@ -18,7 +19,29 @@ var (
 	ErrCouponNotFound = errors.New("reviews: coupon not found")
 	// ErrAlreadyReviewed means that coupon already has its review.
 	ErrAlreadyReviewed = errors.New("reviews: the coupon was already reviewed")
+	// ErrBranchNotFound covers a branch that does not exist and one the public cannot
+	// see, so a listing never reveals which is which.
+	ErrBranchNotFound = errors.New("reviews: branch not found")
 )
+
+// ListedReview is a review as the public reads it. ID only builds the cursor of the next
+// page and never leaves the application layer. There is no customer: the name to show
+// was fixed when the review was written.
+type ListedReview struct {
+	ID          int64
+	Rating      int
+	Comment     string // empty when none
+	DisplayName string
+	CreatedAt   time.Time
+}
+
+// ReviewReader reads the reviews the public sees.
+type ReviewReader interface {
+	// ListPublic returns up to limit reviews of the branch, newest first, starting after
+	// the cursor when there is one. A reported review is listed: only the super admin
+	// hides one. It returns ErrBranchNotFound when the branch is not publicly visible.
+	ListPublic(ctx context.Context, branchID int64, after *domain.Cursor, limit int) ([]ListedReview, error)
+}
 
 // RedemptionReader finds the coupon an access token opens.
 type RedemptionReader interface {

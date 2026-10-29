@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -13,6 +14,7 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
 	"github.com/joaquinBrassinne/MOVO/internal/reviews"
 	"github.com/joaquinBrassinne/MOVO/internal/reviews/app/commands"
+	"github.com/joaquinBrassinne/MOVO/internal/reviews/app/queries"
 	"github.com/joaquinBrassinne/MOVO/internal/reviews/domain"
 )
 
@@ -20,6 +22,7 @@ import (
 const (
 	CodeValidationFailed   = "validation_failed"
 	CodeCouponNotFound     = "coupon_not_found"
+	CodeBranchNotFound     = "branch_not_found"
 	CodeCouponNotRedeemed  = "coupon_not_redeemed"
 	CodeReviewWindowClosed = "review_window_closed"
 	CodeAlreadyReviewed    = "already_reviewed"
@@ -31,6 +34,8 @@ type Deps struct {
 
 	// Create serves the customer's review; without it the route is not mounted.
 	Create *commands.CreateReview
+	// List serves the public reviews of a branch; without it the route is not mounted.
+	List *queries.ListReviews
 }
 
 // Handlers serves the review endpoints.
@@ -48,12 +53,60 @@ func New(deps Deps) *Handlers {
 	return &Handlers{Deps: deps, log: log}
 }
 
-// Mount registers the routes. They are public: the customer has no account, and the
-// access token in the path is the credential, so no answer may be cached.
+// Mount registers the routes. They are public: the customer has no account. Writing a
+// review is authorized by the access token in the path, so that answer is never cached.
 func (h *Handlers) Mount(r chi.Router) {
 	if h.Create != nil {
 		r.With(noStore).Post("/access/{token}/reviews", h.handleCreate)
 	}
+	if h.List != nil {
+		r.Get("/branches/{id}/reviews", h.handleList)
+	}
+}
+
+// listedJSON is a review as the public reads it: no id, no customer, no coupon.
+type listedJSON struct {
+	Rating      int       `json:"rating"`
+	Comment     string    `json:"comment,omitempty"`
+	DisplayName string    `json:"display_name"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// listJSON is a page. NextCursor is null on the last page.
+type listJSON struct {
+	Reviews    []listedJSON `json:"reviews"`
+	NextCursor *string      `json:"next_cursor"`
+}
+
+func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
+	branchID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || branchID <= 0 {
+		h.fail(w, r, reviews.ErrBranchNotFound)
+		return
+	}
+	in := queries.ListReviewsInput{BranchID: branchID, Cursor: r.URL.Query().Get("cursor")}
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil {
+			h.fail(w, r, queries.ErrLimitInvalid)
+			return
+		}
+		in.Limit = limit
+	}
+
+	page, err := h.List.Handle(r.Context(), in)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	out := listJSON{Reviews: make([]listedJSON, len(page.Reviews))}
+	for i, review := range page.Reviews {
+		out.Reviews[i] = listedJSON{Rating: review.Rating, Comment: review.Comment, DisplayName: review.DisplayName, CreatedAt: review.CreatedAt.UTC()}
+	}
+	if page.NextCursor != "" {
+		out.NextCursor = &page.NextCursor
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 // createRequest is the form: a rating, an optional comment and whether to show the name.
@@ -107,6 +160,17 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, reviews.ErrCouponNotFound):
 		httpx.WriteError(w, http.StatusNotFound, CodeCouponNotFound, "coupon not found", nil)
+		return
+	case errors.Is(err, reviews.ErrBranchNotFound):
+		httpx.WriteError(w, http.StatusNotFound, CodeBranchNotFound, "branch not found", nil)
+		return
+	case errors.Is(err, domain.ErrCursorInvalid):
+		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the cursor is not valid",
+			map[string]string{"field": "cursor", "reason": "invalid"})
+		return
+	case errors.Is(err, queries.ErrLimitInvalid):
+		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the limit is not valid",
+			map[string]string{"field": "limit", "reason": "invalid"})
 		return
 	case errors.Is(err, domain.ErrNotRedeemed):
 		httpx.WriteError(w, http.StatusConflict, CodeCouponNotRedeemed, "the coupon has to be redeemed before reviewing", nil)
