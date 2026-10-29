@@ -53,6 +53,11 @@ type Deps struct {
 	// SetStatus serves the super admin's hiding of a review; without it the route is not
 	// mounted.
 	SetStatus *commands.SetReviewStatus
+	// ListOwn serves the owner's reviews with their ids; without it the route is not mounted.
+	ListOwn *queries.ListOwnReviews
+	// ListQueue serves the super admin's moderation queue; without it the route is not
+	// mounted.
+	ListQueue *queries.ListReviewsToModerate
 }
 
 // Handlers serves the review endpoints.
@@ -84,11 +89,102 @@ func (h *Handlers) Mount(r chi.Router) {
 		owner := r.With(httpx.Authenticate(h.Verifier), httpx.RequireRole(roleOwner), noStore)
 		owner.Post("/me/business/reviews/{id}/report", h.handleReport)
 	}
+	if h.ListOwn != nil {
+		owner := r.With(httpx.Authenticate(h.Verifier), httpx.RequireRole(roleOwner), noStore)
+		owner.Get("/me/business/reviews", h.handleListOwn)
+	}
 	// Only a super_admin token gets past this group; an owner has no way to reach it.
+	admin := r.With(httpx.Authenticate(h.Verifier), httpx.RequireRole(roleSuperAdmin), noStore)
 	if h.SetStatus != nil {
-		admin := r.With(httpx.Authenticate(h.Verifier), httpx.RequireRole(roleSuperAdmin), noStore)
 		admin.Put("/admin/reviews/{id}/status", h.handleSetStatus)
 	}
+	if h.ListQueue != nil {
+		admin.Get("/admin/reviews", h.handleListQueue)
+	}
+}
+
+// moderationJSON is a review as its owner or the super admin reads it: unlike the public
+// one it has the id reporting and hiding need, and its state. It still has no customer
+// nor coupon.
+type moderationJSON struct {
+	ID           int64         `json:"id"`
+	BranchID     int64         `json:"branch_id"`
+	BranchName   string        `json:"branch_name"`
+	BusinessID   int64         `json:"business_id"`
+	BusinessName string        `json:"business_name"`
+	Rating       int           `json:"rating"`
+	Comment      string        `json:"comment,omitempty"`
+	DisplayName  string        `json:"display_name"`
+	Status       domain.Status `json:"status"`
+	CreatedAt    time.Time     `json:"created_at"`
+}
+
+type moderationListJSON struct {
+	Reviews    []moderationJSON `json:"reviews"`
+	NextCursor *string          `json:"next_cursor"`
+}
+
+func moderationInput(r *http.Request) (queries.ModerationInput, error) {
+	in := queries.ModerationInput{Cursor: r.URL.Query().Get("cursor")}
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil {
+			return in, queries.ErrLimitInvalid
+		}
+		in.Limit = limit
+	}
+	return in, nil
+}
+
+func writeModeration(w http.ResponseWriter, page queries.ModerationPage) {
+	out := moderationListJSON{Reviews: make([]moderationJSON, len(page.Reviews))}
+	for i, review := range page.Reviews {
+		out.Reviews[i] = moderationJSON{
+			ID: review.ID, BranchID: review.BranchID, BranchName: review.BranchName,
+			BusinessID: review.BusinessID, BusinessName: review.BusinessName,
+			Rating: review.Rating, Comment: review.Comment, DisplayName: review.DisplayName,
+			Status: review.Status, CreatedAt: review.CreatedAt.UTC(),
+		}
+	}
+	if page.NextCursor != "" {
+		out.NextCursor = &page.NextCursor
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+// handleListOwn lists the reviews of the owner's business. The business comes from the session.
+func (h *Handlers) handleListOwn(w http.ResponseWriter, r *http.Request) {
+	in, err := moderationInput(r)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	page, err := h.ListOwn.Handle(r.Context(), callerID(r), in)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	writeModeration(w, page)
+}
+
+// handleListQueue lists the reviews to moderate; the queue is reported unless the admin
+// asks for hidden.
+func (h *Handlers) handleListQueue(w http.ResponseWriter, r *http.Request) {
+	in, err := moderationInput(r)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	status := domain.Status(r.URL.Query().Get("status"))
+	if status == "" {
+		status = domain.StatusReported
+	}
+	page, err := h.ListQueue.Handle(r.Context(), status, in)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	writeModeration(w, page)
 }
 
 // moderatedJSON is the moderation state of a review after a change.
@@ -264,6 +360,10 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	case errors.Is(err, reviews.ErrBranchNotFound):
 		httpx.WriteError(w, http.StatusNotFound, CodeBranchNotFound, "branch not found", nil)
+		return
+	case errors.Is(err, queries.ErrQueueStatusInvalid):
+		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the status is not valid",
+			map[string]string{"field": "status", "reason": "invalid"})
 		return
 	case errors.Is(err, domain.ErrCursorInvalid):
 		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the cursor is not valid",

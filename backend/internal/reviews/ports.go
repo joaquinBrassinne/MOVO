@@ -60,6 +60,32 @@ type ReviewModerator interface {
 	SetStatus(ctx context.Context, actorID, reviewID int64, status domain.Status) (ModeratedReview, error)
 }
 
+// ModerationReview is a review as the people who moderate it read it: it carries the id
+// that reporting and hiding need, and where it was left.
+type ModerationReview struct {
+	ID           int64
+	BranchID     int64
+	BranchName   string
+	BusinessID   int64
+	BusinessName string
+	Rating       int
+	Comment      string // empty when none
+	DisplayName  string
+	Status       domain.Status
+	CreatedAt    time.Time
+}
+
+// ModerationReader lists reviews for the owner who may report them and the super admin
+// who hides them. Both are newest first and paged by the same cursor as the public list.
+type ModerationReader interface {
+	// ListOfBusiness returns the reviews of the business that are visible or reported;
+	// a hidden one is not the owner's to act on any more.
+	ListOfBusiness(ctx context.Context, businessID int64, after *domain.Cursor, limit int) ([]ModerationReview, error)
+	// ListByStatus returns the reviews in that status. A purged review has no text left
+	// and is not listed.
+	ListByStatus(ctx context.Context, status domain.Status, after *domain.Cursor, limit int) ([]ModerationReview, error)
+}
+
 // HiddenReviewPurger erases the text of reviews that stayed hidden long enough.
 type HiddenReviewPurger interface {
 	// PurgeHidden erases the comment and the name of every hidden review hidden at or

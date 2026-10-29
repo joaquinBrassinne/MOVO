@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/reviews"
 	reviewshttp "github.com/joaquinBrassinne/MOVO/internal/reviews/adapters/http"
 	"github.com/joaquinBrassinne/MOVO/internal/reviews/app/commands"
+	"github.com/joaquinBrassinne/MOVO/internal/reviews/app/queries"
 	"github.com/joaquinBrassinne/MOVO/internal/reviews/domain"
 )
 
@@ -75,6 +77,147 @@ func call(t *testing.T, o owners, m *moderator, method, path, token, body string
 	var out map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
 	return rec.Code, rec.Header(), out
+}
+
+// lister answers both moderation lists with one review and records what it was asked.
+type lister struct {
+	err        error
+	gotBiz     int64
+	gotStatus  domain.Status
+	gotLimit   int
+	listRan    bool
+	pageOfOne  reviews.ModerationReview
+	pageOfMore int
+}
+
+func (l *lister) ListOfBusiness(_ context.Context, businessID int64, _ *domain.Cursor, limit int) ([]reviews.ModerationReview, error) {
+	l.listRan, l.gotBiz, l.gotLimit = true, businessID, limit
+	return l.page(limit), l.err
+}
+
+func (l *lister) ListByStatus(_ context.Context, status domain.Status, _ *domain.Cursor, limit int) ([]reviews.ModerationReview, error) {
+	l.listRan, l.gotStatus, l.gotLimit = true, status, limit
+	return l.page(limit), l.err
+}
+
+// page returns pageOfMore reviews, or one when it is not set.
+func (l *lister) page(limit int) []reviews.ModerationReview {
+	n := max(l.pageOfMore, 1)
+	n = min(n, limit)
+	out := make([]reviews.ModerationReview, n)
+	for i := range out {
+		out[i] = l.pageOfOne
+		out[i].ID = int64(100 - i)
+	}
+	return out
+}
+
+func listCall(t *testing.T, o owners, l *lister, path, token string) (int, http.Header, map[string]any) {
+	t.Helper()
+
+	router := chi.NewRouter()
+	reviewshttp.New(reviewshttp.Deps{
+		Verifier:  verifier{},
+		ListOwn:   queries.NewListOwnReviews(o, l),
+		ListQueue: queries.NewListReviewsToModerate(l),
+	}).Mount(router)
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var out map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec.Code, rec.Header(), out
+}
+
+func TestOwnerListsTheReviewsOfTheirBusinessWithTheIdToReport(t *testing.T) {
+	t.Parallel()
+
+	l := &lister{pageOfOne: reviews.ModerationReview{
+		BranchID: 3, BranchName: "Centro", BusinessID: 42, BusinessName: "Studio", Rating: 4,
+		Comment: "Muy bueno", DisplayName: "Ana G.", Status: domain.StatusReported,
+	}}
+	status, header, body := listCall(t, owners{}, l, "/me/business/reviews", "owner")
+	if status != http.StatusOK || header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("answer = %d (Cache-Control %q), want 200 and no-store", status, header.Get("Cache-Control"))
+	}
+	if l.gotBiz != 42 || l.gotLimit != queries.DefaultLimit+1 {
+		t.Errorf("reader got business %d and limit %d, want 42 (the owner's) and %d", l.gotBiz, l.gotLimit, queries.DefaultLimit+1)
+	}
+	list, _ := body["reviews"].([]any)
+	first, _ := list[0].(map[string]any)
+	if len(list) != 1 || first["id"] != float64(100) || first["status"] != "reported" || first["branch_name"] != "Centro" || first["comment"] != "Muy bueno" {
+		t.Errorf("body = %v, want the review with its id, state, branch and text", body)
+	}
+	if _, leaked := first["customer_id"]; leaked || body["next_cursor"] != nil {
+		t.Errorf("body = %v, want no customer and a null next_cursor on the last page", body)
+	}
+}
+
+func TestTheAdminQueueIsReportedUnlessAskedForHidden(t *testing.T) {
+	t.Parallel()
+
+	for path, want := range map[string]domain.Status{
+		"/admin/reviews":                 domain.StatusReported,
+		"/admin/reviews?status=reported": domain.StatusReported,
+		"/admin/reviews?status=hidden":   domain.StatusHidden,
+	} {
+		l := &lister{}
+		if status, _, _ := listCall(t, owners{}, l, path, "admin"); status != http.StatusOK || l.gotStatus != want {
+			t.Errorf("%s: %d, queue %q; want 200 and %q", path, status, l.gotStatus, want)
+		}
+	}
+}
+
+func TestAListWithMoreThanOnePageGivesTheCursorOfTheNext(t *testing.T) {
+	t.Parallel()
+
+	l := &lister{pageOfMore: 100, pageOfOne: reviews.ModerationReview{CreatedAt: time.Date(2028, 3, 2, 10, 0, 0, 0, time.UTC)}}
+	_, _, body := listCall(t, owners{}, l, "/admin/reviews?limit=2", "admin")
+	list, _ := body["reviews"].([]any)
+	if len(list) != 2 || body["next_cursor"] == nil {
+		t.Errorf("body = %v, want 2 reviews and the cursor of the next page", body)
+	}
+}
+
+func TestModerationListsAreRefusedWithAStableCode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name, path, token string
+		owners            owners
+		want              int
+		code              string
+	}{
+		{"owner list without a token", "/me/business/reviews", "", owners{}, http.StatusUnauthorized, ""},
+		{"the admin cannot list as an owner", "/me/business/reviews", "admin", owners{}, http.StatusForbidden, ""},
+		{"an owner cannot read the queue", "/admin/reviews", "owner", owners{}, http.StatusForbidden, ""},
+		{"queue without a token", "/admin/reviews", "", owners{}, http.StatusUnauthorized, ""},
+		{"owner without a business", "/me/business/reviews", "owner", owners{err: reviews.ErrBusinessNotFound}, http.StatusNotFound, "business_not_found"},
+		{"a queue that does not exist", "/admin/reviews?status=visible", "admin", owners{}, http.StatusUnprocessableEntity, "validation_failed"},
+		{"page size above the maximum", "/admin/reviews?limit=51", "admin", owners{}, http.StatusUnprocessableEntity, "validation_failed"},
+		{"page size that is not a number", "/me/business/reviews?limit=x", "owner", owners{}, http.StatusUnprocessableEntity, "validation_failed"},
+		{"a cursor that is not ours", "/admin/reviews?cursor=junk", "admin", owners{}, http.StatusUnprocessableEntity, "validation_failed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			l := &lister{}
+			status, _, body := listCall(t, tt.owners, l, tt.path, tt.token)
+			if status != tt.want || (tt.code != "" && codeOf(body) != tt.code) {
+				t.Errorf("answer = %d %v, want %d %s", status, body, tt.want, tt.code)
+			}
+			if tt.want == http.StatusUnauthorized || tt.want == http.StatusForbidden {
+				if l.listRan {
+					t.Error("the reader ran for a caller that must not reach it")
+				}
+			}
+		})
+	}
 }
 
 func codeOf(body map[string]any) string {

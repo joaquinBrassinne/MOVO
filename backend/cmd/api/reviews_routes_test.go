@@ -81,9 +81,34 @@ VALUES ('ABCDEFGH', $1, $2, $3, $4, 'redeemed', now() + interval '48 hours', now
 		}
 	}
 
+	// The owner finds the review, with the id the report needs, in their own list.
+	ids := func(token, path string) []any {
+		status, body := h.do(http.MethodGet, path, token, nil)
+		if status != http.StatusOK {
+			t.Fatalf("GET %s = %d %v, want 200", path, status, body)
+		}
+		var found []any
+		for _, r := range body["reviews"].([]any) {
+			found = append(found, r.(map[string]any)["id"])
+		}
+		return found
+	}
+	if got := ids(ownerToken, "/me/business/reviews"); len(got) != 1 || got[0] != float64(reviewID) {
+		t.Errorf("owner list = %v, want the review %d", got, reviewID)
+	}
+	if status, _ := h.do(http.MethodGet, "/admin/reviews", ownerToken, nil); status != http.StatusForbidden {
+		t.Errorf("an owner reading the queue = %d, want 403", status)
+	}
+	if got := ids(adminToken, "/admin/reviews"); len(got) != 0 {
+		t.Errorf("queue before the report = %v, want it empty", got)
+	}
+
 	// The owner reports it: it stays public and still counts.
 	if status, body := h.do(http.MethodPost, reportPath, ownerToken, nil); status != http.StatusOK || body["status"] != "reported" {
 		t.Fatalf("report = %d %v, want 200 reported", status, body)
+	}
+	if got := ids(adminToken, "/admin/reviews"); len(got) != 1 || got[0] != float64(reviewID) {
+		t.Errorf("queue after the report = %v, want the review %d", got, reviewID)
 	}
 	if status, body := h.do(http.MethodGet, listPath, "", nil); status != http.StatusOK || len(body["reviews"].([]any)) != 1 {
 		t.Errorf("list after the report = %d %v, want it still public", status, body)
@@ -95,6 +120,15 @@ VALUES ('ABCDEFGH', $1, $2, $3, $4, 'redeemed', now() + interval '48 hours', now
 	}
 	if status, body := h.do(http.MethodGet, listPath, "", nil); status != http.StatusOK || len(body["reviews"].([]any)) != 0 {
 		t.Errorf("list after hiding = %d %v, want it empty", status, body)
+	}
+	if got := ids(adminToken, "/admin/reviews"); len(got) != 0 {
+		t.Errorf("reported queue after hiding = %v, want it empty", got)
+	}
+	if got := ids(adminToken, "/admin/reviews?status=hidden"); len(got) != 1 || got[0] != float64(reviewID) {
+		t.Errorf("hidden queue = %v, want the review %d, which can still be restored", got, reviewID)
+	}
+	if got := ids(ownerToken, "/me/business/reviews"); len(got) != 0 {
+		t.Errorf("owner list after hiding = %v, want it empty: a hidden review is not theirs to act on", got)
 	}
 	var count int
 	must(h.pool.QueryRow(ctx, `SELECT rating_count FROM branches WHERE id = $1`, branch).Scan(&count))
