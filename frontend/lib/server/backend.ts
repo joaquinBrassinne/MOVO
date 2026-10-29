@@ -81,6 +81,11 @@ const PROXIED = [
   // acceso, cuyo token tiene 43 caracteres. Son los únicos puntos de cupones sin sesión.
   /^benefits\/\d+\/codes$/,
   /^access\/[A-Za-z0-9_-]{43}$/,
+  // Las reseñas: el cliente abre su formulario (GET) y la publica (POST) con el mismo token,
+  // y cualquiera lee las de una sede y su resumen por estrellas. Moderar y reportar van por
+  // me/ y admin/, que ya pasan con sesión.
+  /^access\/[A-Za-z0-9_-]{43}\/reviews?$/,
+  /^branches\/\d+\/reviews(\/summary)?$/,
 ];
 
 /**
