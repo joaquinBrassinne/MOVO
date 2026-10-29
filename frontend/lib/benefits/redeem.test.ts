@@ -2,7 +2,52 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { displayCode, normalizeCode } from "./code.ts";
-import { describeReturning, PROBLEM, problemOf, problemOfStatus } from "./redeem.ts";
+import {
+  describeReturning,
+  olderRedemptions,
+  PROBLEM,
+  problemOf,
+  problemOfStatus,
+} from "./redeem.ts";
+import { COUPON_STATUS } from "./types.ts";
+
+test("the list says how many earlier redemptions it leaves out", () => {
+  const past = (n: number) => Array.from({ length: n });
+  // A pending coupon: the count is all earlier redemptions, the list shows the newest ten.
+  assert.equal(
+    olderRedemptions({
+      status: COUPON_STATUS.PENDING,
+      customer_redeemed_count: 12,
+      previous_redemptions: past(10),
+    }),
+    2,
+  );
+  assert.equal(
+    olderRedemptions({
+      status: COUPON_STATUS.PENDING,
+      customer_redeemed_count: 3,
+      previous_redemptions: past(3),
+    }),
+    0,
+  );
+  // An already redeemed coupon counts itself, but it is not in its own list.
+  assert.equal(
+    olderRedemptions({
+      status: COUPON_STATUS.REDEEMED,
+      customer_redeemed_count: 1,
+      previous_redemptions: past(0),
+    }),
+    0,
+  );
+  assert.equal(
+    olderRedemptions({
+      status: COUPON_STATUS.REDEEMED,
+      customer_redeemed_count: 12,
+      previous_redemptions: past(10),
+    }),
+    1,
+  );
+});
 
 test("a code is read like the backend reads it", () => {
   assert.equal(normalizeCode("abcd-efgh"), "ABCDEFGH");
