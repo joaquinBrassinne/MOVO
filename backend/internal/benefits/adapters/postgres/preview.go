@@ -22,7 +22,7 @@ func (r *Coupons) Preview(ctx context.Context, businessID int64, code string) (b
 	err := r.pool.QueryRow(ctx, `
 SELECT c.id, c.code, c.status, c.expires_at, c.redeemed_at, cu.name,
        (SELECT count(*) FROM benefit_codes r WHERE r.customer_id = c.customer_id AND r.business_id = c.business_id AND r.status = 'redeemed'),
-       `+benefitColumns("b")+`
+       `+couponBenefitColumns("c", "b")+`
 FROM benefit_codes c
 JOIN customers cu ON cu.id = c.customer_id
 JOIN benefits b ON b.id = c.benefit_id

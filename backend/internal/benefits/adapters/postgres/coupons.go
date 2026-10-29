@@ -105,11 +105,15 @@ WHERE customer_id = $1 AND business_id = $2 AND status = 'pending' AND expires_a
 		BenefitID: benefit.ID, BusinessID: benefit.BusinessID, CustomerID: customerID,
 		Code: req.Code, Status: domain.StatusPending, ExpiresAt: req.ExpiresAt,
 	}
+	// The terms are copied into the coupon: the benefit may be edited afterwards, and the
+	// coupon must keep offering what the customer was shown.
 	err = tx.QueryRow(ctx, `
-INSERT INTO benefit_codes (code, benefit_id, business_id, customer_id, access_token_hash, expires_at, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO benefit_codes (code, benefit_id, business_id, customer_id, access_token_hash, expires_at, created_at,
+                           `+couponTermsColumns+`)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, 0), NULLIF($10, 0), NULLIF($11, ''), NULLIF($12, ''))
 RETURNING id`,
 		coupon.Code, coupon.BenefitID, coupon.BusinessID, coupon.CustomerID, req.TokenHash, coupon.ExpiresAt, req.Now,
+		benefit.Type, benefit.Percent, benefit.AmountARS, benefit.Title, benefit.Conditions,
 	).Scan(&coupon.ID)
 	if err != nil {
 		return benefits.Issued{}, mapInsertError(err)

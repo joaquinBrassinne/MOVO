@@ -14,14 +14,14 @@ import (
 func (r *Coupons) RecentActivity(ctx context.Context, businessID int64, since *time.Time, limit int) (benefits.Activity, error) {
 	rows, err := r.pool.Query(ctx, `
 WITH events AS (
-    SELECT 'coupon_generated' AS kind, c.created_at AS at, c.customer_id, c.benefit_id
+    SELECT 'coupon_generated' AS kind, c.created_at AS at, c.customer_id, c.benefit_id, `+couponTermsColumns+`
     FROM benefit_codes c WHERE c.business_id = $1
     UNION ALL
-    SELECT 'coupon_redeemed', c.redeemed_at, c.customer_id, c.benefit_id
+    SELECT 'coupon_redeemed', c.redeemed_at, c.customer_id, c.benefit_id, `+couponTermsColumns+`
     FROM benefit_codes c WHERE c.business_id = $1 AND c.status = 'redeemed'
 )
 SELECT e.kind, e.at, cu.name,
-       `+benefitColumns("b")+`,
+       `+couponBenefitColumns("e", "b")+`,
        count(*) FILTER (WHERE e.at > $2) OVER ()
 FROM events e
 JOIN customers cu ON cu.id = e.customer_id
