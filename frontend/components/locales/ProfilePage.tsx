@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Icon, VerifiedIcon } from "@/components/explorar/icons";
 import { Logo } from "@/components/Logo";
+import { StarRating } from "@/components/reviews/StarRating";
 import { ArrowLeftIcon } from "@/components/socios/icons";
 import { formatPrice } from "@/lib/business/price";
 import { describeSchedule } from "@/lib/business/schedule";
@@ -63,6 +64,14 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
             </span>
           ) : null}
         </h1>
+
+        <StarRating
+          average={main.rating_avg}
+          count={main.rating_count}
+          showCount
+          starClassName="size-5"
+          className="mt-2"
+        />
 
         <OpenStatus branch={main} today={today} />
 
