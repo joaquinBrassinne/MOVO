@@ -141,17 +141,25 @@ func TestServicesScheduleIsReplacedAtomically(t *testing.T) {
 	}
 }
 
-func TestServicesDeleteRemovesTheScheduleAndIsScopedByBusiness(t *testing.T) {
+// Deleting a service is a soft delete: it disappears for the owner and the public, but
+// the counters that point at it stay, and it stops counting against the plan.
+func TestServicesDeleteHidesTheServiceButKeepsItsMetrics(t *testing.T) {
 	t.Parallel()
 
-	pool, _, mine, theirs := setupBranches(t)
+	pool, branches, mine, theirs := setupBranches(t)
 	repo := postgres.NewServices(pool)
-	service, err := repo.Create(t.Context(), newService(t, mine, 0, "Yoga"))
+	branch, err := branches.Create(t.Context(), newBranch(t, mine, "Centro"))
+	if err != nil {
+		t.Fatalf("create branch: %v", err)
+	}
+	service, err := repo.Create(t.Context(), newService(t, mine, branch.ID, "Yoga"))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := repo.ReplaceSchedule(t.Context(), mine, service.ID, []domain.Slot{{Weekday: 1, Start: 540, End: 600}}); err != nil {
-		t.Fatalf("ReplaceSchedule: %v", err)
+	if _, err := pool.Exec(t.Context(),
+		`INSERT INTO metric_daily (business_id, branch_id, service_id, date, metric, count) VALUES ($1, $2, $3, '2026-03-01', 'service_view', 7)`,
+		mine, branch.ID, service.ID); err != nil {
+		t.Fatalf("insert counter: %v", err)
 	}
 
 	if err := repo.Delete(t.Context(), theirs, service.ID); !errors.Is(err, business.ErrServiceNotFound) {
@@ -163,9 +171,29 @@ func TestServicesDeleteRemovesTheScheduleAndIsScopedByBusiness(t *testing.T) {
 	if err := repo.Delete(t.Context(), mine, service.ID); !errors.Is(err, business.ErrServiceNotFound) {
 		t.Errorf("second delete error = %v, want ErrServiceNotFound", err)
 	}
-	var n int
-	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM service_schedules`).Scan(&n); err != nil || n != 0 {
-		t.Errorf("schedules left after deleting the service = %d, %v; want 0", n, err)
+
+	if _, err := repo.Find(t.Context(), mine, service.ID); !errors.Is(err, business.ErrServiceNotFound) {
+		t.Errorf("Find after delete error = %v, want ErrServiceNotFound", err)
+	}
+	if list, err := repo.List(t.Context(), mine); err != nil || len(list) != 0 {
+		t.Errorf("List after delete = %v, %v; want empty", list, err)
+	}
+	if _, err := repo.SetActive(t.Context(), mine, service.ID, true, func(int) bool { return true }); !errors.Is(err, business.ErrServiceNotFound) {
+		t.Errorf("SetActive after delete error = %v, want ErrServiceNotFound", err)
+	}
+	if err := repo.Save(t.Context(), service); !errors.Is(err, business.ErrServiceNotFound) {
+		t.Errorf("Save after delete error = %v, want ErrServiceNotFound", err)
+	}
+	if _, err := repo.Schedule(t.Context(), mine, service.ID); !errors.Is(err, business.ErrServiceNotFound) {
+		t.Errorf("Schedule after delete error = %v, want ErrServiceNotFound", err)
+	}
+	if err := repo.ReplaceSchedule(t.Context(), mine, service.ID, nil); !errors.Is(err, business.ErrServiceNotFound) {
+		t.Errorf("ReplaceSchedule after delete error = %v, want ErrServiceNotFound", err)
+	}
+
+	var total int64
+	if err := pool.QueryRow(t.Context(), `SELECT COALESCE(sum(count), 0) FROM metric_daily WHERE service_id = $1`, service.ID).Scan(&total); err != nil || total != 7 {
+		t.Errorf("counters after deleting the service = %d, %v; want 7 kept", total, err)
 	}
 }
 
