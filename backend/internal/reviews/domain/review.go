@@ -116,7 +116,7 @@ func NewReview(r Redemption, in Input, now time.Time) (Review, error) {
 
 	name := AnonymousName
 	if in.ShowName {
-		name = displayName(r.CustomerName)
+		name = DisplayName(r.CustomerName)
 	}
 	return Review{
 		CouponID:    r.CouponID,
@@ -132,10 +132,36 @@ func NewReview(r Redemption, in Input, now time.Time) (Review, error) {
 	}, nil
 }
 
-// displayName is the first word of the customer's name plus the initial of the last one
+// FormState is where the review of a coupon stands, as the form needs to know.
+type FormState string
+
+// States of the review form.
+const (
+	FormOpen         FormState = "open"          // it can be reviewed now
+	FormReviewed     FormState = "reviewed"      // it already has its review
+	FormWindowClosed FormState = "window_closed" // the 30 days are over
+	FormNotRedeemed  FormState = "not_redeemed"  // the coupon was not redeemed yet
+)
+
+// StateOf says whether a coupon can be reviewed at now, with the same rules NewReview
+// applies, so the form and the submission agree. An already reviewed coupon is reviewed
+// whatever the date.
+func StateOf(redeemedAt time.Time, reviewed bool, now time.Time) FormState {
+	switch {
+	case redeemedAt.IsZero():
+		return FormNotRedeemed
+	case reviewed:
+		return FormReviewed
+	case now.After(redeemedAt.Add(ReviewWindow)):
+		return FormWindowClosed
+	}
+	return FormOpen
+}
+
+// DisplayName is the first word of the customer's name plus the initial of the last one
 // ("Ana G."). The customer typed their name freely, so a name that carries a phone number
 // or a link is never shown.
-func displayName(customerName string) string {
+func DisplayName(customerName string) string {
 	words := strings.Fields(customerName)
 	if len(words) == 0 {
 		return AnonymousName

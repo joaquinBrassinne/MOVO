@@ -55,6 +55,37 @@ WHERE c.access_token_hash = $1 AND c.status = 'redeemed'`, tokenHash,
 	return out, nil
 }
 
+// FormByTokenHash reads what the review form shows about the coupon of a token: the
+// business and the branch that redeemed it, the code, the name and whether it was already
+// reviewed. It reads no phone. The branch is empty for a coupon that was not redeemed.
+func (r *Reviews) FormByTokenHash(ctx context.Context, tokenHash []byte) (reviews.FormData, error) {
+	var (
+		out        reviews.FormData
+		branch     *string
+		city       *string
+		redeemedAt *time.Time
+	)
+	err := r.pool.QueryRow(ctx, `
+SELECT bz.name, b.name, b.city, c.code, cu.name, c.redeemed_at,
+       EXISTS (SELECT 1 FROM reviews r WHERE r.benefit_code_id = c.id)
+FROM benefit_codes c
+JOIN businesses bz ON bz.id = c.business_id
+JOIN customers cu ON cu.id = c.customer_id
+LEFT JOIN branches b ON b.id = c.redeemed_branch_id
+WHERE c.access_token_hash = $1`, tokenHash,
+	).Scan(&out.BusinessName, &branch, &city, &out.Code, &out.CustomerName, &redeemedAt, &out.Reviewed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return reviews.FormData{}, reviews.ErrCouponNotFound
+	}
+	if err != nil {
+		return reviews.FormData{}, fmt.Errorf("postgres: review form by token: %w", err)
+	}
+	if branch != nil && city != nil && redeemedAt != nil {
+		out.BranchName, out.City, out.RedeemedAt = *branch, *city, *redeemedAt
+	}
+	return out, nil
+}
+
 // unredeemed tells a coupon that exists but was not redeemed (a zero Redemption the
 // domain refuses) from a token that opens nothing.
 func (r *Reviews) unredeemed(ctx context.Context, tokenHash []byte) (domain.Redemption, error) {

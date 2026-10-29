@@ -54,6 +54,8 @@ type Deps struct {
 	// SetStatus serves the super admin's hiding of a review; without it the route is not
 	// mounted.
 	SetStatus *commands.SetReviewStatus
+	// Form serves what the review form shows; without it the route is not mounted.
+	Form *queries.GetReviewForm
 	// Summary serves the stars breakdown of a branch; without it the route is not mounted.
 	Summary *queries.GetRatingSummary
 	// ListOwn serves the owner's reviews with their ids; without it the route is not mounted.
@@ -83,6 +85,9 @@ func New(deps Deps) *Handlers {
 func (h *Handlers) Mount(r chi.Router) {
 	if h.Create != nil {
 		r.With(noStore).Post("/access/{token}/reviews", h.handleCreate)
+	}
+	if h.Form != nil {
+		r.With(noStore).Get("/access/{token}/review", h.handleForm)
 	}
 	if h.List != nil {
 		r.Get("/branches/{id}/reviews", h.handleList)
@@ -284,6 +289,35 @@ func starFilter(r *http.Request) (domain.StarFilter, error) {
 		into(n)
 	}
 	return f, f.Validate()
+}
+
+// formJSON is the review form of a coupon. Where and when are null until it is redeemed.
+type formJSON struct {
+	State        domain.FormState `json:"state"`
+	BusinessName string           `json:"business_name"`
+	BranchName   *string          `json:"branch_name"`
+	City         *string          `json:"city"`
+	Code         string           `json:"code"`
+	DisplayName  string           `json:"display_name"`
+	RedeemedAt   *time.Time       `json:"redeemed_at"`
+	ReviewUntil  *time.Time       `json:"review_until"`
+}
+
+// handleForm serves what "Dejá tu reseña" shows before the customer writes. The token in
+// the path is the whole credential, like the one that writes the review.
+func (h *Handlers) handleForm(w http.ResponseWriter, r *http.Request) {
+	got, err := h.Form.Handle(r.Context(), chi.URLParam(r, "token"))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	out := formJSON{State: got.State, BusinessName: got.BusinessName, Code: got.Code, DisplayName: got.DisplayName}
+	if !got.RedeemedAt.IsZero() {
+		redeemed, until := got.RedeemedAt.UTC(), got.ReviewUntil.UTC()
+		out.RedeemedAt, out.ReviewUntil = &redeemed, &until
+		out.BranchName, out.City = &got.BranchName, &got.City
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 type summaryJSON struct {

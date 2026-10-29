@@ -145,6 +145,25 @@ type RedemptionReader interface {
 	ByTokenHash(ctx context.Context, tokenHash []byte) (domain.Redemption, error)
 }
 
+// FormData is what the review form shows about the coupon of a token. A coupon that is not
+// redeemed has no branch nor time.
+type FormData struct {
+	BusinessName string
+	BranchName   string
+	City         string
+	Code         string
+	CustomerName string
+	RedeemedAt   time.Time // zero when it was not redeemed
+	Reviewed     bool
+}
+
+// FormReader reads the data of the review form.
+type FormReader interface {
+	// FormByTokenHash returns the data of the coupon whose access token has that hash, or
+	// ErrCouponNotFound.
+	FormByTokenHash(ctx context.Context, tokenHash []byte) (FormData, error)
+}
+
 // ReviewStore keeps reviews.
 type ReviewStore interface {
 	// Create stores the review, or returns ErrAlreadyReviewed when its coupon has one.
