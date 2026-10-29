@@ -45,6 +45,48 @@ test("the proxy sends no X-Forwarded-For when the request had none", async () =>
   assert.equal(upstream.sent().get("x-forwarded-for"), null);
 });
 
+/** Whether the proxy forwards a browser call to the API (true) or answers 404 itself (false). */
+async function reachesTheApi(method: string, path: string): Promise<boolean> {
+  let called = false;
+  globalThis.fetch = (async () => {
+    called = true;
+    return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  const request = new Request(`http://localhost:3000/api/v1/${path}`, {
+    method,
+    ...(method === "GET" ? {} : { body: "{}", headers: { "content-type": "application/json" } }),
+  });
+  await proxyToBackend(request, path.split("/"));
+  return called;
+}
+
+const COUPON_TOKEN = "a".repeat(43);
+
+test("the proxy lets the customer's review routes through, with no session", async () => {
+  assert.equal(await reachesTheApi("GET", `access/${COUPON_TOKEN}/review`), true);
+  assert.equal(await reachesTheApi("POST", `access/${COUPON_TOKEN}/reviews`), true);
+});
+
+test("the proxy lets the public reviews of a branch through", async () => {
+  assert.equal(await reachesTheApi("GET", "branches/12/reviews"), true);
+  assert.equal(await reachesTheApi("GET", "branches/12/reviews/summary"), true);
+});
+
+test("the proxy still refuses what is next to the review routes", async () => {
+  for (const path of [
+    `access/${COUPON_TOKEN}/other`,
+    "access/short-token/review",
+    "access/short-token/reviews",
+    `access/${COUPON_TOKEN}/review/extra`,
+    "branches/abc/reviews",
+    "branches/12/reviews/other",
+    "branches/12/other",
+    "branches/12",
+  ]) {
+    assert.equal(await reachesTheApi("GET", path), false, `${path} must not pass`);
+  }
+});
+
 test("the session calls carry the visitor's chain too, so the login limit counts the visitor", async () => {
   const upstream = captureUpstream();
 
