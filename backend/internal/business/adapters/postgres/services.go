@@ -26,10 +26,8 @@ func NewServices(pool *pgxpool.Pool) *Services {
 	return &Services{pool: pool}
 }
 
-// Create stores s and returns it with ID set. A branch of another business is
-// refused by the composite foreign key and reported as business.ErrBranchNotFound.
-func (r *Services) Create(ctx context.Context, s domain.Service) (domain.Service, error) {
-	err := r.pool.QueryRow(ctx, `
+func insertService(ctx context.Context, q rowQuerier, s domain.Service) (domain.Service, error) {
+	err := q.QueryRow(ctx, `
 INSERT INTO services (business_id, branch_id, name, description, active, price)
 VALUES ($1, NULLIF($2, 0), $3, $4, $5, NULLIF($6, 0))
 RETURNING id`,
@@ -39,6 +37,88 @@ RETURNING id`,
 		return domain.Service{}, err
 	}
 	return s, nil
+}
+
+// Create stores s and returns it with ID set, without looking at the plan. A branch
+// of another business is refused by the composite foreign key and reported as
+// business.ErrBranchNotFound. The use cases go through CreateIfRoom.
+func (r *Services) Create(ctx context.Context, s domain.Service) (domain.Service, error) {
+	return insertService(ctx, r.pool, s)
+}
+
+// CreateIfRoom counts the active services and stores s under one lock on the
+// business, so concurrent requests cannot both take the last place of the plan.
+func (r *Services) CreateIfRoom(ctx context.Context, s domain.Service, fits business.Fits) (domain.Service, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return domain.Service{}, fmt.Errorf("postgres: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := lock(ctx, tx, s.BusinessID); err != nil {
+		return domain.Service{}, err
+	}
+	if s.Active {
+		var active int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM services WHERE business_id = $1 AND active`, s.BusinessID).Scan(&active); err != nil {
+			return domain.Service{}, fmt.Errorf("postgres: count active services: %w", err)
+		}
+		if !fits(active) {
+			return domain.Service{}, business.ErrServiceLimitReached
+		}
+	}
+
+	stored, err := insertService(ctx, tx, s)
+	if err != nil {
+		return domain.Service{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Service{}, fmt.Errorf("postgres: commit: %w", err)
+	}
+	return stored, nil
+}
+
+// SetActive flips the flag of one service. Turning it on counts the active ones
+// under the lock on the business, like CreateIfRoom.
+func (r *Services) SetActive(ctx context.Context, businessID, serviceID int64, active bool, fits business.Fits) (domain.Service, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return domain.Service{}, fmt.Errorf("postgres: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := lock(ctx, tx, businessID); err != nil {
+		return domain.Service{}, err
+	}
+	current, err := scanService(tx.QueryRow(ctx, selectService+` WHERE id = $1 AND business_id = $2`, serviceID, businessID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Service{}, business.ErrServiceNotFound
+	}
+	if err != nil {
+		return domain.Service{}, err
+	}
+	if current.Active == active {
+		return current, nil
+	}
+
+	if active {
+		var others int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM services WHERE business_id = $1 AND active`, businessID).Scan(&others); err != nil {
+			return domain.Service{}, fmt.Errorf("postgres: count active services: %w", err)
+		}
+		if !fits(others) {
+			return domain.Service{}, business.ErrServiceLimitReached
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE services SET active = $3, updated_at = now() WHERE id = $1 AND business_id = $2`, serviceID, businessID, active); err != nil {
+		return domain.Service{}, fmt.Errorf("postgres: set service active: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Service{}, fmt.Errorf("postgres: commit: %w", err)
+	}
+
+	current.Active = active
+	return current, nil
 }
 
 // List returns every service of the business, oldest first.
@@ -72,13 +152,14 @@ func (r *Services) Find(ctx context.Context, businessID, serviceID int64) (domai
 	return s, err
 }
 
-// Save persists the details and the active flag of an existing service.
+// Save persists the details of an existing service. The active flag is left alone:
+// SetActive owns it, so an edit cannot undo a concurrent on or off.
 func (r *Services) Save(ctx context.Context, s domain.Service) error {
 	tag, err := r.pool.Exec(ctx, `
 UPDATE services
-SET branch_id = NULLIF($3, 0), name = $4, description = $5, active = $6, price = NULLIF($7, 0), updated_at = now()
+SET branch_id = NULLIF($3, 0), name = $4, description = $5, price = NULLIF($6, 0), updated_at = now()
 WHERE id = $1 AND business_id = $2`,
-		s.ID, s.BusinessID, s.BranchID, s.Name, s.Description, s.Active, s.Price)
+		s.ID, s.BusinessID, s.BranchID, s.Name, s.Description, s.Price)
 	if err := mapBranchError(err); err != nil {
 		return err
 	}

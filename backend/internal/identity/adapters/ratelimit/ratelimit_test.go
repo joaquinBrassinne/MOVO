@@ -42,6 +42,68 @@ func TestAllowsUntilTheFailureBudgetIsSpent(t *testing.T) {
 	}
 }
 
+func TestAttemptCountsEveryTryAndRefusesOnceTheBudgetIsSpent(t *testing.T) {
+	t.Parallel()
+	c := start()
+	l := newLimiter(c, 3, 100)
+
+	for i := range 3 {
+		if _, ok := l.Attempt("k"); !ok {
+			t.Fatalf("attempt %d refused, want the first 3 within the budget", i+1)
+		}
+	}
+	if retry, ok := l.Attempt("k"); ok || retry != window {
+		t.Errorf("4th Attempt = (%v, %v), want (%v, false)", retry, ok, window)
+	}
+	if _, ok := l.Attempt("other"); !ok {
+		t.Error("another key must have its own budget")
+	}
+
+	c.Advance(window)
+	if _, ok := l.Attempt("k"); !ok {
+		t.Error("still refused once the window elapsed")
+	}
+}
+
+func TestAttemptNeverPassesTheBudgetWhenManyArriveTogether(t *testing.T) {
+	t.Parallel()
+	l := newLimiter(start(), 5, 100)
+
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		allowed int
+	)
+	for range 50 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, ok := l.Attempt("k"); ok {
+				mu.Lock()
+				allowed++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if allowed != 5 {
+		t.Errorf("allowed = %d, want exactly 5", allowed)
+	}
+}
+
+func TestAttemptLetsNewKeysThroughUnrecordedOnceTheTableIsFull(t *testing.T) {
+	t.Parallel()
+	l := newLimiter(start(), 1, 1)
+
+	l.Attempt("first")
+	for range 3 {
+		if _, ok := l.Attempt("flood"); !ok {
+			t.Fatal("a key beyond MaxKeys was refused, want it let through unrecorded")
+		}
+	}
+}
+
 func TestRetryAfterShrinksAndTheBlockLifts(t *testing.T) {
 	t.Parallel()
 	c := start()

@@ -46,6 +46,15 @@ const (
 	loginMaxKeys     = 100_000
 )
 
+// Sign-up budget: one address may try registerMaxAttempts sign-ups per
+// registerWindow, accepted or not. An owner registers once, so a shared office
+// address has plenty of room.
+const (
+	registerMaxAttempts = 10
+	registerWindow      = time.Hour
+	registerMaxKeys     = 100_000
+)
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "api: %v\n", err)
@@ -168,10 +177,16 @@ func newIdentityRoutes(log *slog.Logger, pool *pgxpool.Pool, auth config.Auth, s
 		Window:      loginWindow,
 		MaxKeys:     loginMaxKeys,
 	}, nil)
+	// Its own budget and its own keys: a burst of sign-ups must not block anyone's login.
+	signUps := ratelimit.New(ratelimit.Config{
+		MaxAttempts: registerMaxAttempts,
+		Window:      registerWindow,
+		MaxKeys:     registerMaxKeys,
+	}, nil)
 	sessions := commands.NewSessions(signer, store, users, auth.RefreshTokenTTL, nil, log)
 
 	return identityhttp.New(
-		commands.NewRegister(users, sessions),
+		commands.NewRegister(users, signUps, sessions),
 		commands.NewLogin(users, limiter, sessions),
 		commands.NewRefresh(sessions),
 		commands.NewLogout(store, nil),

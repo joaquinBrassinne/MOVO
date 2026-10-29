@@ -54,45 +54,18 @@ func (c *AddBranch) Handle(ctx context.Context, in AddBranchInput) (domain.Branc
 	}
 	branch.BusinessID = owned.ID
 
-	if err := ensureBranchRoom(ctx, c.entitlements, c.branches, owned.ID); err != nil {
-		return domain.Branch{}, err
+	// The repository counts the active branches and stores this one under a single
+	// lock, so the plan limit holds for concurrent requests. The ones a downgrade
+	// left inactive do not use up the plan.
+	ent, err := c.entitlements.For(ctx, owned.ID)
+	if err != nil {
+		return domain.Branch{}, fmt.Errorf("resolve entitlements: %w", err)
 	}
-
-	stored, err := c.branches.Create(ctx, branch)
+	stored, err := c.branches.CreateIfRoom(ctx, branch, ent.CanAddBranch)
 	if err != nil {
 		return domain.Branch{}, fmt.Errorf("create branch: %w", err)
 	}
 	return stored, nil
-}
-
-// ensureBranchRoom counts only active branches: the ones a downgrade left inactive do
-// not use up the plan. It returns business.ErrBranchLimitReached when there is no room
-// for one more.
-func ensureBranchRoom(
-	ctx context.Context,
-	entitlements business.EntitlementsProvider,
-	branches business.BranchRepository,
-	businessID int64,
-) error {
-	ent, err := entitlements.For(ctx, businessID)
-	if err != nil {
-		return fmt.Errorf("resolve entitlements: %w", err)
-	}
-	existing, err := branches.List(ctx, businessID)
-	if err != nil {
-		return fmt.Errorf("list branches: %w", err)
-	}
-
-	active := 0
-	for _, b := range existing {
-		if b.Active {
-			active++
-		}
-	}
-	if !ent.CanAddBranch(active) {
-		return business.ErrBranchLimitReached
-	}
-	return nil
 }
 
 // EditBranchInput is the new details of an existing branch.
@@ -163,15 +136,8 @@ func (c *RetireBranch) Handle(ctx context.Context, in RetireBranchInput) error {
 	if err != nil {
 		return err
 	}
-	current, err := c.branches.Find(ctx, owned.ID, in.BranchID)
-	if err != nil {
-		return fmt.Errorf("find branch: %w", err)
-	}
-	if !current.Active {
-		return nil
-	}
-	if err := c.branches.Save(ctx, current.Deactivate()); err != nil {
-		return fmt.Errorf("save branch: %w", err)
+	if _, err := c.branches.SetActive(ctx, owned.ID, in.BranchID, false, nil); err != nil {
+		return fmt.Errorf("retire branch: %w", err)
 	}
 	return nil
 }
@@ -236,24 +202,19 @@ func (c *SetBranchActive) Handle(ctx context.Context, in SetBranchActiveInput) (
 	if err != nil {
 		return domain.Branch{}, err
 	}
-	current, err := c.branches.Find(ctx, owned.ID, in.BranchID)
-	if err != nil {
-		return domain.Branch{}, fmt.Errorf("find branch: %w", err)
-	}
-	if current.Active == in.Active {
-		return current, nil
-	}
-
-	updated := current.Deactivate()
+	// Hiding never asks the plan, so it keeps working if the entitlements cannot be read.
+	var fits business.Fits
 	if in.Active {
-		if err := ensureBranchRoom(ctx, c.entitlements, c.branches, owned.ID); err != nil {
-			return domain.Branch{}, err
+		ent, err := c.entitlements.For(ctx, owned.ID)
+		if err != nil {
+			return domain.Branch{}, fmt.Errorf("resolve entitlements: %w", err)
 		}
-		updated = current.Activate()
+		fits = ent.CanAddBranch
 	}
 
-	if err := c.branches.Save(ctx, updated); err != nil {
-		return domain.Branch{}, fmt.Errorf("save branch: %w", err)
+	updated, err := c.branches.SetActive(ctx, owned.ID, in.BranchID, in.Active, fits)
+	if err != nil {
+		return domain.Branch{}, fmt.Errorf("set branch active: %w", err)
 	}
 	return updated, nil
 }

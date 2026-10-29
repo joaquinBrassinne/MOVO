@@ -55,18 +55,31 @@ type BusinessRepository interface {
 	SaveProfile(ctx context.Context, b domain.Business, entry AuditEntry) error
 }
 
+// Fits answers whether a business that has active of something (branches or
+// services) may have one more. The repositories ask it while they hold the lock
+// on the business, so the answer cannot go stale before the write.
+type Fits func(active int) bool
+
 // BranchRepository stores the branches of a business and their opening hours.
 // Every method is scoped by business id so an owner can never reach the branch
 // of another business.
 type BranchRepository interface {
-	// Create stores a new branch and returns it with ID set.
-	Create(ctx context.Context, b domain.Branch) (domain.Branch, error)
+	// CreateIfRoom stores a new branch and returns it with ID set. An active branch
+	// is stored only if fits accepts the number of active branches the business
+	// already has (ErrBranchLimitReached otherwise); counting and inserting happen
+	// under one lock on the business, so concurrent writers cannot overshoot the plan.
+	CreateIfRoom(ctx context.Context, b domain.Branch, fits Fits) (domain.Branch, error)
 	// List returns the branches of the business, oldest first.
 	List(ctx context.Context, businessID int64) ([]domain.Branch, error)
 	// Find returns ErrBranchNotFound when the branch is not in the business.
 	Find(ctx context.Context, businessID, branchID int64) (domain.Branch, error)
-	// Save persists the details of an existing branch (ErrBranchNotFound).
+	// Save persists the details of an existing branch, never its active flag
+	// (ErrBranchNotFound). SetActive owns the flag.
 	Save(ctx context.Context, b domain.Branch) error
+	// SetActive shows or hides the branch and returns it. Showing asks fits about the
+	// other active branches under the lock on the business (ErrBranchLimitReached);
+	// a branch already in that state is returned unchanged. ErrBranchNotFound.
+	SetActive(ctx context.Context, businessID, branchID int64, active bool, fits Fits) (domain.Branch, error)
 	// Hours returns the opening slots of the branch, ordered by weekday and start.
 	Hours(ctx context.Context, businessID, branchID int64) ([]domain.Slot, error)
 	// ReplaceHours atomically swaps all the slots of the branch (ErrBranchNotFound).
@@ -93,14 +106,23 @@ type EntitlementsProvider interface {
 // ServiceRepository stores the services of a business and their weekly
 // schedules. Like BranchRepository, every method is scoped by business id.
 type ServiceRepository interface {
-	// Create stores a new service and returns it with ID set.
-	Create(ctx context.Context, s domain.Service) (domain.Service, error)
+	// CreateIfRoom stores a new service and returns it with ID set. An active service
+	// is stored only if fits accepts the number of active services the business
+	// already has (ErrServiceLimitReached otherwise); counting and inserting happen
+	// under one lock on the business.
+	CreateIfRoom(ctx context.Context, s domain.Service, fits Fits) (domain.Service, error)
 	// List returns every service of the business, active or not, oldest first.
 	List(ctx context.Context, businessID int64) ([]domain.Service, error)
 	// Find returns ErrServiceNotFound when the service is not in the business.
 	Find(ctx context.Context, businessID, serviceID int64) (domain.Service, error)
-	// Save persists the details and the active flag (ErrServiceNotFound).
+	// Save persists the details, never the active flag (ErrServiceNotFound).
+	// SetActive owns the flag.
 	Save(ctx context.Context, s domain.Service) error
+	// SetActive turns the service on or off and returns it. Turning on asks fits about
+	// the other active services under the lock on the business
+	// (ErrServiceLimitReached); a service already in that state is returned unchanged.
+	// ErrServiceNotFound.
+	SetActive(ctx context.Context, businessID, serviceID int64, active bool, fits Fits) (domain.Service, error)
 	// Delete removes the service with its schedule (ErrServiceNotFound).
 	Delete(ctx context.Context, businessID, serviceID int64) error
 	// Schedule returns the weekly slots ordered by weekday and start.

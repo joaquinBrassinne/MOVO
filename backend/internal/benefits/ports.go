@@ -107,6 +107,19 @@ type CouponRedeemer interface {
 	Redeem(ctx context.Context, req RedeemRequest) (Redeemed, error)
 }
 
+// PreviousRedemptionsLimit is how many past redemptions a preview lists. The count says
+// how many there were; the list shows the newest ones, which is what the owner needs to
+// notice a customer who comes back for the same thing again and again.
+const PreviousRedemptionsLimit = 10
+
+// PastRedemption is a coupon the same customer already redeemed at the business. Its
+// benefit carries the terms the coupon had when it was redeemed, not the benefit's today.
+type PastRedemption struct {
+	Benefit    domain.Benefit
+	BranchName string
+	RedeemedAt time.Time
+}
+
 // CouponPreview is what an owner may see of a coupon before confirming its redemption:
 // the benefit, the customer's name and the dates. It never carries the phone.
 type CouponPreview struct {
@@ -116,6 +129,9 @@ type CouponPreview struct {
 	RedeemedAt   *time.Time // nil until redeemed
 	// CustomerRedeemed is how many coupons this customer already redeemed at the business.
 	CustomerRedeemed int
+	// PreviousRedemptions lists, newest first and up to PreviousRedemptionsLimit, the other
+	// coupons this customer redeemed at the business. The coupon being previewed is not in it.
+	PreviousRedemptions []PastRedemption
 }
 
 // HeldCoupon is a coupon as its customer sees it: the preview plus the business that

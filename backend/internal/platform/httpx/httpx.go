@@ -215,6 +215,22 @@ func (r *statusRecorder) Write(body []byte) (int, error) {
 	return r.ResponseWriter.Write(body)
 }
 
+// unmatchedRoute is what the log shows for a request no route took.
+const unmatchedRoute = "unmatched"
+
+// Route names the route that served the request, such as
+// /api/v1/access/{token}. The raw URL is never logged: the customer's access
+// token travels in the path, and an unmatched path may hold a mistyped one. It
+// must run after the router has handled the request.
+func Route(r *http.Request) string {
+	if rctx := chi.RouteContext(r.Context()); rctx != nil {
+		if pattern := rctx.RoutePattern(); pattern != "" {
+			return pattern
+		}
+	}
+	return unmatchedRoute
+}
+
 // withRequestLogging emits one structured line per request.
 func withRequestLogging(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -232,7 +248,7 @@ func withRequestLogging(log *slog.Logger) func(http.Handler) http.Handler {
 			log.Info("http request",
 				"request_id", RequestID(r.Context()),
 				"method", r.Method,
-				"path", r.URL.Path,
+				"path", Route(r),
 				"status", status,
 				"duration_ms", time.Since(start).Milliseconds(),
 			)

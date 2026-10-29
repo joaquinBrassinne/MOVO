@@ -60,14 +60,19 @@ func TestServicesCreateListFindAndSave(t *testing.T) {
 		t.Errorf("find through another business error = %v, want ErrServiceNotFound", err)
 	}
 
+	// Save writes the details and leaves the flag to SetActive, even when the value
+	// it is given disagrees: an edit must not undo a concurrent on or off.
 	changed := got.Deactivate()
 	changed.Name, changed.BranchID = "Yoga Flow", 0
 	if err := repo.Save(t.Context(), changed); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	after, _ := repo.Find(t.Context(), mine, first.ID)
-	if after.Name != "Yoga Flow" || after.Active || after.BranchID != 0 {
-		t.Errorf("after save = %+v", after)
+	if after.Name != "Yoga Flow" || !after.Active || after.BranchID != 0 {
+		t.Errorf("after save = %+v, want the new details and the flag untouched", after)
+	}
+	if off, err := repo.SetActive(t.Context(), mine, first.ID, false, nil); err != nil || off.Active {
+		t.Errorf("SetActive(false) = %+v, %v, want the service off", off, err)
 	}
 
 	changed.BusinessID = theirs
