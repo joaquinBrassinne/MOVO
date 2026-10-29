@@ -42,6 +42,9 @@ func (f fakeBenefits) Find(context.Context, int64, int64) (domain.Benefit, error
 	return domain.Benefit{}, nil
 }
 func (f fakeBenefits) Save(context.Context, domain.Benefit) error { return nil }
+func (f fakeBenefits) SetActive(context.Context, int64, int64, bool) (domain.Benefit, error) {
+	return domain.Benefit{}, nil
+}
 
 func TestOverviewReadsTheBusinessOfTheSession(t *testing.T) {
 	t.Parallel()

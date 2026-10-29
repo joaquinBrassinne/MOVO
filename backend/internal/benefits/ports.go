@@ -189,8 +189,12 @@ type BenefitRepository interface {
 	List(ctx context.Context, businessID int64) ([]domain.Benefit, error)
 	// Find returns ErrBenefitNotFound when the business has no such benefit.
 	Find(ctx context.Context, businessID, benefitID int64) (domain.Benefit, error)
-	// Save persists the details and the active flag; ErrBenefitNotFound as in Find.
+	// Save persists the details of an existing benefit and never the active flag, so an
+	// edit cannot undo a concurrent on or off; ErrBenefitNotFound as in Find.
 	Save(ctx context.Context, b domain.Benefit) error
+	// SetActive flips the owner's switch alone and returns the benefit as stored;
+	// ErrBenefitNotFound as in Find.
+	SetActive(ctx context.Context, businessID, benefitID int64, active bool) (domain.Benefit, error)
 }
 
 // CouponExpirer marks overdue coupons in bulk. Reads already show an overdue coupon as
