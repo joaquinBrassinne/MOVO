@@ -62,12 +62,13 @@ FOR UPDATE OF bs`, req.BenefitID).Scan(append(benefitDest(&benefit), &limit)...)
 		return benefits.Issued{}, fmt.Errorf("postgres: find benefit: %w", err)
 	}
 
-	// One person is one phone: a repeat visit reuses the customer and keeps the name
-	// they declared last.
+	// One person is one phone: a repeat visit, here or at another business, reuses the
+	// customer and keeps the name they declared first. The no-op update is what lets
+	// RETURNING give the id back on a conflict.
 	var customerID int64
 	if err := tx.QueryRow(ctx, `
 INSERT INTO customers (name, phone) VALUES ($1, $2)
-ON CONFLICT (phone) DO UPDATE SET name = EXCLUDED.name, updated_at = now()
+ON CONFLICT (phone) DO UPDATE SET updated_at = now()
 RETURNING id`, req.Contact.Name, req.Contact.Phone).Scan(&customerID); err != nil {
 		return benefits.Issued{}, fmt.Errorf("postgres: upsert customer: %w", err)
 	}
