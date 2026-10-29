@@ -10,27 +10,27 @@ import { getProfile } from "@/lib/server/profile";
 
 export async function generateMetadata({
   params,
-}: PageProps<"/locales/[slug]/resenas">): Promise<Metadata> {
+}: PageProps<"/locales/[slug]/reviews">): Promise<Metadata> {
   const { slug } = await params;
   const cached = await getProfile(slug);
   if (!cached) return { title: "Local no encontrado — MOVO", robots: { index: false } };
   return {
     title: `Reseñas de ${cached.profile.name} | MOVO`,
-    alternates: { canonical: `/locales/${cached.profile.slug}/resenas` },
+    alternates: { canonical: `/locales/${cached.profile.slug}/reviews` },
   };
 }
 
-/** The reviews of one branch: `?sede=<branch_id>`, or the oldest branch when missing or unknown. */
+/** The reviews of one branch: `?branch=<branch_id>`, or the oldest branch when missing or unknown. */
 export default async function ReviewsPage({
   params,
   searchParams,
-}: PageProps<"/locales/[slug]/resenas">) {
-  const [{ slug }, { sede }] = await Promise.all([params, searchParams]);
+}: PageProps<"/locales/[slug]/reviews">) {
+  const [{ slug }, { branch: branchParam }] = await Promise.all([params, searchParams]);
   const cached = await getProfile(slug);
   if (!cached) notFound();
   const { profile } = cached;
 
-  const requested = Number(Array.isArray(sede) ? sede[0] : sede);
+  const requested = Number(Array.isArray(branchParam) ? branchParam[0] : branchParam);
   const branch = profile.branches.find((b) => b.branch_id === requested) ?? profile.branches[0];
   const several = profile.branches.length > 1;
 
@@ -64,7 +64,7 @@ export default async function ReviewsPage({
             {profile.branches.map((b) => (
               <Link
                 key={b.branch_id}
-                href={`/locales/${profile.slug}/resenas?sede=${b.branch_id}`}
+                href={`/locales/${profile.slug}/reviews?branch=${b.branch_id}`}
                 aria-current={b.branch_id === branch.branch_id ? "page" : undefined}
                 className={cn(
                   "inline-flex h-11 items-center rounded-full px-4 text-sm font-bold outline-none focus-visible:ring-2 focus-visible:ring-movo-ink",

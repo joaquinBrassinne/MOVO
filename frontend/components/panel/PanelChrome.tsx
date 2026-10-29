@@ -20,7 +20,7 @@ const NAV = [
     icon: TicketIcon,
     within: ["/socios/beneficios"],
   },
-  { href: "/socios/resenas", label: "Reseñas", icon: StarIcon, within: ["/socios/resenas"] },
+  { href: "/socios/reviews", label: "Reseñas", icon: StarIcon, within: ["/socios/reviews"] },
   {
     href: "/socios/local",
     label: "Mi local",
@@ -33,7 +33,7 @@ const NAV = [
 function titleOf(pathname: string): string {
   if (pathname === "/socios/beneficios") return "Beneficios";
   if (pathname === "/socios/canjear") return "Canjear cupón";
-  if (pathname === "/socios/resenas") return "Reseñas";
+  if (pathname === "/socios/reviews") return "Reseñas";
   if (pathname === "/socios/local/datos") return "Datos del negocio";
   if (pathname === "/socios/local") return "Mi local";
   if (pathname === "/socios/servicios") return "Servicios y horarios";

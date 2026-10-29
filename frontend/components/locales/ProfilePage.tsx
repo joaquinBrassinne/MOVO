@@ -73,7 +73,7 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
             starClassName="size-5"
           />
           <Link
-            href={`/locales/${profile.slug}/resenas`}
+            href={`/locales/${profile.slug}/reviews`}
             className="text-sm font-semibold underline outline-none focus-visible:ring-2 focus-visible:ring-movo-ink"
           >
             Ver todas las reseñas

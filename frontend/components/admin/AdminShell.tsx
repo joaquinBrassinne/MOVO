@@ -9,7 +9,7 @@ import { useSession } from "@/lib/session/SessionProvider";
 
 const NAV = [
   { href: "/admin/locales", label: "Locales", Icon: StoreIcon },
-  { href: "/admin/resenas", label: "Reseñas", Icon: StarIcon },
+  { href: "/admin/reviews", label: "Reseñas", Icon: StarIcon },
 ];
 
 /**

@@ -261,7 +261,7 @@ function Ticket({ token, coupon, fresh, now, notice, onCopyCode, onKeepLink }: T
 
       {status === COUPON_STATUS.REDEEMED ? (
         <Link
-          href={`/cupon/${token}/resena`}
+          href={`/cupon/${token}/review`}
           className="flex h-14 w-full items-center justify-center rounded-full bg-movo-accent font-display text-lg font-bold text-movo-ink outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
           Dejá tu reseña

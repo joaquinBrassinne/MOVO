@@ -2,7 +2,7 @@
 -- "Reseñas del local", the review form and the moderation page have something to show.
 -- Safe to run again: it does nothing when the business already has reviews.
 --
--- Access tokens to try in /cupon/{token}/resena (each is 43 characters):
+-- Access tokens to try in /cupon/{token}/review (each is 43 characters):
 --   seed-review-open-00000000000000000000000000   redeemed 2 hours ago, can be reviewed
 --   seed-review-closed-000000000000000000000000   redeemed 40 days ago, the 30 days are over
 --   seed-review-pending-00000000000000000000000   not redeemed yet

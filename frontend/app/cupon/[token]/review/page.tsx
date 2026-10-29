@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   referrer: "no-referrer",
 };
 
-export default function ReviewPage({ params }: PageProps<"/cupon/[token]/resena">) {
+export default function ReviewPage({ params }: PageProps<"/cupon/[token]/review">) {
   return (
     <Suspense fallback={null}>
       <ReviewFormView params={params} />
