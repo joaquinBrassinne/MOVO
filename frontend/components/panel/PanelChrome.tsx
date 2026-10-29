@@ -6,7 +6,7 @@ import { useState, type ReactNode } from "react";
 
 import { QrIcon, TicketIcon } from "@/components/benefits/icons";
 import { Logo } from "@/components/Logo";
-import { GridIcon, LogOutIcon, StoreIcon, UserIcon } from "@/components/socios/icons";
+import { GridIcon, LogOutIcon, StarIcon, StoreIcon, UserIcon } from "@/components/socios/icons";
 import { useBusiness } from "@/lib/business/BusinessProvider";
 import { useSession } from "@/lib/session/SessionProvider";
 
@@ -20,6 +20,7 @@ const NAV = [
     icon: TicketIcon,
     within: ["/socios/beneficios"],
   },
+  { href: "/socios/resenas", label: "Reseñas", icon: StarIcon, within: ["/socios/resenas"] },
   {
     href: "/socios/local",
     label: "Mi local",
@@ -32,6 +33,7 @@ const NAV = [
 function titleOf(pathname: string): string {
   if (pathname === "/socios/beneficios") return "Beneficios";
   if (pathname === "/socios/canjear") return "Canjear cupón";
+  if (pathname === "/socios/resenas") return "Reseñas";
   if (pathname === "/socios/local/datos") return "Datos del negocio";
   if (pathname === "/socios/local") return "Mi local";
   if (pathname === "/socios/servicios") return "Servicios y horarios";

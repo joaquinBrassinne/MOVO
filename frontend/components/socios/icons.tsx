@@ -173,6 +173,13 @@ export const StarIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const FlagIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 22V4" />
+    <path d="M4 4h13l-2.5 4.5L17 13H4" />
+  </Svg>
+);
+
 export const ClockIcon = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="12" cy="12" r="10" />
