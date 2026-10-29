@@ -329,7 +329,7 @@ El vencimiento se evalúa por `expires_at` al leer; una tarea diaria marca como 
 1. Solo puede reseñar quien **canjeó un cupón** en esa sede; **una reseña por cupón canjeado**. El cliente accede con su enlace/token.
 2. El formulario solo pide puntuación (1–5) y comentario opcional (≤ 500). **No pide nombre:** se toma del cliente asociado al cupón (primer nombre + inicial del apellido, guardado en `display_name`). Con "Mostrar mi nombre" desactivado se publica como "Cliente de MOVO".
 3. Se muestra como "Reseña verificada por canje". Plazo: 30 días desde el canje.
-4. Se muestran promedio y cantidad (`rating_avg`, `rating_count` en `branches`, actualizados por evento de dominio). Con menos de 3 reseñas se muestra "Nuevo".
+4. Se muestran promedio y cantidad (`rating_avg`, `rating_count` en `branches`, recalculados en la misma transacción que cambia la reseña). Con menos de 3 reseñas se muestra "Nuevo".
 5. El local puede **reportar** una reseña; solo el super admin puede **ocultarla**. El dueño no borra reseñas.
 6. La puntuación sirve como filtro opcional (puntuación mínima) y **no** se usa para ordenar.
 7. La API pública nunca expone teléfono; solo el super admin ve el vínculo con el cliente, para moderar. Ante un pedido de borrado de datos se anonimiza `display_name`.
@@ -576,9 +576,9 @@ Convenciones de trabajo:
 
 - [x] 4C.1 Migración `reviews` (`00018`; `rating_avg` y `rating_count` ya existían en `branches` desde `00003`): la FK compuesta a `benefit_codes (id, redeemed_branch_id)` hace que la base rechace una reseña de un cupón no canjeado o de otra sede (S)
 - [x] 4C.2 Dominio `reviews`: reglas (cupón canjeado, una por cupón, plazo de 30 días, nombre a mostrar) (M)
-- [ ] 4C.3 Comando crear reseña por token de acceso (M)
-- [ ] 4C.4 Query de listado paginado (S)
-- [ ] 4C.5 Actualización de agregados por evento de dominio (S)
+- [x] 4C.3 Comando crear reseña por token de acceso: `POST /access/{token}/reviews` con `rating`, `comment` y `show_name` (activado si se omite); la sede, el negocio y el cliente salen del cupón (M)
+- [x] 4C.4 Query de listado paginado: `GET /branches/{id}/reviews?cursor=&limit=` (cursor opaco por `(created_at, id)`, 20 por página y máximo 50, más nuevas primero); una reseña reportada se sigue mostrando y solo la oculta el super admin (S)
+- [x] 4C.5 Actualización de agregados: al crear la reseña, en la misma transacción, se bloquea la fila de la sede y se recalcula `rating_avg` y `rating_count` desde las reseñas que no están ocultas (una reportada cuenta); recalcular en vez de sumar uno lo hace idempotente, y el bloqueo evita perder reseñas simultáneas. Al ocultar, 4C.6 reutiliza el mismo recálculo (S)
 - [ ] 4C.6 Reportar (dueño) y ocultar (super admin) con `audit_log` (M)
 - [ ] 4C.7 Filtro de puntuación mínima en la búsqueda (S)
 - [ ] 4C.8 Frontend: estrellas en tarjetas y ficha, Dejá tu reseña, Reseñas del local, moderación en el admin (L)
