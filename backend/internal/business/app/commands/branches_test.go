@@ -190,8 +190,7 @@ func TestAddBranchRespectsThePlanLimit(t *testing.T) {
 	}
 
 	// Branches left inactive by a downgrade do not use up the limit.
-	first.Active = false
-	if err := branches.Save(t.Context(), first); err != nil {
+	if _, err := branches.SetActive(t.Context(), 1, first.ID, false, nil); err != nil {
 		t.Fatalf("deactivate: %v", err)
 	}
 	if _, err := add.Handle(t.Context(), commands.AddBranchInput{OwnerID: 7, Branch: validBranch}); err != nil {
