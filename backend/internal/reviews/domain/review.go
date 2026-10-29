@@ -15,6 +15,10 @@ const ReviewWindow = 30 * 24 * time.Hour
 // AnonymousName is shown when the customer chose not to show their name.
 const AnonymousName = "Cliente de MOVO"
 
+// HiddenRetention is how long a hidden review keeps its text before it is purged, so the
+// super admin can still restore one hidden by mistake (SDD 5.5).
+const HiddenRetention = 72 * time.Hour
+
 const maxCommentLen = 500
 
 // Errors a review is refused with.
@@ -22,6 +26,9 @@ var (
 	ErrNotRedeemed   = errors.New("reviews: the coupon was not redeemed")
 	ErrWindowClosed  = errors.New("reviews: the 30 days to review this coupon are over")
 	ErrRatingInvalid = errors.New("reviews: the rating must be from 1 to 5")
+	// ErrStatusInvalid means the super admin asked for a state only hiding or restoring
+	// can reach: a review is reported by its business, never set by the admin.
+	ErrStatusInvalid = errors.New("reviews: the status must be hidden or visible")
 )
 
 // Status is where a review is in moderation.

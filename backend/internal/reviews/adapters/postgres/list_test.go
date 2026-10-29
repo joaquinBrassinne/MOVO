@@ -26,8 +26,8 @@ func addReview(ctx context.Context, t *testing.T, pool *pgxpool.Pool, s seed, n 
 	customer, coupon := addRedeemedCoupon(ctx, t, pool, s, n)
 	var review int64
 	if err := pool.QueryRow(ctx, `
-INSERT INTO reviews (branch_id, business_id, benefit_code_id, customer_id, rating, comment, display_name, status, created_at)
-VALUES ($1, $2, $3, $4, 4, $5, $6, $7, $8) RETURNING id`,
+INSERT INTO reviews (branch_id, business_id, benefit_code_id, customer_id, rating, comment, display_name, status, hidden_at, created_at)
+VALUES ($1, $2, $3, $4, 4, $5, $6, $7::text, CASE WHEN $7::text = 'hidden' THEN $8::timestamptz END, $8::timestamptz) RETURNING id`,
 		s.branch, s.business, coupon, customer, fmt.Sprintf("Comment %d", n), fmt.Sprintf("Cliente %d", n), status, at).Scan(&review); err != nil {
 		t.Fatalf("insert review: %v", err)
 	}

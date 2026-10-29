@@ -23,6 +23,8 @@ func NewBranches(pool *pgxpool.Pool) *Branches {
 
 // nearbySQL orders by distance band, then featured, then exact distance. branch_id
 // breaks ties so pages are stable. $5 is a category slug, empty for all categories.
+// $8 is the minimum rating, 0 for none, and $9 the reviews a branch needs to show a
+// rating: a branch that reads "Nuevo" cannot claim a minimum. It only filters, never orders.
 //
 // The spatial filter runs first over branches alone, in a materialized CTE, and the
 // result is joined to visible_branches by id. Filtering through the view directly
@@ -45,6 +47,7 @@ JOIN visible_branches v ON v.branch_id = n.id
 JOIN categories c ON c.id = v.category_id
 CROSS JOIN origin o` + bestBenefitLateral + `
 WHERE ($5::text = '' OR v.category_id = (SELECT id FROM categories WHERE slug = $5::text))
+  AND ($8::float8 = 0 OR (v.rating_count >= $9::int AND v.rating_avg::float8 >= $8::float8))
 ORDER BY floor(ST_Distance(v.location, o.p) / $4::float8), v.featured DESC,
          ST_Distance(v.location, o.p), v.branch_id
 LIMIT $6 OFFSET $7`
@@ -53,7 +56,8 @@ LIMIT $6 OFFSET $7`
 // query is validated by the use case, not here, which lets it ask for one extra row.
 func (r *Branches) Nearby(ctx context.Context, q search.Query) ([]search.Branch, error) {
 	rows, err := r.pool.Query(ctx, nearbySQL,
-		q.Lat, q.Lng, float64(q.RadiusM), float64(search.DistanceBandM), q.Category, q.Limit, q.Offset)
+		q.Lat, q.Lng, float64(q.RadiusM), float64(search.DistanceBandM), q.Category, q.Limit, q.Offset,
+		q.MinRating, search.MinReviewsToRate)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: search nearby: %w", err)
 	}

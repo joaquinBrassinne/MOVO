@@ -25,15 +25,22 @@ const (
 	// DistanceBandM is the width of a distance band: within a band, featured branches
 	// come first, so a far Pro branch never beats a much closer one (SDD 4.2).
 	DistanceBandM = 2_000
+	// MinReviewsToRate is how many reviews a branch needs before its rating is shown;
+	// with fewer it reads "Nuevo" (SDD 5.5). The minimum-rating filter applies the same
+	// threshold, so it never keeps a branch whose card shows no stars.
+	MinReviewsToRate = 3
 )
 
-// Query is a proximity search. Category is a category slug; empty means all.
+// Query is a proximity search. Category is a category slug; empty means all. MinRating
+// is an optional filter of 0 to 5 stars, 0 meaning none; it filters and never orders
+// (SDD 5.5).
 type Query struct {
-	Lat, Lng float64
-	RadiusM  int
-	Category string
-	Limit    int
-	Offset   int
+	Lat, Lng  float64
+	RadiusM   int
+	Category  string
+	MinRating float64
+	Limit     int
+	Offset    int
 }
 
 // Branch is a public branch with its distance to the searched point.
@@ -74,6 +81,8 @@ func (q Query) Validate() error {
 		return &QueryError{"lng"}
 	case q.RadiusM <= 0 || q.RadiusM > MaxRadiusM:
 		return &QueryError{"radius_m"}
+	case !(q.MinRating >= 0 && q.MinRating <= 5): // written so NaN is refused too
+		return &QueryError{"min_rating"}
 	case q.Limit <= 0 || q.Limit > MaxLimit:
 		return &QueryError{"limit"}
 	case q.Offset < 0:
