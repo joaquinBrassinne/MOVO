@@ -574,8 +574,8 @@ Convenciones de trabajo:
 ### Fase 4C — Reseñas verificadas por canje (cortable si el tiempo aprieta)
 **Objetivo:** confianza para el cliente sin abrir la puerta a reseñas falsas.
 
-- [ ] 4C.1 Migración `reviews` + `rating_avg` y `rating_count` en `branches` (S)
-- [ ] 4C.2 Dominio `reviews`: reglas (cupón canjeado, una por cupón, plazo de 30 días, nombre a mostrar) (M)
+- [x] 4C.1 Migración `reviews` (`00018`; `rating_avg` y `rating_count` ya existían en `branches` desde `00003`): la FK compuesta a `benefit_codes (id, redeemed_branch_id)` hace que la base rechace una reseña de un cupón no canjeado o de otra sede (S)
+- [x] 4C.2 Dominio `reviews`: reglas (cupón canjeado, una por cupón, plazo de 30 días, nombre a mostrar) (M)
 - [ ] 4C.3 Comando crear reseña por token de acceso (M)
 - [ ] 4C.4 Query de listado paginado (S)
 - [ ] 4C.5 Actualización de agregados por evento de dominio (S)
