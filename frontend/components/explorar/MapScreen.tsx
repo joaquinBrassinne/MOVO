@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Logo } from "@/components/Logo";
+import { StarRating } from "@/components/reviews/StarRating";
 import { ArrowLeftIcon, ArrowRightIcon, StarIcon } from "@/components/socios/icons";
 import { useCategories } from "@/lib/business/hooks";
 import { cn } from "@/lib/cn";
@@ -239,6 +240,12 @@ function ResultCard({
         </div>
         <h3 className="truncate font-display text-xl font-extrabold">{item.business_name}</h3>
         <p className="truncate text-sm text-movo-slate">{item.category_name}</p>
+        <StarRating
+          average={item.rating_avg}
+          count={item.rating_count}
+          showCount
+          className="mt-1"
+        />
         <BenefitPill label={item.benefit_label} className="mt-1" />
         <div className="mt-1 flex items-center justify-between gap-2">
           <span className="text-sm text-movo-slate">a {formatDistance(item.distance_m)}</span>

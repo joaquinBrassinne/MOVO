@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Icon, VerifiedIcon } from "@/components/explorar/icons";
 import { Logo } from "@/components/Logo";
+import { StarRating } from "@/components/reviews/StarRating";
 import { ArrowLeftIcon } from "@/components/socios/icons";
 import { formatPrice } from "@/lib/business/price";
 import { describeSchedule } from "@/lib/business/schedule";
@@ -63,6 +64,21 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
             </span>
           ) : null}
         </h1>
+
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <StarRating
+            average={main.rating_avg}
+            count={main.rating_count}
+            showCount
+            starClassName="size-5"
+          />
+          <Link
+            href={`/locales/${profile.slug}/reviews`}
+            className="text-sm font-semibold underline outline-none focus-visible:ring-2 focus-visible:ring-movo-ink"
+          >
+            Ver todas las reseñas
+          </Link>
+        </div>
 
         <OpenStatus branch={main} today={today} />
 

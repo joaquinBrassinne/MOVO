@@ -46,6 +46,7 @@ Fuente de verdad: `docs/sdd.md` (fases, modelo de datos, flujos). Decisiones de 
 - Componentes limpios; lógica de negocio y llamadas a la API en hooks personalizados.
 - SSR para páginas públicas (fichas de locales); mapas solo en componentes cliente.
 - Tipos compartidos desde el contrato OpenAPI cuando sea posible.
+- Los paths (rutas de URL y carpetas de ruta de `app/`) van en inglés (`/reviews`, no `/resenas`); el texto que ve el usuario sigue en español. A futuro todos los paths del proyecto tienen que estar en inglés: las rutas que ya están en español (`/socios`, `/cupon`, `/locales`, `/canjear`) se renombran en la tarea 8.13 del SDD, no de pasada.
 
 ## Vistas (frontend)
 - Backend y vistas se desarrollan juntos por fase. Al empezar la fase, listame las vistas que necesita y los endpoints que consume, sin pedirme las imágenes todavía.

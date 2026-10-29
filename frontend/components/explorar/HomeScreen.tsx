@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Logo } from "@/components/Logo";
+import { StarRating } from "@/components/reviews/StarRating";
 import { ArrowRightIcon, StarIcon } from "@/components/socios/icons";
 import { useCategories } from "@/lib/business/hooks";
 import { cn } from "@/lib/cn";
@@ -168,6 +169,13 @@ function FeaturedCard({ item }: { item: SearchResult }) {
       />
       <BenefitPill label={item.benefit_label} className="mb-2 self-start" />
       <h3 className="font-display text-2xl leading-tight font-extrabold">{item.business_name}</h3>
+      <StarRating
+        average={item.rating_avg}
+        count={item.rating_count}
+        showCount
+        onDark
+        className="mt-1 self-start"
+      />
       <p className="mt-1 flex items-center gap-2 text-sm text-movo-muted">
         <Icon name="pin" className="size-4" />
         {item.category_name} · a {formatDistance(item.distance_m)}
@@ -197,6 +205,13 @@ function NearbyCard({ item }: { item: SearchResult }) {
         <span className="mt-1 block truncate text-sm text-movo-muted">
           {item.category_name} · a {formatDistance(item.distance_m)}
         </span>
+        <StarRating
+          average={item.rating_avg}
+          count={item.rating_count}
+          showCount
+          onDark
+          className="mt-1"
+        />
         <BenefitPill label={item.benefit_label} className="mt-2" />
         <span className="mt-2 block truncate text-sm font-semibold text-movo-accent">
           {item.address}, {item.city}

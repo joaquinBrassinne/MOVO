@@ -106,12 +106,35 @@ type ListedReview struct {
 	CreatedAt   time.Time
 }
 
+// RatingSummary is how a branch's reviews add up: how many there are and how many gave
+// each number of stars. Stars[0] counts the 1-star reviews and Stars[4] the 5-star ones.
+type RatingSummary struct {
+	Count int
+	Stars [5]int
+}
+
+// Average is the mean rating, 0 when there are no reviews.
+func (s RatingSummary) Average() float64 {
+	if s.Count == 0 {
+		return 0
+	}
+	sum := 0
+	for i, n := range s.Stars {
+		sum += (i + 1) * n
+	}
+	return float64(sum) / float64(s.Count)
+}
+
 // ReviewReader reads the reviews the public sees.
 type ReviewReader interface {
-	// ListPublic returns up to limit reviews of the branch, newest first, starting after
-	// the cursor when there is one. A reported review is listed: only the super admin
-	// hides one. It returns ErrBranchNotFound when the branch is not publicly visible.
-	ListPublic(ctx context.Context, branchID int64, after *domain.Cursor, limit int) ([]ListedReview, error)
+	// ListPublic returns up to limit reviews of the branch that pass the star filter,
+	// newest first, starting after the cursor when there is one. A reported review is
+	// listed: only the super admin hides one. It returns ErrBranchNotFound when the branch
+	// is not publicly visible.
+	ListPublic(ctx context.Context, branchID int64, stars domain.StarFilter, after *domain.Cursor, limit int) ([]ListedReview, error)
+	// Summary counts the public reviews of the branch by stars, with the same visibility
+	// as ListPublic.
+	Summary(ctx context.Context, branchID int64) (RatingSummary, error)
 }
 
 // RedemptionReader finds the coupon an access token opens.
@@ -120,6 +143,25 @@ type RedemptionReader interface {
 	// or ErrCouponNotFound. A coupon that is not redeemed comes back with a zero
 	// RedeemedAt; deciding what that means is the domain's job.
 	ByTokenHash(ctx context.Context, tokenHash []byte) (domain.Redemption, error)
+}
+
+// FormData is what the review form shows about the coupon of a token. A coupon that is not
+// redeemed has no branch nor time.
+type FormData struct {
+	BusinessName string
+	BranchName   string
+	City         string
+	Code         string
+	CustomerName string
+	RedeemedAt   time.Time // zero when it was not redeemed
+	Reviewed     bool
+}
+
+// FormReader reads the data of the review form.
+type FormReader interface {
+	// FormByTokenHash returns the data of the coupon whose access token has that hash, or
+	// ErrCouponNotFound.
+	FormByTokenHash(ctx context.Context, tokenHash []byte) (FormData, error)
 }
 
 // ReviewStore keeps reviews.

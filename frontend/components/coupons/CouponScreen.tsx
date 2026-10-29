@@ -121,6 +121,7 @@ export function CouponScreen({ token, fresh }: Props) {
 
         {loaded.status === "ready" ? (
           <Ticket
+            token={token}
             coupon={loaded.coupon}
             fresh={fresh}
             now={now}
@@ -150,6 +151,7 @@ function Problem({ title, body }: { title: string; body: string }) {
 }
 
 interface TicketProps {
+  token: string;
   coupon: HeldCoupon;
   fresh: boolean;
   now: Date;
@@ -158,7 +160,7 @@ interface TicketProps {
   onKeepLink: () => void;
 }
 
-function Ticket({ coupon, fresh, now, notice, onCopyCode, onKeepLink }: TicketProps) {
+function Ticket({ token, coupon, fresh, now, notice, onCopyCode, onKeepLink }: TicketProps) {
   const { status, benefit } = coupon;
   const active = status === COUPON_STATUS.PENDING && new Date(coupon.expires_at) > now;
   const shown = displayCode(coupon.code);
@@ -255,6 +257,15 @@ function Ticket({ coupon, fresh, now, notice, onCopyCode, onKeepLink }: TicketPr
             {notice}
           </p>
         </div>
+      ) : null}
+
+      {status === COUPON_STATUS.REDEEMED ? (
+        <Link
+          href={`/cupon/${token}/review`}
+          className="flex h-14 w-full items-center justify-center rounded-full bg-movo-accent font-display text-lg font-bold text-movo-ink outline-none focus-visible:ring-2 focus-visible:ring-white"
+        >
+          Dejá tu reseña
+        </Link>
       ) : null}
 
       <p className="flex items-start gap-3 rounded-2xl bg-movo-tabs p-4 text-sm">

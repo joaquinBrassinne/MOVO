@@ -21,16 +21,25 @@ type fakeReader struct {
 	err      error
 	gotAfter *domain.Cursor
 	gotLimit int
+	gotStars domain.StarFilter
+	summary  reviews.RatingSummary
 }
 
-func (f *fakeReader) ListPublic(_ context.Context, _ int64, after *domain.Cursor, limit int) ([]reviews.ListedReview, error) {
-	f.gotAfter, f.gotLimit = after, limit
+func (f *fakeReader) Summary(context.Context, int64) (reviews.RatingSummary, error) {
+	return f.summary, f.err
+}
+
+func (f *fakeReader) ListPublic(_ context.Context, _ int64, stars domain.StarFilter, after *domain.Cursor, limit int) ([]reviews.ListedReview, error) {
+	f.gotAfter, f.gotLimit, f.gotStars = after, limit, stars
 	if f.err != nil {
 		return nil, f.err
 	}
 	var out []reviews.ListedReview
 	for _, r := range f.all {
 		if after != nil && (r.CreatedAt.After(after.CreatedAt) || (r.CreatedAt.Equal(after.CreatedAt) && r.ID >= after.ID)) {
+			continue
+		}
+		if (stars.Min != 0 && r.Rating < stars.Min) || (stars.Max != 0 && r.Rating > stars.Max) {
 			continue
 		}
 		if len(out) == limit {

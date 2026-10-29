@@ -23,13 +23,29 @@ import (
 // store, which answers ErrBranchNotFound for a branch the public cannot see.
 type shelf struct{ all []reviews.ListedReview }
 
-func (s shelf) ListPublic(_ context.Context, branchID int64, after *domain.Cursor, limit int) ([]reviews.ListedReview, error) {
+// Summary counts the shelf like the store does.
+func (s shelf) Summary(_ context.Context, branchID int64) (reviews.RatingSummary, error) {
+	if branchID != 1 {
+		return reviews.RatingSummary{}, reviews.ErrBranchNotFound
+	}
+	var out reviews.RatingSummary
+	for _, r := range s.all {
+		out.Stars[r.Rating-1]++
+		out.Count++
+	}
+	return out, nil
+}
+
+func (s shelf) ListPublic(_ context.Context, branchID int64, stars domain.StarFilter, after *domain.Cursor, limit int) ([]reviews.ListedReview, error) {
 	if branchID != 1 {
 		return nil, reviews.ErrBranchNotFound
 	}
 	var out []reviews.ListedReview
 	for _, r := range s.all {
 		if after != nil && (r.CreatedAt.After(after.CreatedAt) || (r.CreatedAt.Equal(after.CreatedAt) && r.ID >= after.ID)) {
+			continue
+		}
+		if (stars.Min != 0 && r.Rating < stars.Min) || (stars.Max != 0 && r.Rating > stars.Max) {
 			continue
 		}
 		if len(out) == limit {
@@ -52,7 +68,7 @@ func get(t *testing.T, s shelf, path string) (int, http.Header, map[string]any) 
 	t.Helper()
 
 	router := chi.NewRouter()
-	reviewshttp.New(reviewshttp.Deps{List: queries.NewListReviews(s)}).Mount(router)
+	reviewshttp.New(reviewshttp.Deps{List: queries.NewListReviews(s), Summary: queries.NewGetRatingSummary(s)}).Mount(router)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 
@@ -82,6 +98,50 @@ func TestPublicListsTheReviewsOfABranchWithoutIdsOrCustomers(t *testing.T) {
 	for _, leak := range []string{`"id"`, "customer", "phone", "coupon", "branch_id", "business_id", "status"} {
 		if strings.Contains(string(raw), leak) {
 			t.Errorf("body %s leaks %q", raw, leak)
+		}
+	}
+}
+
+func TestPublicSummaryGivesTheAverageAndEveryStarCount(t *testing.T) {
+	t.Parallel()
+
+	s := newShelf(3)
+	s.all[1].Rating, s.all[2].Rating = 4, 1
+	status, _, body := get(t, s, "/branches/1/reviews/summary")
+	if status != http.StatusOK {
+		t.Fatalf("status = %d %v, want 200", status, body)
+	}
+	dist, _ := body["distribution"].(map[string]any)
+	if body["count"] != float64(3) || body["average"] != float64(3.3) || len(dist) != 5 ||
+		dist["5"] != float64(1) || dist["4"] != float64(1) || dist["3"] != float64(0) || dist["2"] != float64(0) || dist["1"] != float64(1) {
+		t.Errorf("body = %v, want 3 reviews, average 3.3 and the five counts, 0 for the stars nobody gave", body)
+	}
+	if status, _, _ := get(t, s, "/branches/2/reviews/summary"); status != http.StatusNotFound {
+		t.Errorf("summary of an unknown branch = %d, want 404", status)
+	}
+}
+
+func TestPublicListFiltersByStars(t *testing.T) {
+	t.Parallel()
+
+	s := newShelf(3)
+	s.all[0].Rating, s.all[1].Rating, s.all[2].Rating = 5, 4, 2
+	for path, want := range map[string]int{
+		"/branches/1/reviews?rating=5":              1,
+		"/branches/1/reviews?min_rating=4":          2,
+		"/branches/1/reviews?min_rating=2&rating=4": 1,
+		"/branches/1/reviews?rating=3":              0,
+	} {
+		status, _, body := get(t, s, path)
+		list, _ := body["reviews"].([]any)
+		if status != http.StatusOK || len(list) != want {
+			t.Errorf("%s = %d with %d reviews, want 200 with %d", path, status, len(list), want)
+		}
+	}
+	for _, bad := range []string{"rating=0", "rating=6", "rating=x", "min_rating=-1", "min_rating=9", "min_rating=5&rating=3"} {
+		status, _, body := get(t, s, "/branches/1/reviews?"+bad)
+		if status != http.StatusUnprocessableEntity || body["error"].(map[string]any)["code"] != "validation_failed" {
+			t.Errorf("%s = %d %v, want 422 validation_failed", bad, status, body)
 		}
 	}
 }

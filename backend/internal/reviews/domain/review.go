@@ -31,6 +31,28 @@ var (
 	ErrStatusInvalid = errors.New("reviews: the status must be hidden or visible")
 )
 
+// ErrStarFilterInvalid means a star filter is outside 1 to 5 or asks for no review at all.
+var ErrStarFilterInvalid = errors.New("reviews: the star filter must be from 1 to 5")
+
+// StarFilter narrows a listing by stars: Min is "this many or more" and Max is "this many
+// or fewer". A zero bound is no bound, so the zero value lists everything.
+type StarFilter struct {
+	Min, Max int
+}
+
+// Validate refuses a bound outside 1 to 5 and a range no review can be in.
+func (f StarFilter) Validate() error {
+	for _, bound := range []int{f.Min, f.Max} {
+		if bound < 0 || bound > 5 {
+			return ErrStarFilterInvalid
+		}
+	}
+	if f.Min != 0 && f.Max != 0 && f.Min > f.Max {
+		return ErrStarFilterInvalid
+	}
+	return nil
+}
+
 // Status is where a review is in moderation.
 type Status string
 
@@ -94,7 +116,7 @@ func NewReview(r Redemption, in Input, now time.Time) (Review, error) {
 
 	name := AnonymousName
 	if in.ShowName {
-		name = displayName(r.CustomerName)
+		name = DisplayName(r.CustomerName)
 	}
 	return Review{
 		CouponID:    r.CouponID,
@@ -110,10 +132,36 @@ func NewReview(r Redemption, in Input, now time.Time) (Review, error) {
 	}, nil
 }
 
-// displayName is the first word of the customer's name plus the initial of the last one
+// FormState is where the review of a coupon stands, as the form needs to know.
+type FormState string
+
+// States of the review form.
+const (
+	FormOpen         FormState = "open"          // it can be reviewed now
+	FormReviewed     FormState = "reviewed"      // it already has its review
+	FormWindowClosed FormState = "window_closed" // the 30 days are over
+	FormNotRedeemed  FormState = "not_redeemed"  // the coupon was not redeemed yet
+)
+
+// StateOf says whether a coupon can be reviewed at now, with the same rules NewReview
+// applies, so the form and the submission agree. An already reviewed coupon is reviewed
+// whatever the date.
+func StateOf(redeemedAt time.Time, reviewed bool, now time.Time) FormState {
+	switch {
+	case redeemedAt.IsZero():
+		return FormNotRedeemed
+	case reviewed:
+		return FormReviewed
+	case now.After(redeemedAt.Add(ReviewWindow)):
+		return FormWindowClosed
+	}
+	return FormOpen
+}
+
+// DisplayName is the first word of the customer's name plus the initial of the last one
 // ("Ana G."). The customer typed their name freely, so a name that carries a phone number
 // or a link is never shown.
-func displayName(customerName string) string {
+func DisplayName(customerName string) string {
 	words := strings.Fields(customerName)
 	if len(words) == 0 {
 		return AnonymousName

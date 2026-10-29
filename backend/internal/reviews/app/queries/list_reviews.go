@@ -23,6 +23,7 @@ var ErrLimitInvalid = errors.New("reviews: the page size is not valid")
 // takes DefaultLimit.
 type ListReviewsInput struct {
 	BranchID int64
+	Stars    domain.StarFilter
 	Cursor   string
 	Limit    int
 }
@@ -55,6 +56,9 @@ func (q *ListReviews) Handle(ctx context.Context, in ListReviewsInput) (ReviewsP
 	if limit < 0 || limit > MaxLimit {
 		return ReviewsPage{}, ErrLimitInvalid
 	}
+	if err := in.Stars.Validate(); err != nil {
+		return ReviewsPage{}, err
+	}
 	var after *domain.Cursor
 	if in.Cursor != "" {
 		cursor, err := domain.ParseCursor(in.Cursor)
@@ -64,7 +68,7 @@ func (q *ListReviews) Handle(ctx context.Context, in ListReviewsInput) (ReviewsP
 		after = &cursor
 	}
 
-	found, err := q.reader.ListPublic(ctx, in.BranchID, after, limit+1)
+	found, err := q.reader.ListPublic(ctx, in.BranchID, in.Stars, after, limit+1)
 	if err != nil {
 		return ReviewsPage{}, fmt.Errorf("list reviews: %w", err)
 	}

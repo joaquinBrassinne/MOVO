@@ -1,17 +1,24 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { Logo } from "@/components/Logo";
-import { LogOutIcon, StoreIcon } from "@/components/socios/icons";
+import { LogOutIcon, StarIcon, StoreIcon } from "@/components/socios/icons";
 import { useSession } from "@/lib/session/SessionProvider";
 
+const NAV = [
+  { href: "/admin/locales", label: "Locales", Icon: StoreIcon },
+  { href: "/admin/reviews", label: "Reseñas", Icon: StarIcon },
+];
+
 /**
- * Marco del panel del super admin: barra lateral oscura y contenido ancho. Hoy solo hay
- * "Locales"; Suscripciones, Reseñas y Métricas se suman con las fases 5 y 6.
+ * Marco del panel del super admin: barra lateral oscura y contenido ancho. Hoy hay "Locales"
+ * y "Reseñas"; Suscripciones y Métricas se suman con las fases 5 y 6.
  */
 export function AdminShell({ children }: { children: ReactNode }) {
   const { state, logout } = useSession();
+  const pathname = usePathname();
   const email = state.status === "authenticated" ? state.user.email : "";
 
   return (
@@ -25,14 +32,22 @@ export function AdminShell({ children }: { children: ReactNode }) {
         </div>
 
         <nav aria-label="Secciones" className="px-4 pb-4">
-          <a
-            href="/admin/locales"
-            aria-current="page"
-            className="flex items-center gap-3 rounded-xl bg-movo-accent px-4 py-3 font-semibold text-movo-ink"
-          >
-            <StoreIcon className="size-5" />
-            Locales
-          </a>
+          {NAV.map(({ href, label, Icon }) => {
+            const current = pathname.startsWith(href);
+            return (
+              <a
+                key={href}
+                href={href}
+                aria-current={current ? "page" : undefined}
+                className={`flex items-center gap-3 rounded-xl px-4 py-3 font-semibold ${
+                  current ? "bg-movo-accent text-movo-ink" : "text-white"
+                }`}
+              >
+                <Icon className="size-5" />
+                {label}
+              </a>
+            );
+          })}
         </nav>
 
         <div className="mt-auto border-t border-white/10 p-4">

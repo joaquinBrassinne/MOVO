@@ -72,7 +72,7 @@ func TestListPublicReturnsTheBranchReviewsNewestFirst(t *testing.T) {
 	newest := addReview(ctx, t, pool, s, 2, "visible", created.Add(2*time.Hour))
 	middle := addReview(ctx, t, pool, s, 3, "visible", created.Add(time.Hour))
 
-	got, err := postgres.NewReviews(pool).ListPublic(ctx, s.branch, nil, 10)
+	got, err := postgres.NewReviews(pool).ListPublic(ctx, s.branch, domain.StarFilter{}, nil, 10)
 	if err != nil {
 		t.Fatalf("ListPublic: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestListPublicKeepsAReportedReviewAndDropsAHiddenOne(t *testing.T) {
 	reported := addReview(ctx, t, pool, s, 2, "reported", created.Add(time.Hour))
 	addReview(ctx, t, pool, s, 3, "hidden", created.Add(2*time.Hour))
 
-	got, err := postgres.NewReviews(pool).ListPublic(ctx, s.branch, nil, 10)
+	got, err := postgres.NewReviews(pool).ListPublic(ctx, s.branch, domain.StarFilter{}, nil, 10)
 	if err != nil {
 		t.Fatalf("ListPublic: %v", err)
 	}
@@ -125,7 +125,7 @@ VALUES ($1, 'Norte', 'Calle 2', 'Cordoba', ST_SetSRID(ST_MakePoint(-64.19, -31.4
 
 	repo := postgres.NewReviews(pool)
 	for branch, want := range map[int64]int64{s.branch: mine, other: theirs} {
-		got, err := repo.ListPublic(ctx, branch, nil, 10)
+		got, err := repo.ListPublic(ctx, branch, domain.StarFilter{}, nil, 10)
 		if err != nil || len(got) != 1 || got[0].ID != want {
 			t.Errorf("branch %d lists %v, %v; want only %d", branch, ids(got), err, want)
 		}
@@ -154,7 +154,7 @@ func TestListPublicPagesWithoutRepeatingOrSkippingAnyReview(t *testing.T) {
 		if pages > 7 {
 			t.Fatal("the pages never end")
 		}
-		page, err := repo.ListPublic(ctx, s.branch, after, 3)
+		page, err := repo.ListPublic(ctx, s.branch, domain.StarFilter{}, after, 3)
 		if err != nil {
 			t.Fatalf("ListPublic: %v", err)
 		}
@@ -166,7 +166,7 @@ func TestListPublicPagesWithoutRepeatingOrSkippingAnyReview(t *testing.T) {
 		after = &domain.Cursor{CreatedAt: last.CreatedAt, ID: last.ID}
 	}
 
-	full, err := repo.ListPublic(ctx, s.branch, nil, 100)
+	full, err := repo.ListPublic(ctx, s.branch, domain.StarFilter{}, nil, 100)
 	if err != nil {
 		t.Fatalf("ListPublic all: %v", err)
 	}
@@ -184,13 +184,13 @@ func TestListPublicTreatsABranchTheCityCannotSeeAsNotFound(t *testing.T) {
 	addReview(ctx, t, pool, s, 1, "visible", created)
 	repo := postgres.NewReviews(pool)
 
-	if _, err := repo.ListPublic(ctx, s.branch+1000, nil, 10); !errors.Is(err, reviews.ErrBranchNotFound) {
+	if _, err := repo.ListPublic(ctx, s.branch+1000, domain.StarFilter{}, nil, 10); !errors.Is(err, reviews.ErrBranchNotFound) {
 		t.Errorf("unknown branch: err = %v, want ErrBranchNotFound", err)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE branches SET active = false WHERE id = $1`, s.branch); err != nil {
 		t.Fatalf("retire branch: %v", err)
 	}
-	if _, err := repo.ListPublic(ctx, s.branch, nil, 10); !errors.Is(err, reviews.ErrBranchNotFound) {
+	if _, err := repo.ListPublic(ctx, s.branch, domain.StarFilter{}, nil, 10); !errors.Is(err, reviews.ErrBranchNotFound) {
 		t.Errorf("retired branch: err = %v, want ErrBranchNotFound, as if it did not exist", err)
 	}
 }
@@ -202,7 +202,7 @@ func TestListPublicOfABranchWithoutReviewsIsEmptyNotAnError(t *testing.T) {
 	ctx := t.Context()
 	s := newSeed(ctx, t, pool, true)
 
-	got, err := postgres.NewReviews(pool).ListPublic(ctx, s.branch, nil, 10)
+	got, err := postgres.NewReviews(pool).ListPublic(ctx, s.branch, domain.StarFilter{}, nil, 10)
 	if err != nil || len(got) != 0 {
 		t.Errorf("ListPublic = %v, %v; want no reviews and no error", got, err)
 	}
