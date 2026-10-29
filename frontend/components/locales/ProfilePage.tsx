@@ -65,13 +65,20 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
           ) : null}
         </h1>
 
-        <StarRating
-          average={main.rating_avg}
-          count={main.rating_count}
-          showCount
-          starClassName="size-5"
-          className="mt-2"
-        />
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <StarRating
+            average={main.rating_avg}
+            count={main.rating_count}
+            showCount
+            starClassName="size-5"
+          />
+          <Link
+            href={`/locales/${profile.slug}/resenas`}
+            className="text-sm font-semibold underline outline-none focus-visible:ring-2 focus-visible:ring-movo-ink"
+          >
+            Ver todas las reseñas
+          </Link>
+        </div>
 
         <OpenStatus branch={main} today={today} />
 
