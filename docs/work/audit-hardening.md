@@ -13,11 +13,13 @@ Los hallazgos son AUD-0xx de la auditoría técnica de esa rama.
 - AUD-003 Un cupón conserva las condiciones con las que se emitió (migración 00020: copia en `benefit_codes`, backfill desde el beneficio actual y trigger para quien inserte sin ellas).
 - Historial de canjes: la vista previa del dueño lista los últimos 10 canjes del cliente en el negocio (`previous_redemptions`), con las condiciones que tenían, la sede y la fecha.
 
+- AUD-008 (parte) argon2 corre de a 4 a la vez (`maxConcurrentHashes`); el resto de las llamadas hace cola en vez de reservar 19 MiB cada una.
+
 ## Pendiente
 
 - AUD-001 La IP del cliente depende de cómo se despliegue Next. Se cierra en la tarea 8.4 (Next debe agregar la IP de quien se le conecta, y la API no debe arrancar en producción con `TRUSTED_PROXIES` vacío).
 - AUD-005 El downgrade no se aplica al quitar el piloto: entra con la tarea 5.7.
-- AUD-008 argon2 sin tope de concurrencia.
+- AUD-008 (resto) El intento de login se cuenta recién al fallar: ráfagas en paralelo pasan el límite antes de que se registre el primer fallo.
 - AUD-009 y AUD-023 Falta la tarea `purge-objects` del worker.
 - AUD-010 Borrar un servicio borra sus métricas: falta decidir baja lógica o `RESTRICT`.
 - AUD-018 en beneficios: `SetBenefitActive` sigue guardando todo el beneficio.
