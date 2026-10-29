@@ -580,7 +580,7 @@ Convenciones de trabajo:
 - [x] 4C.4 Query de listado paginado: `GET /branches/{id}/reviews?cursor=&limit=` (cursor opaco por `(created_at, id)`, 20 por página y máximo 50, más nuevas primero); una reseña reportada se sigue mostrando y solo la oculta el super admin (S)
 - [x] 4C.5 Actualización de agregados: al crear la reseña, en la misma transacción, se bloquea la fila de la sede y se recalcula `rating_avg` y `rating_count` desde las reseñas que no están ocultas (una reportada cuenta); recalcular en vez de sumar uno lo hace idempotente, y el bloqueo evita perder reseñas simultáneas. Al ocultar, 4C.6 reutiliza el mismo recálculo (S)
 - [x] 4C.6 Reportar (dueño) y ocultar (super admin) con `audit_log`: `POST /me/business/reviews/{id}/report` (el negocio sale de la sesión; una reportada sigue pública y cuenta) y `PUT /admin/reviews/{id}/status` con `hidden` o `visible` (restaurar también descarta un reporte); ocultar recalcula la puntuación de la sede en la misma transacción y cada cambio deja `review.report`, `review.hide` o `review.restore` en `audit_log` (M)
-- [ ] 4C.7 Filtro de puntuación mínima en la búsqueda (S)
+- [x] 4C.7 Filtro de puntuación mínima en la búsqueda: `min_rating` de 0 a 5 en `GET /search` (0 u omitido es sin filtro); solo filtra, no ordena, y deja afuera a los locales con menos de 3 reseñas porque su tarjeta dice "Nuevo" y no muestra estrellas (S)
 - [ ] 4C.8 Frontend: estrellas en tarjetas y ficha, Dejá tu reseña, Reseñas del local, moderación en el admin (L)
 
 **Vistas:** Dejá tu reseña, Reseñas del local, moderación de reseñas.

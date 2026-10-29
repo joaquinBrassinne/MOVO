@@ -196,6 +196,14 @@ func parseQuery(r *http.Request) (q search.Query, field, reason string) {
 		return q, field, reason
 	}
 	q.Category = values.Get("category")
+	// min_rating is optional. Its range is checked by Query.Validate.
+	if raw := values.Get("min_rating"); raw != "" {
+		v, err := strconv.ParseFloat(raw, 64)
+		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+			return q, "min_rating", "invalid"
+		}
+		q.MinRating = v
+	}
 	return q, "", ""
 }
 
