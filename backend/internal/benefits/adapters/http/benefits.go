@@ -327,10 +327,21 @@ type previewJSON struct {
 	Status       domain.Status `json:"status"`
 	CustomerName string        `json:"customer_name"`
 	// CustomerRedeemed is how many coupons this customer already redeemed at the business.
-	CustomerRedeemed int                `json:"customer_redeemed_count"`
-	ExpiresAt        time.Time          `json:"expires_at"`
-	RedeemedAt       *time.Time         `json:"redeemed_at"`
-	Benefit          claimedBenefitJSON `json:"benefit"`
+	CustomerRedeemed int `json:"customer_redeemed_count"`
+	// PreviousRedemptions are the newest of them, so the owner can see what the customer
+	// already got and where. Always a list, empty when there are none.
+	PreviousRedemptions []pastRedemptionJSON `json:"previous_redemptions"`
+	ExpiresAt           time.Time            `json:"expires_at"`
+	RedeemedAt          *time.Time           `json:"redeemed_at"`
+	Benefit             claimedBenefitJSON   `json:"benefit"`
+}
+
+// pastRedemptionJSON is a coupon the customer already redeemed at the business, with the
+// terms it had then.
+type pastRedemptionJSON struct {
+	RedeemedAt time.Time          `json:"redeemed_at"`
+	BranchName string             `json:"branch_name"`
+	Benefit    claimedBenefitJSON `json:"benefit"`
 }
 
 func (h *Handlers) handlePreview(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +353,13 @@ func (h *Handlers) handlePreview(w http.ResponseWriter, r *http.Request) {
 
 	out := previewJSON{
 		Code: view.Code, Status: view.Status, CustomerName: view.CustomerName, CustomerRedeemed: view.CustomerRedeemed,
-		ExpiresAt: view.ExpiresAt.UTC(), Benefit: toClaimedBenefitJSON(view.Benefit),
+		PreviousRedemptions: make([]pastRedemptionJSON, 0, len(view.PreviousRedemptions)),
+		ExpiresAt:           view.ExpiresAt.UTC(), Benefit: toClaimedBenefitJSON(view.Benefit),
+	}
+	for _, past := range view.PreviousRedemptions {
+		out.PreviousRedemptions = append(out.PreviousRedemptions, pastRedemptionJSON{
+			RedeemedAt: past.RedeemedAt.UTC(), BranchName: past.BranchName, Benefit: toClaimedBenefitJSON(past.Benefit),
+		})
 	}
 	if view.RedeemedAt != nil {
 		redeemedAt := view.RedeemedAt.UTC()
