@@ -16,9 +16,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/joaquinBrassinne/MOVO/internal/platform/db"
 )
@@ -49,8 +47,11 @@ func New(t *testing.T) *pgxpool.Pool {
 			postgres.WithDatabase("postgres"),
 			postgres.WithUsername("movo"),
 			postgres.WithPassword("movo"),
+			// Waits for the "ready to accept connections" log twice (the image restarts
+			// itself after its first start) and then for the port. Do not add
+			// testcontainers.WithWaitStrategy here: it replaces this one, and a bare port
+			// check opens before Postgres is ready, so tests fail with SQLSTATE 57P03.
 			postgres.BasicWaitStrategies(),
-			testcontainers.WithWaitStrategy(wait.ForListeningPort("5432/tcp")),
 		)
 	})
 	if startErr != nil {
