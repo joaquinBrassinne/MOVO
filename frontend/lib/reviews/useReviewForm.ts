@@ -35,7 +35,14 @@ export function useReviewForm(token: string) {
       if (ignore) return;
       if (result.ok)
         setFetched({ status: "ready", state: result.data.state, context: result.data });
-      else setFetched(result.status === 404 ? { status: "missing" } : { status: "failed" });
+      // Only the API's own "coupon_not_found" means the coupon does not exist: a 404 from a
+      // server that does not have this route (an older backend) is a failure, not a missing coupon.
+      else
+        setFetched(
+          result.status === 404 && result.error.code === "coupon_not_found"
+            ? { status: "missing" }
+            : { status: "failed" },
+        );
     });
     return () => {
       ignore = true;
