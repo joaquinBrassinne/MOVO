@@ -143,9 +143,17 @@ func (fakeAccess) Issue(userID int64, role domain.Role, now time.Time) (string, 
 }
 
 type fakeLimiter struct {
-	blocked map[string]time.Duration
-	fails   []string
-	resets  []string
+	blocked  map[string]time.Duration
+	fails    []string
+	resets   []string
+	attempts []string
+}
+
+// Attempt stands in for the sign-up budget: it records the key and refuses the blocked ones.
+func (f *fakeLimiter) Attempt(key string) (time.Duration, bool) {
+	f.attempts = append(f.attempts, key)
+	retry, blocked := f.blocked[key]
+	return retry, !blocked
 }
 
 func (f *fakeLimiter) Allow(key string) (time.Duration, bool) {
@@ -172,7 +180,7 @@ func newHarness(t *testing.T) *harness {
 	now := func() time.Time { return epoch }
 	sessions := commands.NewSessions(fakeAccess{}, h.store, h.users, refreshTTL, now, nil)
 
-	h.register = commands.NewRegister(h.users, sessions)
+	h.register = commands.NewRegister(h.users, h.limiter, sessions)
 	h.login = commands.NewLogin(h.users, h.limiter, sessions)
 	h.refresh = commands.NewRefresh(sessions)
 	h.logout = commands.NewLogout(h.store, now)

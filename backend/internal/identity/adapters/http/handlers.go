@@ -102,7 +102,11 @@ func (h *Handlers) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := h.register.Handle(r.Context(), commands.RegisterInput{Email: req.Email, Password: req.Password})
+	session, err := h.register.Handle(r.Context(), commands.RegisterInput{
+		Email:    req.Email,
+		Password: req.Password,
+		ClientIP: clientip.From(r),
+	})
 	if err != nil {
 		h.fail(w, r, err)
 		return
