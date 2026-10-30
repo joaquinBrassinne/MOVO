@@ -9,6 +9,7 @@ import L from "leaflet";
 import { useEffect } from "react";
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
+import { MountedOnly } from "@/components/MountedOnly";
 import { PlusIcon } from "@/components/socios/icons";
 import { TILES_ATTRIBUTION, TILES_URL } from "@/lib/map";
 import type { MapView, Pin } from "@/lib/business/useBranchForm";
@@ -33,7 +34,15 @@ interface Props {
   onMove: (pin: Pin) => void;
 }
 
-export default function BranchMap({ pin, view, onMove }: Props) {
+export default function BranchMap(props: Props) {
+  return (
+    <MountedOnly>
+      <BranchMapView {...props} />
+    </MountedOnly>
+  );
+}
+
+function BranchMapView({ pin, view, onMove }: Props) {
   return (
     <MapContainer
       center={[view.latitude, view.longitude]}

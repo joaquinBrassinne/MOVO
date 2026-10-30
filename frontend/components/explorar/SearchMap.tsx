@@ -9,6 +9,7 @@ import L from "leaflet";
 import { useEffect, useRef } from "react";
 import { CircleMarker, MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
+import { MountedOnly } from "@/components/MountedOnly";
 import { PlusIcon } from "@/components/socios/icons";
 import { TILES_ATTRIBUTION, TILES_URL } from "@/lib/map";
 import type { Point, SearchResult } from "@/lib/search/types";
@@ -56,7 +57,15 @@ function pinIcon(result: SearchResult, selected: boolean): L.DivIcon {
   });
 }
 
-export default function SearchMap({
+export default function SearchMap(props: Props) {
+  return (
+    <MountedOnly>
+      <SearchMapView {...props} />
+    </MountedOnly>
+  );
+}
+
+function SearchMapView({
   center,
   recenterKey,
   results,

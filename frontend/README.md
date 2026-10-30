@@ -34,10 +34,11 @@ npm run start        # sirve el build
 
 Variables (en `frontend/.env.local`, que git ignora):
 
-| Variable                       | Para qué                                                                                                                                                                |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `API_URL`                      | Base de la API Go que usa el servidor de Next. Por defecto `http://localhost:8080`                                                                                      |
-| `NEXT_PUBLIC_SUPPORT_WHATSAPP` | Número de soporte, solo dígitos con código de país. Sin él se ocultan "¿Olvidaste tu contraseña?" y el acceso a soporte: el reseteo es asistido por WhatsApp (SDD §5.7) |
+| Variable                       | Para qué                                                                                                                                                                                                                           |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `API_URL`                      | Base de la API Go que usa el servidor de Next. Por defecto `http://localhost:8080`                                                                                                                                                 |
+| `NEXT_PUBLIC_SUPPORT_WHATSAPP` | Número de soporte, solo dígitos con código de país. Sin él se ocultan "¿Olvidaste tu contraseña?" y el acceso a soporte: el reseteo es asistido por WhatsApp (SDD §5.7)                                                            |
+| `NEXT_PUBLIC_MAP_TILES_URL`    | URL de tiles `{z}/{x}/{y}` de los mapas. Por defecto los tiles públicos de OSM, que bloquean (403) con mucho tráfico: en desarrollo usá otro servidor; en producción un proveedor o Protomaps (SDD §12.3). Se incrusta en el build |
 
 **Sesión.** El navegador solo habla con `/api/session/*` (route handler de Next, BFF). El refresh token vive en la cookie `httpOnly` `movo_refresh`, limitada a ese path, y nunca llega al JavaScript de la página; el access token queda en memoria (`lib/session`). Las renovaciones simultáneas se serializan (una sola llamada por pestaña y un lock entre pestañas), porque reutilizar un refresh token ya rotado cierra todas las sesiones.
 
