@@ -74,16 +74,16 @@ func (r *Benefits) Find(ctx context.Context, businessID, benefitID int64) (domai
 	return b, err
 }
 
-// Save persists the details and the owner's switch of an existing benefit. It never
-// writes admin_paused: that belongs to the super admin, and an owner saving a stale copy
-// must not lift a pause that happened in between.
+// Save persists the details of an existing benefit. It never writes active, which
+// SetActive owns, nor admin_paused, which belongs to the super admin: an owner saving a
+// stale copy must not undo a switch or lift a pause that happened in between.
 func (r *Benefits) Save(ctx context.Context, b domain.Benefit) error {
 	tag, err := r.pool.Exec(ctx, `
 UPDATE benefits
 SET type = $3, percent = NULLIF($4, 0), amount_ars = NULLIF($5, 0), title = NULLIF($6, ''), conditions = NULLIF($7, ''),
-    active = $8, updated_at = now()
+    updated_at = now()
 WHERE id = $1 AND business_id = $2`,
-		b.ID, b.BusinessID, b.Type, b.Percent, b.AmountARS, b.Title, b.Conditions, b.Active)
+		b.ID, b.BusinessID, b.Type, b.Percent, b.AmountARS, b.Title, b.Conditions)
 	if err != nil {
 		return fmt.Errorf("postgres: save benefit: %w", err)
 	}
@@ -91,6 +91,18 @@ WHERE id = $1 AND business_id = $2`,
 		return benefits.ErrBenefitNotFound
 	}
 	return nil
+}
+
+// SetActive flips the owner's switch in one statement and returns the benefit as stored.
+func (r *Benefits) SetActive(ctx context.Context, businessID, benefitID int64, active bool) (domain.Benefit, error) {
+	b, err := scanBenefit(r.pool.QueryRow(ctx, `
+UPDATE benefits SET active = $3, updated_at = now()
+WHERE id = $1 AND business_id = $2
+RETURNING `+benefitColumns(""), benefitID, businessID, active))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Benefit{}, benefits.ErrBenefitNotFound
+	}
+	return b, err
 }
 
 func scanBenefit(row pgx.Row) (domain.Benefit, error) {

@@ -90,7 +90,7 @@ func (r *Services) SetActive(ctx context.Context, businessID, serviceID int64, a
 	if err := lock(ctx, tx, businessID); err != nil {
 		return domain.Service{}, err
 	}
-	current, err := scanService(tx.QueryRow(ctx, selectService+` WHERE id = $1 AND business_id = $2`, serviceID, businessID))
+	current, err := scanService(tx.QueryRow(ctx, selectService+` WHERE id = $1 AND business_id = $2 AND deleted_at IS NULL`, serviceID, businessID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Service{}, business.ErrServiceNotFound
 	}
@@ -121,9 +121,9 @@ func (r *Services) SetActive(ctx context.Context, businessID, serviceID int64, a
 	return current, nil
 }
 
-// List returns every service of the business, oldest first.
+// List returns every service of the business that was not deleted, oldest first.
 func (r *Services) List(ctx context.Context, businessID int64) ([]domain.Service, error) {
-	rows, err := r.pool.Query(ctx, selectService+` WHERE business_id = $1 ORDER BY id`, businessID)
+	rows, err := r.pool.Query(ctx, selectService+` WHERE business_id = $1 AND deleted_at IS NULL ORDER BY id`, businessID)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: list services: %w", err)
 	}
@@ -145,7 +145,7 @@ func (r *Services) List(ctx context.Context, businessID int64) ([]domain.Service
 
 // Find returns one service of the business.
 func (r *Services) Find(ctx context.Context, businessID, serviceID int64) (domain.Service, error) {
-	s, err := scanService(r.pool.QueryRow(ctx, selectService+` WHERE id = $1 AND business_id = $2`, serviceID, businessID))
+	s, err := scanService(r.pool.QueryRow(ctx, selectService+` WHERE id = $1 AND business_id = $2 AND deleted_at IS NULL`, serviceID, businessID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Service{}, business.ErrServiceNotFound
 	}
@@ -158,7 +158,7 @@ func (r *Services) Save(ctx context.Context, s domain.Service) error {
 	tag, err := r.pool.Exec(ctx, `
 UPDATE services
 SET branch_id = NULLIF($3, 0), name = $4, description = $5, price = NULLIF($6, 0), updated_at = now()
-WHERE id = $1 AND business_id = $2`,
+WHERE id = $1 AND business_id = $2 AND deleted_at IS NULL`,
 		s.ID, s.BusinessID, s.BranchID, s.Name, s.Description, s.Price)
 	if err := mapBranchError(err); err != nil {
 		return err
@@ -169,9 +169,12 @@ WHERE id = $1 AND business_id = $2`,
 	return nil
 }
 
-// Delete removes the service; its schedule goes with it through ON DELETE CASCADE.
+// Delete marks the service deleted and turns it off, so it leaves the plan count, the
+// panel and the public profile. The row stays: metric_daily keeps pointing at it.
 func (r *Services) Delete(ctx context.Context, businessID, serviceID int64) error {
-	tag, err := r.pool.Exec(ctx, `DELETE FROM services WHERE id = $1 AND business_id = $2`, serviceID, businessID)
+	tag, err := r.pool.Exec(ctx, `
+UPDATE services SET active = false, deleted_at = now(), updated_at = now()
+WHERE id = $1 AND business_id = $2 AND deleted_at IS NULL`, serviceID, businessID)
 	if err != nil {
 		return fmt.Errorf("postgres: delete service: %w", err)
 	}
@@ -230,7 +233,7 @@ func (r *Services) ReplaceSchedule(ctx context.Context, businessID, serviceID in
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var locked int64
-	err = tx.QueryRow(ctx, `SELECT id FROM services WHERE id = $1 AND business_id = $2 FOR UPDATE`, serviceID, businessID).Scan(&locked)
+	err = tx.QueryRow(ctx, `SELECT id FROM services WHERE id = $1 AND business_id = $2 AND deleted_at IS NULL FOR UPDATE`, serviceID, businessID).Scan(&locked)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return business.ErrServiceNotFound
 	}

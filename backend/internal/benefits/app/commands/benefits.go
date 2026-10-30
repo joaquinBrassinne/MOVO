@@ -105,26 +105,16 @@ func NewSetBenefitActive(owners benefits.OwnerBusinesses, repo benefits.BenefitR
 	return &SetBenefitActive{owners: owners, benefits: repo}
 }
 
-// Handle switches the flag; asking for the state it already has changes nothing.
+// Handle switches the flag and nothing else, so it cannot overwrite a concurrent edit;
+// asking for the state it already has changes nothing.
 func (c *SetBenefitActive) Handle(ctx context.Context, in SetBenefitActiveInput) (domain.Benefit, error) {
 	businessID, err := c.owners.EditableBusinessOf(ctx, in.OwnerID)
 	if err != nil {
 		return domain.Benefit{}, fmt.Errorf("resolve business: %w", err)
 	}
-	current, err := c.benefits.Find(ctx, businessID, in.BenefitID)
+	updated, err := c.benefits.SetActive(ctx, businessID, in.BenefitID, in.Active)
 	if err != nil {
-		return domain.Benefit{}, fmt.Errorf("find benefit: %w", err)
-	}
-	if current.Active == in.Active {
-		return current, nil
-	}
-
-	updated := current.Deactivate()
-	if in.Active {
-		updated = current.Activate()
-	}
-	if err := c.benefits.Save(ctx, updated); err != nil {
-		return domain.Benefit{}, fmt.Errorf("save benefit: %w", err)
+		return domain.Benefit{}, fmt.Errorf("set benefit active: %w", err)
 	}
 	return updated, nil
 }
