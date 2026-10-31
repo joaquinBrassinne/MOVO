@@ -4,18 +4,18 @@ import { writeQrVideo } from "./fake-camera.mjs";
 // `next dev` compila cada ruta la primera vez que la piden. Se las pide acá una vez para
 // que esa demora no cuente contra el tiempo de ningún test.
 const ROUTES = [
-  "/socios/ingresar",
-  "/socios/crear-cuenta",
-  "/socios/onboarding",
-  "/socios/panel",
-  "/socios/canjear",
-  "/socios/beneficios",
-  "/socios/local",
-  "/socios/servicios",
-  "/socios/sedes",
-  "/socios/sedes/nueva",
-  "/socios/sedes/1",
-  "/admin/locales",
+  "/owners/sign-in",
+  "/owners/sign-up",
+  "/owners/onboarding",
+  "/owners/dashboard",
+  "/owners/redeem",
+  "/owners/benefits",
+  "/owners/business",
+  "/owners/services",
+  "/owners/branches",
+  "/owners/branches/new",
+  "/owners/branches/1",
+  "/admin/businesses",
 ];
 
 export default async function warmUp() {

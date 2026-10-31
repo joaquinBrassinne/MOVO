@@ -1,7 +1,9 @@
 package benefitshttp_test
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -84,13 +86,31 @@ func TestPreviewTellsHowManyCouponsTheCustomerAlreadyRedeemedHere(t *testing.T) 
 	owner := "token-owner@example.com"
 
 	first := s.generate(path, "Ana", "5491100000001")
-	if got := s.do(http.MethodGet, "/me/business/codes/"+first, owner, nil); got.body["customer_redeemed_count"] != float64(0) {
+	got := s.do(http.MethodGet, "/me/business/codes/"+first, owner, nil)
+	if got.body["customer_redeemed_count"] != float64(0) {
 		t.Errorf("first coupon preview = %v, want 0 redeemed before", got.body)
+	}
+	// No history is an empty list, never null: the panel can map over it as it is.
+	if list, ok := got.body["previous_redemptions"].([]any); !ok || len(list) != 0 {
+		t.Errorf("first coupon previous_redemptions = %#v, want []", got.body["previous_redemptions"])
 	}
 	s.do(http.MethodPost, "/me/business/codes/redeem", owner, map[string]any{"code": first})
 
 	second := s.generate(path, "Ana", "5491100000001")
-	if got := s.do(http.MethodGet, "/me/business/codes/"+second, owner, nil); got.body["customer_redeemed_count"] != float64(1) {
+	got = s.do(http.MethodGet, "/me/business/codes/"+second, owner, nil)
+	if got.body["customer_redeemed_count"] != float64(1) {
 		t.Errorf("second coupon preview = %v, want 1 redeemed before", got.body)
+	}
+	list, _ := got.body["previous_redemptions"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("second coupon previous_redemptions = %v, want the one coupon redeemed before", got.body["previous_redemptions"])
+	}
+	past, _ := list[0].(map[string]any)
+	benefit, _ := past["benefit"].(map[string]any)
+	if past["redeemed_at"] == nil || past["branch_name"] == "" || past["branch_name"] == nil || benefit["short_label"] != "-15%" {
+		t.Errorf("past redemption = %v, want its date, its branch and the -15%% it had", past)
+	}
+	if raw := fmt.Sprint(got.body); strings.Contains(raw, "5491100000001") {
+		t.Errorf("preview leaks the customer's phone: %s", raw)
 	}
 }

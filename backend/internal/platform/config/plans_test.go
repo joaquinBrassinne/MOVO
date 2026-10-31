@@ -15,6 +15,8 @@ func plansEnv(overrides map[string]string) func(string) string {
 		"PLAN_PRO_MAX_BRANCHES":            "4",
 		"PLAN_PRO_MAX_ACTIVE_SERVICES":     "0",
 		"PLAN_PRO_PRICE":                   "29800",
+		"MP_STARTER_URL":                   "https://mp.example/starter",
+		"MP_PRO_URL":                       "https://mp.example/pro",
 	}
 	for k, v := range overrides {
 		env[k] = v
@@ -30,8 +32,8 @@ func TestLoadPlans(t *testing.T) {
 		t.Fatalf("LoadPlans: %v", err)
 	}
 	want := config.Plans{
-		Starter: config.PlanSettings{MaxBranches: 2, MaxActiveServices: 3, Price: 19800},
-		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800},
+		Starter: config.PlanSettings{MaxBranches: 2, MaxActiveServices: 3, Price: 19800, CheckoutURL: "https://mp.example/starter"},
+		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800, CheckoutURL: "https://mp.example/pro"},
 	}
 	if got != want {
 		t.Errorf("plans = %+v, want %+v", got, want)
@@ -54,6 +56,10 @@ func TestLoadPlansRejections(t *testing.T) {
 		{"zero price", map[string]string{"PLAN_STARTER_PRICE": "0"}, "PLAN_STARTER_PRICE"},
 		{"pro with fewer branches than starter", map[string]string{"PLAN_PRO_MAX_BRANCHES": "1"}, "PLAN_PRO_MAX_BRANCHES"},
 		{"pro with fewer services than starter", map[string]string{"PLAN_PRO_MAX_ACTIVE_SERVICES": "2"}, "PLAN_PRO_MAX_ACTIVE_SERVICES"},
+		{"missing starter checkout link", map[string]string{"MP_STARTER_URL": ""}, "MP_STARTER_URL"},
+		{"http checkout link", map[string]string{"MP_PRO_URL": "http://mp.example/x"}, "MP_PRO_URL"},
+		{"relative checkout link", map[string]string{"MP_PRO_URL": "/subscribe"}, "MP_PRO_URL"},
+		{"javascript checkout link", map[string]string{"MP_STARTER_URL": "javascript:alert(1)"}, "MP_STARTER_URL"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

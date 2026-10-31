@@ -50,7 +50,7 @@ export default defineConfig({
     },
     {
       command: `npx next dev -p ${PORTS.web}`,
-      url: `http://localhost:${PORTS.web}/socios/ingresar`,
+      url: `http://localhost:${PORTS.web}/owners/sign-in`,
       reuseExistingServer: false,
       timeout: 180_000,
       env: { API_URL: `http://localhost:${PORTS.api}`, NEXT_TELEMETRY_DISABLED: "1" },

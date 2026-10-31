@@ -14,12 +14,12 @@ const TABS = [
     icon: '<circle cx="12" cy="12" r="10"/><path d="m16.2 7.8-2.100 6.300-6.300 2.100 2.100-6.300 6.300-2.100Z"/>',
   },
   {
-    href: "/mapa",
+    href: "/map",
     label: "Mapa",
     icon: '<path d="M14.1 4.6 9 3 3 5v16l6-2 5.100 1.600L21 19V3l-6.900 1.600Z"/><path d="M9 3v16"/><path d="M15 5v16"/>',
   },
   {
-    href: "/cupones",
+    href: "/coupons",
     label: "Mis cupones",
     icon: '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>',
   },
@@ -29,7 +29,7 @@ const TABS = [
 export function AccountLink({ className }: { className?: string }) {
   return (
     <Link
-      href="/socios"
+      href="/owners"
       aria-label="Ingreso de socios"
       className={cn(
         "grid size-11 place-items-center rounded-full bg-movo-card text-white outline-none focus-visible:ring-2 focus-visible:ring-movo-accent",

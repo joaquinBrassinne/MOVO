@@ -41,12 +41,13 @@ Fuente de verdad: `docs/sdd.md` (fases, modelo de datos, flujos). Decisiones de 
 - Tareas programadas en el worker con lock consultivo en Postgres; no usar goroutines sueltas para trabajo que no se puede perder.
 - Canje de códigos con `UPDATE ... WHERE status='pending' ... RETURNING` (atómico). El `business_id` sale del token, nunca del body.
 - Migraciones SQL puras con up/down. Logs con `slog`. Config por variables de entorno.
+- Contrato HTTP en `backend/api/openapi.yaml` (OpenAPI 3.0, escrito a mano). Toda ruta nueva o cambiada se documenta ahí en el mismo commit: `TestOpenAPIMatchesTheRouter` falla si el router y el contrato no coinciden. Con `API_DOCS=true` la API sirve Swagger UI en `/docs`.
 
 ## Reglas de Desarrollo (Frontend)
 - Componentes limpios; lógica de negocio y llamadas a la API en hooks personalizados.
 - SSR para páginas públicas (fichas de locales); mapas solo en componentes cliente.
 - Tipos compartidos desde el contrato OpenAPI cuando sea posible.
-- Los paths (rutas de URL y carpetas de ruta de `app/`) van en inglés (`/reviews`, no `/resenas`); el texto que ve el usuario sigue en español. A futuro todos los paths del proyecto tienen que estar en inglés: las rutas que ya están en español (`/socios`, `/cupon`, `/locales`, `/canjear`) se renombran en la tarea 8.13 del SDD, no de pasada.
+- Los paths (rutas de URL y carpetas de ruta de `app/`) van en inglés (`/reviews`, no `/resenas`); el texto que ve el usuario sigue en español. Todos los paths del proyecto están en inglés (el área del dueño es `/owners`, las fichas `/businesses/[slug]`, los cupones `/coupon/[token]`): toda ruta nueva sigue esa regla.
 
 ## Vistas (frontend)
 - Backend y vistas se desarrollan juntos por fase. Al empezar la fase, listame las vistas que necesita y los endpoints que consume, sin pedirme las imágenes todavía.

@@ -37,7 +37,7 @@ async function open(page: Page) {
     .getByRole("navigation", { name: "Secciones del panel" })
     .getByRole("link", { name: "Canjear" })
     .click();
-  await expect(page).toHaveURL(/\/socios\/canjear$/);
+  await expect(page).toHaveURL(/\/owners\/redeem$/);
 }
 
 async function look(page: Page, code: string) {

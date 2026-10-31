@@ -25,6 +25,9 @@ import (
 const (
 	ownerEmail    = "owner@example.com"
 	ownerPassword = "correct horse battery"
+
+	// roomyBudget keeps the sign-up limit out of the way of tests that register many accounts.
+	roomyBudget = 1000
 )
 
 type env struct {
@@ -34,7 +37,10 @@ type env struct {
 
 // newEnv wires the real stack over a fresh database, plus a probe route that
 // only a super admin may call.
-func newEnv(t *testing.T) env {
+func newEnv(t *testing.T) env { return newEnvWithSignUpBudget(t, roomyBudget) }
+
+// newEnvWithSignUpBudget is newEnv with room for signUps register attempts per address.
+func newEnvWithSignUpBudget(t *testing.T, signUpBudget int) env {
 	t.Helper()
 
 	pool := dbtest.New(t)
@@ -47,10 +53,11 @@ func newEnv(t *testing.T) env {
 	}
 
 	limiter := ratelimit.New(ratelimit.Config{MaxAttempts: 5, Window: 15 * time.Minute, MaxKeys: 1000}, nil)
+	signUps := ratelimit.New(ratelimit.Config{MaxAttempts: signUpBudget, Window: time.Hour, MaxKeys: 1000}, nil)
 	sessions := commands.NewSessions(signer, store, users, 30*24*time.Hour, nil, nil)
 
 	handlers := identityhttp.New(
-		commands.NewRegister(users, sessions),
+		commands.NewRegister(users, signUps, sessions),
 		commands.NewLogin(users, limiter, sessions),
 		commands.NewRefresh(sessions),
 		commands.NewLogout(store, nil),
@@ -122,6 +129,24 @@ func errorBody(t *testing.T, rec *httptest.ResponseRecorder) httpx.ErrorDetail {
 
 func credentials(email, password string) map[string]string {
 	return map[string]string{"email": email, "password": password}
+}
+
+func TestRegisterIsThrottledPerAddressWhateverTheOutcome(t *testing.T) {
+	t.Parallel()
+	e := newEnvWithSignUpBudget(t, 3)
+
+	// The budget counts tries: the taken email and the bad one use it up like a success.
+	e.do(http.MethodPost, "/auth/register", "", credentials("one@example.com", ownerPassword))
+	e.do(http.MethodPost, "/auth/register", "", credentials("one@example.com", ownerPassword))
+	e.do(http.MethodPost, "/auth/register", "", credentials("not-an-email", ownerPassword))
+
+	rec := e.do(http.MethodPost, "/auth/register", "", credentials("two@example.com", ownerPassword))
+	if rec.Code != http.StatusTooManyRequests || errorBody(t, rec).Code != identityhttp.CodeTooManyAttempts {
+		t.Fatalf("throttled sign-up = %d %s, want 429 too_many_attempts", rec.Code, rec.Body)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Error("a throttled sign-up must say when to retry")
+	}
 }
 
 func TestRegisterSignsTheOwnerInAndTheAccessTokenWorks(t *testing.T) {

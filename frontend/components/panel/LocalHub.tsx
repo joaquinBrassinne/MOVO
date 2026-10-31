@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { TicketIcon } from "@/components/benefits/icons";
 import {
   ArrowRightIcon,
   ClockIcon,
@@ -10,28 +11,34 @@ import {
 
 const SECTIONS = [
   {
-    href: "/socios/local/datos",
+    href: "/owners/business/details",
     title: "Datos del negocio",
     body: "Nombre, categoría, descripción y WhatsApp de tu local.",
     icon: StoreIcon,
   },
   {
-    href: "/socios/sedes",
+    href: "/owners/branches",
     title: "Sedes y horarios",
     body: "Direcciones, horarios y qué sedes ve el público.",
     icon: MapPinIcon,
   },
   {
-    href: "/socios/servicios",
+    href: "/owners/services",
     title: "Servicios",
     body: "Lo que ofrecés, sus precios y los días en que se dan.",
     icon: ClockIcon,
   },
   {
-    href: "/socios/fotos",
+    href: "/owners/photos",
     title: "Fotos",
     body: "La galería que se ve en la ficha de tu local.",
     icon: ImageIcon,
+  },
+  {
+    href: "/owners/plan",
+    title: "Mi plan",
+    body: "Tu plan, qué incluye y hasta cuándo está vigente.",
+    icon: TicketIcon,
   },
 ] as const;
 

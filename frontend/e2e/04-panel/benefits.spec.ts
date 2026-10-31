@@ -17,7 +17,7 @@ async function open(page: Page) {
     .getByRole("navigation", { name: "Secciones del panel" })
     .getByRole("link", { name: "Beneficios" })
     .click();
-  await expect(page).toHaveURL(/\/socios\/beneficios$/);
+  await expect(page).toHaveURL(/\/owners\/benefits$/);
 }
 
 test.describe("Benefits", () => {

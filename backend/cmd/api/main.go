@@ -15,12 +15,14 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	apispec "github.com/joaquinBrassinne/MOVO/api"
 	"github.com/joaquinBrassinne/MOVO/internal/business/adapters/nominatim"
 	identityhttp "github.com/joaquinBrassinne/MOVO/internal/identity/adapters/http"
 	"github.com/joaquinBrassinne/MOVO/internal/identity/adapters/postgres"
 	"github.com/joaquinBrassinne/MOVO/internal/identity/adapters/ratelimit"
 	"github.com/joaquinBrassinne/MOVO/internal/identity/adapters/tokens"
 	"github.com/joaquinBrassinne/MOVO/internal/identity/app/commands"
+	"github.com/joaquinBrassinne/MOVO/internal/platform/apidocs"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/clientip"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/config"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/db"
@@ -44,6 +46,15 @@ const (
 	loginMaxAttempts = 5
 	loginWindow      = 15 * time.Minute
 	loginMaxKeys     = 100_000
+)
+
+// Sign-up budget: one address may try registerMaxAttempts sign-ups per
+// registerWindow, accepted or not. An owner registers once, so a shared office
+// address has plenty of room.
+const (
+	registerMaxAttempts = 10
+	registerWindow      = time.Hour
+	registerMaxKeys     = 100_000
 )
 
 func main() {
@@ -126,6 +137,10 @@ func run() error {
 	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount, newSearchRoutes(log, pool, images), newBenefitsRoutes(log, pool, signer, coupons.MaxAttempts), newReviewsRoutes(log, pool, signer))
 	// The client address feeds the login and coupon limits, so it is resolved before any route.
 	handler := clientip.Middleware(proxies.Trusted)(router)
+	if cfg.APIDocs {
+		handler = apidocs.Mount(apispec.Spec, handler)
+		log.Info("api docs enabled", "path", apidocs.PagePath)
+	}
 	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, handler, pool.Close)
 }
 
@@ -168,10 +183,16 @@ func newIdentityRoutes(log *slog.Logger, pool *pgxpool.Pool, auth config.Auth, s
 		Window:      loginWindow,
 		MaxKeys:     loginMaxKeys,
 	}, nil)
+	// Its own budget and its own keys: a burst of sign-ups must not block anyone's login.
+	signUps := ratelimit.New(ratelimit.Config{
+		MaxAttempts: registerMaxAttempts,
+		Window:      registerWindow,
+		MaxKeys:     registerMaxKeys,
+	}, nil)
 	sessions := commands.NewSessions(signer, store, users, auth.RefreshTokenTTL, nil, log)
 
 	return identityhttp.New(
-		commands.NewRegister(users, sessions),
+		commands.NewRegister(users, signUps, sessions),
 		commands.NewLogin(users, limiter, sessions),
 		commands.NewRefresh(sessions),
 		commands.NewLogout(store, nil),

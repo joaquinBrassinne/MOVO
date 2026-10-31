@@ -9,7 +9,7 @@ test.describe.configure({ mode: "serial" });
 test.describe("Owner photo gallery", () => {
   test.beforeEach(async ({ page }) => {
     await signIn(page, OWNER);
-    await page.goto("/socios/fotos");
+    await page.goto("/owners/photos");
   });
 
   test(

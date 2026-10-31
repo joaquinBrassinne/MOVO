@@ -44,4 +44,14 @@ BEGIN
         INSERT INTO services (business_id, name, description, price)
         VALUES (bid, r.service, 'Servicio de prueba', 12000);
     END LOOP;
+
+    -- The view only shows a pilot or paid business: give every seeded one a current
+    -- subscription (verified ones on Pro so the featured stamp shows up). Also covers
+    -- databases seeded before subscriptions existed.
+    INSERT INTO subscriptions (business_id, plan, paid_until, confirmed_by, notes)
+    SELECT b.id, CASE WHEN b.verified_at IS NOT NULL THEN 'pro' ELSE 'starter' END,
+           CURRENT_DATE + 30, b.owner_user_id, 'seed-dev'
+    FROM businesses b JOIN users u ON u.id = b.owner_user_id
+    WHERE u.email LIKE '%@seed.movo.test'
+    ON CONFLICT (business_id) DO NOTHING;
 END $$;

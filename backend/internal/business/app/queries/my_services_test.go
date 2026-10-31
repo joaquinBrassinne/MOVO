@@ -15,7 +15,11 @@ type stubServices struct {
 	schedules map[int64][]domain.Slot
 }
 
-func (s stubServices) Create(context.Context, domain.Service) (domain.Service, error) {
+func (s stubServices) CreateIfRoom(context.Context, domain.Service, business.Fits) (domain.Service, error) {
+	panic("not used by the query")
+}
+
+func (s stubServices) SetActive(context.Context, int64, int64, bool, business.Fits) (domain.Service, error) {
 	panic("not used by the query")
 }
 

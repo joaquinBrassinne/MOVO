@@ -52,6 +52,42 @@ func TestRegisterCreatesABusinessAdminAndSignsIn(t *testing.T) {
 	}
 }
 
+func TestRegisterCountsEveryAttemptOfTheAddressAndSkipsUnknownOnes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	// A failed attempt counts too: the budget is for tries, not for accounts.
+	_, _ = h.register.Handle(t.Context(), commands.RegisterInput{Email: "nope", Password: ownerPassword, ClientIP: "203.0.113.7"})
+	if _, err := h.register.Handle(t.Context(), commands.RegisterInput{Email: ownerEmail, Password: ownerPassword, ClientIP: "203.0.113.7"}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	// Without an address there is nothing to count.
+	if _, err := h.register.Handle(t.Context(), commands.RegisterInput{Email: "other@example.com", Password: ownerPassword}); err != nil {
+		t.Fatalf("Register without address: %v", err)
+	}
+
+	if want := []string{"ip:203.0.113.7", "ip:203.0.113.7"}; !slices.Equal(h.limiter.attempts, want) {
+		t.Errorf("attempts = %v, want %v", h.limiter.attempts, want)
+	}
+}
+
+func TestRegisterIsRefusedWhileTheAddressIsRateLimitedAndStoresNothing(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.limiter.blocked["ip:203.0.113.7"] = 90 * time.Second
+
+	_, err := h.register.Handle(t.Context(), commands.RegisterInput{Email: ownerEmail, Password: ownerPassword, ClientIP: "203.0.113.7"})
+
+	var limited *commands.RateLimitedError
+	if !errors.As(err, &limited) || limited.RetryAfter != 90*time.Second {
+		t.Fatalf("Register error = %v, want a RateLimitedError with 90s", err)
+	}
+	// Nothing was stored: the same email registers fine from an address with budget left.
+	if _, err := h.register.Handle(t.Context(), commands.RegisterInput{Email: ownerEmail, Password: ownerPassword, ClientIP: "198.51.100.9"}); err != nil {
+		t.Errorf("Register after a refused attempt: %v, want the email to be free", err)
+	}
+}
+
 func TestRegisterRejectsBadInputWithoutStoringAnything(t *testing.T) {
 	t.Parallel()
 

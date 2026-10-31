@@ -37,7 +37,7 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
         <Gallery images={profile.images} name={profile.name} categorySlug={profile.category.slug} />
         <header className="absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-movo-page/80 to-transparent px-4 pt-4 pb-8">
           <Link
-            href="/mapa"
+            href="/map"
             aria-label="Volver al mapa"
             className="grid size-11 place-items-center rounded-full bg-movo-cream/90 text-movo-ink outline-none focus-visible:ring-2 focus-visible:ring-movo-accent"
           >
@@ -73,7 +73,7 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
             starClassName="size-5"
           />
           <Link
-            href={`/locales/${profile.slug}/reviews`}
+            href={`/businesses/${profile.slug}/reviews`}
             className="text-sm font-semibold underline outline-none focus-visible:ring-2 focus-visible:ring-movo-ink"
           >
             Ver todas las reseñas

@@ -35,7 +35,7 @@ const CARD = "space-y-4 rounded-3xl bg-movo-cream p-6 text-movo-ink";
 export function ReviewFormScreen({ token }: { token: string }) {
   const form = useReviewForm(token);
   const { view } = form;
-  const couponHref = `/cupon/${token}`;
+  const couponHref = `/coupon/${token}`;
 
   return (
     <div className="min-h-dvh bg-movo-page font-sans text-white">
@@ -63,7 +63,7 @@ export function ReviewFormScreen({ token }: { token: string }) {
           <Message
             title="No encontramos este cupón"
             body="El enlace puede estar incompleto. Si lo guardaste en este dispositivo, buscalo en tus cupones."
-            href="/cupones"
+            href="/coupons"
             action="Ver mis cupones"
           />
         ) : null}

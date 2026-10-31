@@ -27,6 +27,25 @@ func benefitColumns(alias string) string {
 	return strings.Join(cols, ", ")
 }
 
+// couponTermsColumns are the columns of benefit_codes that hold the terms a coupon was
+// issued under, in the order of the terms inside benefitColumns.
+const couponTermsColumns = "benefit_type, benefit_percent, benefit_amount_ars, benefit_title, benefit_conditions"
+
+// couponBenefitColumns is benefitColumns for a benefit seen through one of its coupons:
+// the terms (type, percent, amount, title, conditions) come from the copy the coupon
+// carries, so editing the benefit later does not change what the coupon offered; the id,
+// the business and the on and paused flags are the benefit's own. The result is read with
+// benefitDest. couponAlias names the relation that has the benefit_* columns.
+func couponBenefitColumns(couponAlias, benefitAlias string) string {
+	c, b := couponAlias+".", benefitAlias+"."
+	return strings.Join([]string{
+		b + "id", b + "business_id",
+		c + "benefit_type", "COALESCE(" + c + "benefit_percent, 0)", "COALESCE(" + c + "benefit_amount_ars, 0)",
+		"COALESCE(" + c + "benefit_title, '')", "COALESCE(" + c + "benefit_conditions, '')",
+		b + "active", b + "admin_paused",
+	}, ", ")
+}
+
 // benefitDest returns the scan targets that match benefitColumns.
 func benefitDest(b *domain.Benefit) []any {
 	return []any{

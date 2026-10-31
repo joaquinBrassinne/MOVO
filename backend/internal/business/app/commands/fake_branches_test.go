@@ -32,6 +32,48 @@ func (f *fakeBranches) Create(_ context.Context, b domain.Branch) (domain.Branch
 	return b, nil
 }
 
+func (f *fakeBranches) activeOf(businessID int64) int {
+	active := 0
+	for _, b := range f.byID {
+		if b.BusinessID == businessID && b.Active {
+			active++
+		}
+	}
+	return active
+}
+
+func (f *fakeBranches) CreateIfRoom(_ context.Context, b domain.Branch, fits business.Fits) (domain.Branch, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if b.Active && !fits(f.activeOf(b.BusinessID)) {
+		return domain.Branch{}, business.ErrBranchLimitReached
+	}
+	f.nextID++
+	b.ID = f.nextID
+	f.byID[b.ID] = b
+	return b, nil
+}
+
+func (f *fakeBranches) SetActive(_ context.Context, businessID, branchID int64, active bool, fits business.Fits) (domain.Branch, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	b, ok := f.byID[branchID]
+	if !ok || b.BusinessID != businessID {
+		return domain.Branch{}, business.ErrBranchNotFound
+	}
+	if b.Active == active {
+		return b, nil
+	}
+	if active && !fits(f.activeOf(businessID)) {
+		return domain.Branch{}, business.ErrBranchLimitReached
+	}
+	b.Active = active
+	f.byID[branchID] = b
+	return b, nil
+}
+
 func (f *fakeBranches) List(_ context.Context, businessID int64) ([]domain.Branch, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -65,6 +107,7 @@ func (f *fakeBranches) Save(_ context.Context, b domain.Branch) error {
 	if !ok || current.BusinessID != b.BusinessID {
 		return business.ErrBranchNotFound
 	}
+	b.Active = current.Active // like the real one, Save leaves the flag to SetActive
 	f.byID[b.ID] = b
 	return nil
 }

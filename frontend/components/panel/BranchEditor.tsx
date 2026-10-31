@@ -15,7 +15,7 @@ import { describeFailure } from "@/lib/business/messages";
 import type { Branch } from "@/lib/business/types";
 import { useBranchForm } from "@/lib/business/useBranchForm";
 
-const LIST_PATH = "/socios/sedes";
+const LIST_PATH = "/owners/branches";
 
 /** Crea una sede (`branchId` nulo) o edita una existente. */
 export function BranchEditor({ branchId }: { branchId: number | null }) {

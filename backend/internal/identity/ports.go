@@ -55,6 +55,14 @@ type AccessTokenIssuer interface {
 	Issue(userID int64, role domain.Role, now time.Time) (token string, expiresAt time.Time, err error)
 }
 
+// RegistrationLimiter throttles sign-ups per client address. Every try counts,
+// accepted or not, because the cost is the hashing and the account lookup.
+type RegistrationLimiter interface {
+	// Attempt counts one try of the key. It reports whether the key may go on and,
+	// when it may not, how long until it can.
+	Attempt(key string) (retryAfter time.Duration, allowed bool)
+}
+
 // LoginLimiter throttles failed logins per key (an email or a client address).
 type LoginLimiter interface {
 	// Allow reports whether the key may try again and, when it may not, how long

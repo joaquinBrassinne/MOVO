@@ -58,6 +58,34 @@ func (l *Limiter) Allow(key string) (time.Duration, bool) {
 	return current.expires.Sub(l.now()), false
 }
 
+// Attempt counts one try of key, whatever its outcome, and reports whether it is
+// still within the budget. Counting and deciding happen in one step under the
+// lock, so a burst cannot pass the budget. Once the budget is spent it refuses
+// without counting further, and says how long until the window ends. A new key
+// beyond MaxKeys is let through unrecorded, like Fail does not record it.
+func (l *Limiter) Attempt(key string) (time.Duration, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	current, ok := l.live(key)
+	if !ok {
+		if len(l.entries) >= l.cfg.MaxKeys {
+			l.sweep()
+		}
+		if len(l.entries) >= l.cfg.MaxKeys {
+			return 0, true
+		}
+		current = entry{expires: l.now().Add(l.cfg.Window)}
+	}
+	if current.failures >= l.cfg.MaxAttempts {
+		return current.expires.Sub(l.now()), false
+	}
+
+	current.failures++
+	l.entries[key] = current
+	return 0, true
+}
+
 // Fail records a failed attempt for key.
 func (l *Limiter) Fail(key string) {
 	l.mu.Lock()

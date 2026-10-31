@@ -24,8 +24,24 @@ const (
 	argonSaltLen   = 16
 )
 
+// maxConcurrentHashes bounds the argon2 runs in flight. Each one holds
+// argonMemoryKiB while it works, so a burst of logins would otherwise take
+// memory proportional to the burst; the rest queue.
+const maxConcurrentHashes = 4
+
+// hashSlots is the semaphore behind maxConcurrentHashes. It is never reassigned.
+var hashSlots = make(chan struct{}, maxConcurrentHashes)
+
 // phcEncoding is the unpadded standard base64 the PHC string format uses.
 var phcEncoding = base64.RawStdEncoding
+
+// deriveKey runs argon2id once the caller holds one of the hashing slots.
+func deriveKey(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
+	hashSlots <- struct{}{}
+	defer func() { <-hashSlots }()
+
+	return argon2.IDKey(password, salt, time, memory, threads, keyLen)
+}
 
 // HashPassword returns the argon2id hash of password as a PHC string with a
 // fresh random salt. Callers validate the password with ValidatePassword first.
@@ -35,7 +51,7 @@ func HashPassword(password string) (string, error) {
 		return "", fmt.Errorf("identity: read salt: %w", err)
 	}
 
-	key := argon2.IDKey([]byte(password), salt, argonTime, argonMemoryKiB, argonThreads, argonKeyLen)
+	key := deriveKey([]byte(password), salt, argonTime, argonMemoryKiB, argonThreads, argonKeyLen)
 
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version, argonMemoryKiB, argonTime, argonThreads,
@@ -50,7 +66,7 @@ func VerifyPassword(hash, password string) (bool, error) {
 		return false, err
 	}
 
-	got := argon2.IDKey([]byte(password), salt, params.time, params.memory, params.threads, uint32(len(want)))
+	got := deriveKey([]byte(password), salt, params.time, params.memory, params.threads, uint32(len(want)))
 
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }

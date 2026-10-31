@@ -87,6 +87,34 @@ test("the proxy still refuses what is next to the review routes", async () => {
   }
 });
 
+test("the proxy refuses a segment that the URL parser would read as something else", async () => {
+  // fetch lee `\` como `/` y resuelve `..`: sin este filtro, me/<..\..\auth\refresh> llegaría a /auth/refresh.
+  for (const path of [
+    "me/\\..\\..\\auth\\refresh",
+    "me/..\\x",
+    "me/x?y=1",
+    "me/x#y",
+    "me/x y",
+    "me/x;y",
+    "admin/\\businesses",
+  ]) {
+    assert.equal(await reachesTheApi("GET", path), false, `${path} must not pass`);
+  }
+});
+
+test("the proxy still passes the routes the app uses, with ids, slugs and tokens", async () => {
+  for (const path of [
+    "me/business/benefits/12/active",
+    "admin/businesses/3",
+    "businesses/gym-del-centro/view",
+    "r/wa/12",
+    `access/${COUPON_TOKEN}`,
+    "search",
+  ]) {
+    assert.equal(await reachesTheApi("GET", path), true, `${path} must pass`);
+  }
+});
+
 test("the session calls carry the visitor's chain too, so the login limit counts the visitor", async () => {
   const upstream = captureUpstream();
 

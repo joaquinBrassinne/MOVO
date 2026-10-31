@@ -90,6 +90,21 @@ export function problemOfStatus(status: CouponStatus): Problem | null {
 }
 
 /** "ya canjeó 3 cupones en tu negocio" / "es la primera vez que canjea en tu negocio". */
+/**
+ * Cuántos canjes anteriores quedan fuera de la lista del cupón. El servidor cuenta todos los
+ * canjes del cliente en el negocio, incluido este cupón si ya está canjeado, pero la lista
+ * trae solo los más nuevos y nunca al propio cupón.
+ */
+export function olderRedemptions(preview: {
+  status: CouponStatus;
+  customer_redeemed_count: number;
+  previous_redemptions: readonly unknown[];
+}): number {
+  const others =
+    preview.customer_redeemed_count - (preview.status === COUPON_STATUS.REDEEMED ? 1 : 0);
+  return Math.max(0, others - preview.previous_redemptions.length);
+}
+
 export function describeReturning(redeemedBefore: number): string {
   if (redeemedBefore <= 0) return "Es la primera vez que este cliente canjea en tu negocio.";
   return `Este cliente ya canjeó ${redeemedBefore} ${

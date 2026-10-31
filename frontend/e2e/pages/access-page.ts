@@ -26,11 +26,11 @@ export class AccessPage extends BasePage {
   }
 
   async gotoLogin(): Promise<void> {
-    await this.goto("/socios/ingresar");
+    await this.goto("/owners/sign-in");
   }
 
   async gotoRegister(): Promise<void> {
-    await this.goto("/socios/crear-cuenta");
+    await this.goto("/owners/sign-up");
   }
 
   async login(email: string, password: string): Promise<void> {

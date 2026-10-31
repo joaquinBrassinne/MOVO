@@ -1,7 +1,7 @@
 import { GiftIcon } from "@/components/benefits/icons";
 import { ClockIcon } from "@/components/socios/icons";
 import { benefitHeadline, initialOf, timeLeft } from "@/lib/benefits/format";
-import { describeReturning, problemOfStatus } from "@/lib/benefits/redeem";
+import { describeReturning, olderRedemptions, problemOfStatus } from "@/lib/benefits/redeem";
 import { BENEFIT_TYPE, COUPON_STATUS, type CouponPreview } from "@/lib/benefits/types";
 
 interface Props {
@@ -21,6 +21,7 @@ export function PreviewCard({ preview, now }: Props) {
   const blocked = problemOfStatus(preview.status);
   const expires = new Date(preview.expires_at);
   const { benefit } = preview;
+  const older = olderRedemptions(preview);
 
   return (
     <section aria-label="Cupón" className="space-y-4 rounded-3xl bg-white p-5 shadow-sm">
@@ -69,9 +70,34 @@ export function PreviewCard({ preview, now }: Props) {
         </p>
       )}
 
-      <p className="text-sm text-movo-slate">
-        {describeReturning(preview.customer_redeemed_count)}
-      </p>
+      <div className="space-y-2">
+        <p className="text-sm text-movo-slate">
+          {describeReturning(preview.customer_redeemed_count)}
+        </p>
+        {preview.previous_redemptions.length > 0 ? (
+          <ul aria-label="Cupones que canjeó antes" className="space-y-1.5 text-sm">
+            {preview.previous_redemptions.map((past, i) => (
+              <li
+                key={`${past.redeemed_at}-${i}`}
+                className="flex items-baseline justify-between gap-3 rounded-xl bg-movo-cream px-3 py-2"
+              >
+                <span className="min-w-0 truncate font-semibold">
+                  {benefitHeadline(past.benefit)}
+                </span>
+                <span className="shrink-0 text-xs text-movo-slate">
+                  {past.branch_name} ·{" "}
+                  {new Date(past.redeemed_at).toLocaleString("es-AR", DATE_TIME)}
+                </span>
+              </li>
+            ))}
+            {older > 0 ? (
+              <li className="px-3 text-xs text-movo-slate">
+                y {older} {older === 1 ? "canje más antiguo" : "canjes más antiguos"}
+              </li>
+            ) : null}
+          </ul>
+        ) : null}
+      </div>
     </section>
   );
 }

@@ -148,7 +148,7 @@ export function MyCoupons() {
               Elegí un local con beneficios y generá tu cupón: queda acá, en este dispositivo.
             </p>
             <Link
-              href="/mapa"
+              href="/map"
               className="inline-flex h-12 items-center rounded-full bg-movo-accent px-6 font-bold outline-none focus-visible:ring-2 focus-visible:ring-movo-ink"
             >
               Explorar locales
@@ -231,7 +231,7 @@ function CouponCard({ item, now }: { item: Item; now: Date }) {
         <div className="flex items-center justify-between gap-3 text-sm font-bold">
           <span className="text-movo-gold">Mostralo en recepción</span>
           <Link
-            href={`/cupon/${token}`}
+            href={`/coupon/${token}`}
             className="outline-none focus-visible:underline"
             aria-label={`Abrir el cupón ${code} y su QR`}
           >

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -15,6 +16,8 @@ const (
 	envProMaxBranches     = "PLAN_PRO_MAX_BRANCHES"
 	envProMaxServices     = "PLAN_PRO_MAX_ACTIVE_SERVICES"
 	envProPrice           = "PLAN_PRO_PRICE"
+	envStarterURL         = "MP_STARTER_URL"
+	envProURL             = "MP_PRO_URL"
 )
 
 // PlanSettings are the limits and the display price of one plan.
@@ -25,6 +28,8 @@ type PlanSettings struct {
 	MaxActiveServices int
 	// Price is the monthly price shown to owners, in whole pesos.
 	Price int
+	// CheckoutURL is the Mercado Pago subscription link of the plan (https).
+	CheckoutURL string
 }
 
 // Plans holds the settings of both plans. Every API instance must run with the
@@ -64,6 +69,13 @@ func LoadPlans(get func(string) string) (Plans, error) {
 		return Plans{}, err
 	}
 
+	if plans.Starter.CheckoutURL, err = requiredHTTPSURL(get, envStarterURL); err != nil {
+		return Plans{}, err
+	}
+	if plans.Pro.CheckoutURL, err = requiredHTTPSURL(get, envProURL); err != nil {
+		return Plans{}, err
+	}
+
 	// Pro includes everything Starter has, so it can never offer less.
 	if plans.Pro.MaxBranches < plans.Starter.MaxBranches {
 		return Plans{}, fmt.Errorf("config: %s %d must not be lower than %s %d",
@@ -83,6 +95,20 @@ func lowerLimit(a, b int) bool {
 		return false
 	}
 	return b == 0 || a < b
+}
+
+// requiredHTTPSURL reads a link that is shown to owners and opened in their browser, so
+// it must be an absolute https URL: anything else would be a broken or unsafe button.
+func requiredHTTPSURL(get func(string) string, name string) (string, error) {
+	raw := strings.TrimSpace(get(name))
+	if raw == "" {
+		return "", fmt.Errorf("config: %s is required and must not be empty", name)
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return "", fmt.Errorf("config: %s must be an absolute https URL", name)
+	}
+	return raw, nil
 }
 
 func requiredInt(get func(string) string, name string, minimum int) (int, error) {

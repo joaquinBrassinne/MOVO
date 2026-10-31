@@ -32,6 +32,48 @@ func (f *fakeServices) Create(_ context.Context, s domain.Service) (domain.Servi
 	return s, nil
 }
 
+func (f *fakeServices) activeOf(businessID int64) int {
+	active := 0
+	for _, s := range f.byID {
+		if s.BusinessID == businessID && s.Active {
+			active++
+		}
+	}
+	return active
+}
+
+func (f *fakeServices) CreateIfRoom(_ context.Context, s domain.Service, fits business.Fits) (domain.Service, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if s.Active && !fits(f.activeOf(s.BusinessID)) {
+		return domain.Service{}, business.ErrServiceLimitReached
+	}
+	f.nextID++
+	s.ID = f.nextID
+	f.byID[s.ID] = s
+	return s, nil
+}
+
+func (f *fakeServices) SetActive(_ context.Context, businessID, serviceID int64, active bool, fits business.Fits) (domain.Service, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	s, ok := f.owned(businessID, serviceID)
+	if !ok {
+		return domain.Service{}, business.ErrServiceNotFound
+	}
+	if s.Active == active {
+		return s, nil
+	}
+	if active && !fits(f.activeOf(businessID)) {
+		return domain.Service{}, business.ErrServiceLimitReached
+	}
+	s.Active = active
+	f.byID[serviceID] = s
+	return s, nil
+}
+
 func (f *fakeServices) List(_ context.Context, businessID int64) ([]domain.Service, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -66,9 +108,11 @@ func (f *fakeServices) Save(_ context.Context, s domain.Service) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if _, ok := f.owned(s.BusinessID, s.ID); !ok {
+	current, ok := f.owned(s.BusinessID, s.ID)
+	if !ok {
 		return business.ErrServiceNotFound
 	}
+	s.Active = current.Active // like the real one, Save leaves the flag to SetActive
 	f.byID[s.ID] = s
 	return nil
 }

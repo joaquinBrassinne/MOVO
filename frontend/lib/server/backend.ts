@@ -110,6 +110,13 @@ const FORWARDED_RESPONSE_HEADERS = [
 
 const METHODS_WITHOUT_BODY = new Set(["GET", "HEAD", "DELETE"]);
 
+/**
+ * Lo único que puede tener un segmento de la ruta: letras, números, guion y guion bajo.
+ * Una lista negra no alcanza: fetch lee `\` como `/` y resuelve `..`, y un `?` o un `#`
+ * decodificados cambiarían la consulta o el fragmento de la URL que arma el proxy.
+ */
+const SAFE_SEGMENT = /^[A-Za-z0-9_-]+$/;
+
 function notFound(): Response {
   return Response.json(
     { error: { code: "not_found", message: "resource not found" } },
@@ -122,9 +129,13 @@ function notFound(): Response {
  * pasa lo permitido por PROXIED, sin segmentos raros, y la respuesta vuelve tal cual.
  */
 export async function proxyToBackend(request: Request, segments: string[]): Promise<Response> {
-  const unsafe = segments.some((s) => s === "" || s === "." || s === ".." || /[\/%]/.test(s));
   const path = segments.join("/");
-  if (unsafe || !PROXIED.some((allowed) => allowed.test(path))) return notFound();
+  if (
+    !segments.every((s) => SAFE_SEGMENT.test(s)) ||
+    !PROXIED.some((allowed) => allowed.test(path))
+  ) {
+    return notFound();
+  }
 
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {

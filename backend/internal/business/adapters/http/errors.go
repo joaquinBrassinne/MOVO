@@ -141,7 +141,7 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 		}
 	}
 
-	h.log.Error("business request failed", "request_id", httpx.RequestID(r.Context()), "path", r.URL.Path, "error", err)
+	h.log.Error("business request failed", "request_id", httpx.RequestID(r.Context()), "path", httpx.Route(r), "error", err)
 	httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, "something went wrong", nil)
 }
 

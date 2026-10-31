@@ -102,7 +102,11 @@ func (h *Handlers) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := h.register.Handle(r.Context(), commands.RegisterInput{Email: req.Email, Password: req.Password})
+	session, err := h.register.Handle(r.Context(), commands.RegisterInput{
+		Email:    req.Email,
+		Password: req.Password,
+		ClientIP: clientip.From(r),
+	})
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -184,7 +188,7 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, http.StatusTooManyRequests, CodeTooManyAttempts,
 			"too many failed attempts, try again later", map[string]int{"retry_after_seconds": seconds})
 	default:
-		h.log.Error("identity request failed", "request_id", httpx.RequestID(r.Context()), "path", r.URL.Path, "error", err)
+		h.log.Error("identity request failed", "request_id", httpx.RequestID(r.Context()), "path", httpx.Route(r), "error", err)
 		httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, "something went wrong", nil)
 	}
 }

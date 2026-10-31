@@ -8,9 +8,9 @@ test.describe("Access", () => {
     "Anonymous visitors of private views are sent to sign in",
     { tag: ["@critical", "@e2e", "@access", "@ACCESS-E2E-001"] },
     async ({ page }) => {
-      for (const path of ["/socios/panel", "/socios/onboarding", "/admin/locales"]) {
+      for (const path of ["/owners/dashboard", "/owners/onboarding", "/admin/businesses"]) {
         await page.goto(path);
-        await expect(page).toHaveURL(/\/socios\/ingresar$/);
+        await expect(page).toHaveURL(/\/owners\/sign-in$/);
       }
     },
   );
@@ -31,7 +31,7 @@ test.describe("Access", () => {
       await access.register("no-es-un-email", "ClaveSegura#2026");
       await expect(page.getByText("Ingresá un email válido")).toBeVisible();
 
-      await expect(page).toHaveURL(/\/socios\/crear-cuenta$/);
+      await expect(page).toHaveURL(/\/owners\/sign-up$/);
     },
   );
 
@@ -43,7 +43,7 @@ test.describe("Access", () => {
       await access.gotoRegister();
       await access.register(OWNER.email, OWNER.password);
 
-      await expect(page).toHaveURL(/\/socios\/onboarding$/);
+      await expect(page).toHaveURL(/\/owners\/onboarding$/);
     },
   );
 
@@ -56,7 +56,7 @@ test.describe("Access", () => {
       await access.register(OWNER.email, OWNER.password);
 
       await expect(page.getByText("Ese email ya está registrado")).toBeVisible();
-      await expect(page).toHaveURL(/\/socios\/crear-cuenta$/);
+      await expect(page).toHaveURL(/\/owners\/sign-up$/);
     },
   );
 
@@ -69,7 +69,7 @@ test.describe("Access", () => {
       await access.login(OWNER.email, "ContraseñaIncorrecta#1");
 
       await expect(page.getByText("Email o contraseña incorrectos")).toBeVisible();
-      await expect(page).toHaveURL(/\/socios\/ingresar$/);
+      await expect(page).toHaveURL(/\/owners\/sign-in$/);
     },
   );
 
@@ -78,10 +78,10 @@ test.describe("Access", () => {
     { tag: ["@critical", "@e2e", "@access", "@ACCESS-E2E-006"] },
     async ({ page }) => {
       await signIn(page, OWNER);
-      await expect(page).toHaveURL(/\/socios\/onboarding$/);
+      await expect(page).toHaveURL(/\/owners\/onboarding$/);
 
       await page.reload();
-      await expect(page).toHaveURL(/\/socios\/onboarding$/);
+      await expect(page).toHaveURL(/\/owners\/onboarding$/);
     },
   );
 
@@ -90,8 +90,8 @@ test.describe("Access", () => {
     { tag: ["@medium", "@e2e", "@access", "@ACCESS-E2E-007"] },
     async ({ page }) => {
       await signIn(page, OWNER);
-      await page.goto("/socios/ingresar");
-      await expect(page).toHaveURL(/\/socios\/onboarding$/);
+      await page.goto("/owners/sign-in");
+      await expect(page).toHaveURL(/\/owners\/onboarding$/);
     },
   );
 
@@ -100,7 +100,7 @@ test.describe("Access", () => {
     { tag: ["@critical", "@e2e", "@access", "@ACCESS-E2E-008"] },
     async ({ page }) => {
       await signIn(page, ADMIN);
-      await expect(page).toHaveURL(/\/admin\/locales$/);
+      await expect(page).toHaveURL(/\/admin\/businesses$/);
       await expect(page.getByRole("heading", { name: /Gestión de locales/ })).toBeVisible();
     },
   );
@@ -110,8 +110,8 @@ test.describe("Access", () => {
     { tag: ["@critical", "@e2e", "@access", "@ACCESS-E2E-009"] },
     async ({ page }) => {
       await signIn(page, OWNER);
-      await page.goto("/admin/locales");
-      await expect(page).toHaveURL(/\/socios\/onboarding$/);
+      await page.goto("/admin/businesses");
+      await expect(page).toHaveURL(/\/owners\/onboarding$/);
       await expect(page.getByRole("heading", { name: /Gestión de locales/ })).toHaveCount(0);
     },
   );

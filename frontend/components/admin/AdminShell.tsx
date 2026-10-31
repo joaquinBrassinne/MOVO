@@ -4,18 +4,16 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { Logo } from "@/components/Logo";
-import { LogOutIcon, StarIcon, StoreIcon } from "@/components/socios/icons";
+import { GridIcon, LogOutIcon, StarIcon, StoreIcon } from "@/components/socios/icons";
 import { useSession } from "@/lib/session/SessionProvider";
 
 const NAV = [
-  { href: "/admin/locales", label: "Locales", Icon: StoreIcon },
+  { href: "/admin/businesses", label: "Locales", Icon: StoreIcon },
+  { href: "/admin/subscriptions", label: "Suscripciones", Icon: GridIcon },
   { href: "/admin/reviews", label: "Reseñas", Icon: StarIcon },
 ];
 
-/**
- * Marco del panel del super admin: barra lateral oscura y contenido ancho. Hoy hay "Locales"
- * y "Reseñas"; Suscripciones y Métricas se suman con las fases 5 y 6.
- */
+/** Marco del panel del super admin: barra lateral oscura y contenido ancho. */
 export function AdminShell({ children }: { children: ReactNode }) {
   const { state, logout } = useSession();
   const pathname = usePathname();

@@ -16,8 +16,10 @@ type CouponView struct {
 	Benefit          domain.Benefit
 	CustomerName     string
 	CustomerRedeemed int
-	ExpiresAt        time.Time
-	RedeemedAt       *time.Time
+	// PreviousRedemptions are the newest coupons this customer redeemed at the business.
+	PreviousRedemptions []benefits.PastRedemption
+	ExpiresAt           time.Time
+	RedeemedAt          *time.Time
 }
 
 // PreviewCode lets an owner look at a coupon of their business before redeeming it
@@ -56,12 +58,13 @@ func (q *PreviewCode) Handle(ctx context.Context, ownerID int64, rawCode string)
 		return CouponView{}, fmt.Errorf("read coupon: %w", err)
 	}
 	return CouponView{
-		Code:             preview.Coupon.Code,
-		Status:           preview.Coupon.StatusAt(q.now()),
-		Benefit:          preview.Benefit,
-		CustomerName:     preview.CustomerName,
-		CustomerRedeemed: preview.CustomerRedeemed,
-		ExpiresAt:        preview.Coupon.ExpiresAt,
-		RedeemedAt:       preview.RedeemedAt,
+		Code:                preview.Coupon.Code,
+		Status:              preview.Coupon.StatusAt(q.now()),
+		Benefit:             preview.Benefit,
+		CustomerName:        preview.CustomerName,
+		CustomerRedeemed:    preview.CustomerRedeemed,
+		PreviousRedemptions: preview.PreviousRedemptions,
+		ExpiresAt:           preview.Coupon.ExpiresAt,
+		RedeemedAt:          preview.RedeemedAt,
 	}, nil
 }

@@ -39,7 +39,11 @@ type stubBranches struct {
 	hours    map[int64][]domain.Slot
 }
 
-func (s stubBranches) Create(context.Context, domain.Branch) (domain.Branch, error) {
+func (s stubBranches) CreateIfRoom(context.Context, domain.Branch, business.Fits) (domain.Branch, error) {
+	panic("not used by the query")
+}
+
+func (s stubBranches) SetActive(context.Context, int64, int64, bool, business.Fits) (domain.Branch, error) {
 	panic("not used by the query")
 }
 

@@ -32,8 +32,8 @@ func newSeed(ctx context.Context, t *testing.T, pool *pgxpool.Pool, redeemed boo
 		t.Fatalf("insert owner: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
-INSERT INTO businesses (owner_user_id, category_id, name, slug, whatsapp_number, status)
-VALUES ($1, (SELECT id FROM categories WHERE slug = 'yoga'), 'Studio', 'studio', '5491112345678', 'active') RETURNING id`, s.owner).Scan(&s.business); err != nil {
+INSERT INTO businesses (owner_user_id, category_id, name, slug, whatsapp_number, status, pilot)
+VALUES ($1, (SELECT id FROM categories WHERE slug = 'yoga'), 'Studio', 'studio', '5491112345678', 'active', true) RETURNING id`, s.owner).Scan(&s.business); err != nil {
 		t.Fatalf("insert business: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `

@@ -2,7 +2,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 
 import { BasePage } from "../base-page";
 
-/** El alta en cuatro pasos (`/socios/onboarding`) y su pantalla de espera. */
+/** El alta en cuatro pasos (`/owners/onboarding`) y su pantalla de espera. */
 export class OnboardingPage extends BasePage {
   readonly next: Locator;
   readonly back: Locator;
@@ -51,7 +51,7 @@ export class OnboardingPage extends BasePage {
   }
 
   async gotoStart(): Promise<void> {
-    await this.goto("/socios/onboarding");
+    await this.goto("/owners/onboarding");
   }
 
   async expectStep(step: 1 | 2 | 3 | 4): Promise<void> {

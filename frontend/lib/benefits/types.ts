@@ -101,12 +101,22 @@ export const COUPON_STATUS = {
 
 export type CouponStatus = (typeof COUPON_STATUS)[keyof typeof COUPON_STATUS];
 
+/** Un cupón que el cliente ya canjeó en el negocio, con las condiciones que tenía al canjearlo. */
+export interface PastRedemption {
+  /** Momento del canje, en RFC 3339. */
+  redeemed_at: string;
+  branch_name: string;
+  benefit: ClaimedBenefit;
+}
+
 /** El cupón de un negocio antes de canjearlo. Nunca trae el teléfono del cliente. */
 export interface CouponPreview {
   code: string;
   status: CouponStatus;
   customer_name: string;
   customer_redeemed_count: number;
+  /** Los últimos canjes del cliente en el negocio, del más nuevo al más viejo y sin este cupón. */
+  previous_redemptions: PastRedemption[];
   expires_at: string;
   redeemed_at: string | null;
   benefit: ClaimedBenefit;

@@ -34,6 +34,35 @@ test("audit actions have readable names and unknown ones are shown as they are",
   assert.equal(describeAuditAction("business.something_new"), "business.something_new");
 });
 
+test("billing errors have their own Spanish wording", () => {
+  assert.match(describeAdminFailure(failure("business_not_found", 404)).title, /No encontramos/);
+  assert.match(describeAdminFailure(failure("subscription_not_found", 404)).title, /suscripción/);
+  assert.match(describeAdminFailure(failure("business_not_confirmable")).title, /No se puede/);
+  assert.match(describeAdminFailure(failure("subscription_exists")).body, /Registrar pago/);
+});
+
+test("validation failures name the field and reason of the billing form", () => {
+  const invalid = (field: string, reason: string) =>
+    describeAdminFailure({
+      status: 422,
+      error: { code: "validation_failed", message: "x", details: { field, reason } },
+    });
+
+  assert.match(invalid("paid_until", "in_the_past").body, /anterior a hoy/);
+  assert.match(invalid("paid_until", "invalid").body, /fecha válida/);
+  assert.match(invalid("notes", "too_long").body, /demasiado largas/);
+  assert.match(invalid("plan", "invalid").body, /plan válido/);
+  assert.match(invalid("mp_subscription_ref", "too_long").body, /Mercado Pago/);
+  assert.match(invalid("status", "invalid").body, /estado/);
+  assert.ok(invalid("something_else", "x").title);
+});
+
+test("billing audit actions are readable", () => {
+  assert.equal(describeAuditAction("billing.confirm_payment"), "Pago confirmado y local publicado");
+  assert.equal(describeAuditAction("billing.register_payment"), "Pago mensual registrado");
+  assert.equal(describeAuditAction("billing.change_plan"), "Plan cambiado");
+});
+
 test("every status has a label", () => {
   assert.deepEqual(Object.keys(STATUS_LABEL).sort(), [
     "active",

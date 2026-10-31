@@ -28,28 +28,15 @@ func (d servicesDeps) checkBranch(ctx context.Context, businessID, branchID int6
 	return nil
 }
 
-// checkRoomForOneMore returns business.ErrServiceLimitReached when the plan has no
-// room for another active service. Inactive services never count.
-func (d servicesDeps) checkRoomForOneMore(ctx context.Context, businessID int64) error {
+// fitsOneMore is the plan's answer to "may this business have one more active
+// service". The repository asks it under its lock on the business; inactive
+// services never count.
+func (d servicesDeps) fitsOneMore(ctx context.Context, businessID int64) (business.Fits, error) {
 	ent, err := d.entitlements.For(ctx, businessID)
 	if err != nil {
-		return fmt.Errorf("resolve entitlements: %w", err)
+		return nil, fmt.Errorf("resolve entitlements: %w", err)
 	}
-	existing, err := d.services.List(ctx, businessID)
-	if err != nil {
-		return fmt.Errorf("list services: %w", err)
-	}
-
-	active := 0
-	for _, s := range existing {
-		if s.Active {
-			active++
-		}
-	}
-	if !ent.CanActivateService(active) {
-		return business.ErrServiceLimitReached
-	}
-	return nil
+	return ent.CanActivateService, nil
 }
 
 // AddServiceInput is a new service of the owner's business.
@@ -82,11 +69,12 @@ func (c *AddService) Handle(ctx context.Context, in AddServiceInput) (domain.Ser
 	if err := c.checkBranch(ctx, owned.ID, service.BranchID); err != nil {
 		return domain.Service{}, err
 	}
-	if err := c.checkRoomForOneMore(ctx, owned.ID); err != nil {
+	fits, err := c.fitsOneMore(ctx, owned.ID)
+	if err != nil {
 		return domain.Service{}, err
 	}
 
-	stored, err := c.services.Create(ctx, service)
+	stored, err := c.services.CreateIfRoom(ctx, service, fits)
 	if err != nil {
 		return domain.Service{}, fmt.Errorf("create service: %w", err)
 	}
@@ -155,24 +143,18 @@ func (c *SetServiceActive) Handle(ctx context.Context, in SetServiceActiveInput)
 	if err != nil {
 		return domain.Service{}, err
 	}
-	current, err := c.services.Find(ctx, owned.ID, in.ServiceID)
-	if err != nil {
-		return domain.Service{}, fmt.Errorf("find service: %w", err)
-	}
-	if current.Active == in.Active {
-		return current, nil
-	}
-
-	updated := current.Deactivate()
+	// Deactivating never asks the plan, so it keeps working if the entitlements
+	// cannot be read.
+	var fits business.Fits
 	if in.Active {
-		if err := c.checkRoomForOneMore(ctx, owned.ID); err != nil {
+		if fits, err = c.fitsOneMore(ctx, owned.ID); err != nil {
 			return domain.Service{}, err
 		}
-		updated = current.Activate()
 	}
 
-	if err := c.services.Save(ctx, updated); err != nil {
-		return domain.Service{}, fmt.Errorf("save service: %w", err)
+	updated, err := c.services.SetActive(ctx, owned.ID, in.ServiceID, in.Active, fits)
+	if err != nil {
+		return domain.Service{}, fmt.Errorf("set service active: %w", err)
 	}
 	return updated, nil
 }

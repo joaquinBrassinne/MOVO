@@ -14,7 +14,7 @@ test.use({
 });
 
 const API = `http://localhost:${PORTS.api}/api/v1`;
-const PROFILE = "/locales/estudio-aire-libre";
+const PROFILE = "/businesses/estudio-aire-libre";
 
 async function ownerToken(request: APIRequestContext): Promise<string> {
   const login = await request.post(`${API}/auth/login`, { data: OWNER });
@@ -68,7 +68,7 @@ test.describe("Customer coupons", () => {
       await page.screenshot({ path: "test-results/shots/get-coupon.png" });
 
       await generate(sheet, "Camila Gómez", "11 5555 0001");
-      await expect(page).toHaveURL(/\/cupon\/[A-Za-z0-9_-]{43}\?nuevo=1$/);
+      await expect(page).toHaveURL(/\/coupon\/[A-Za-z0-9_-]{43}\?nuevo=1$/);
       await expect(page.getByRole("heading", { name: "¡Cupón generado!" })).toBeVisible();
 
       const qr = page.getByRole("img", { name: /^Código QR del cupón / });
@@ -80,7 +80,7 @@ test.describe("Customer coupons", () => {
       await page.getByRole("button", { name: "Guardar enlace del cupón" }).click();
       await expect(page.getByRole("status")).toContainText("Enlace copiado");
       const copied = await page.evaluate(() => navigator.clipboard.readText());
-      expect(copied).toMatch(/\/cupon\/[A-Za-z0-9_-]{43}$/);
+      expect(copied).toMatch(/\/coupon\/[A-Za-z0-9_-]{43}$/);
     },
   );
 
@@ -89,14 +89,14 @@ test.describe("Customer coupons", () => {
     { tag: ["@critical", "@e2e", "@coupons", "@COUPONS-E2E-003"] },
     async ({ page }) => {
       // Un navegador limpio no tiene nada guardado.
-      await page.goto("/cupones");
+      await page.goto("/coupons");
       await expect(page.getByText("Todavía no tenés cupones guardados")).toBeVisible();
 
       // Se genera uno y se vuelve a la lista.
       const sheet = await openSheet(page, 1);
       await generate(sheet, "Lucía Torres", "11 5555 0002");
       await expect(page.getByRole("heading", { name: "¡Cupón generado!" })).toBeVisible();
-      await page.goto("/cupones");
+      await page.goto("/coupons");
 
       const cards = page.getByRole("list", { name: "Cupones" }).getByRole("listitem");
       await expect(cards).toHaveCount(1);
@@ -111,7 +111,7 @@ test.describe("Customer coupons", () => {
         .first()
         .getByRole("link", { name: /Abrir el cupón/ })
         .click();
-      await expect(page).toHaveURL(/\/cupon\/[A-Za-z0-9_-]{43}$/);
+      await expect(page).toHaveURL(/\/coupon\/[A-Za-z0-9_-]{43}$/);
       await expect(page.getByRole("heading", { name: "Tu cupón" })).toBeVisible();
       await expect(page.getByRole("img", { name: /^Código QR del cupón / })).toBeVisible();
     },
@@ -130,7 +130,7 @@ test.describe("Customer coupons", () => {
       const alert = second.getByRole("alert");
       await expect(alert).toContainText("Ya tenés un cupón activo en este local");
       await alert.getByRole("link", { name: "Ver mi cupón activo" }).click();
-      await expect(page).toHaveURL(/\/cupones$/);
+      await expect(page).toHaveURL(/\/coupons$/);
       await expect(page.getByRole("list", { name: "Cupones" }).getByRole("listitem")).toHaveCount(
         1,
       );
@@ -159,7 +159,7 @@ test.describe("Customer coupons", () => {
       });
       expect(redeem.status()).toBe(200);
 
-      await page.goto("/cupones");
+      await page.goto("/coupons");
       await expect(page.getByRole("tab", { name: /Activos \(0\)/ })).toBeVisible();
       await page.getByRole("tab", { name: /Historial \(1\)/ }).click();
       await expect(page.getByRole("list", { name: "Cupones" }).getByRole("listitem")).toContainText(
@@ -175,7 +175,7 @@ test.describe("Customer coupons", () => {
     "A link that is not a coupon says so, and a business at its monthly limit says when it reopens",
     { tag: ["@high", "@e2e", "@coupons", "@COUPONS-E2E-006"] },
     async ({ page, request }) => {
-      await page.goto(`/cupon/${"x".repeat(43)}`);
+      await page.goto(`/coupon/${"x".repeat(43)}`);
       await expect(page.getByRole("main").getByRole("alert")).toContainText(
         "No encontramos este cupón",
       );

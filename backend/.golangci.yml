@@ -38,6 +38,8 @@ linters:
             - github.com/golang-jwt/jwt/v5
             - github.com/aws/aws-sdk-go-v2
             - github.com/aws/smithy-go
+            # Solo el test que compara api/openapi.yaml con el router lee YAML.
+            - go.yaml.in/yaml/v3
         # §3.3 regla 1: el dominio de cada módulo no importa infraestructura,
         # aunque la regla "backend" autorice esos paquetes para otras capas.
         domain-is-pure:

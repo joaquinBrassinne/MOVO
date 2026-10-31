@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
 )
 
@@ -213,6 +215,45 @@ func TestRequestIsLoggedWithRequestID(t *testing.T) {
 		if !strings.Contains(entry, want) {
 			t.Errorf("log entry %q does not contain %s", entry, want)
 		}
+	}
+}
+
+// TestRequestLogNeverCarriesAPathCredential pins that the log names the route,
+// not the URL: the customer's access token travels in the path, and an
+// unmatched path may hold a mistyped one.
+func TestRequestLogNeverCarriesAPathCredential(t *testing.T) {
+	t.Parallel()
+
+	const secret = "s3cr3t-token-from-the-url"
+	mount := func(api chi.Router) {
+		api.Get("/access/{token}", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	}
+
+	tests := []struct {
+		name     string
+		path     string
+		wantPath string
+	}{
+		{"matched route logs its pattern", "/api/v1/access/" + secret, `"path":"/api/v1/access/{token}"`},
+		{"unmatched path logs the wildcard", "/api/v1/acces/" + secret, `"path":"/api/v1/*"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var logs bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&logs, nil))
+
+			serve(t, httpx.NewRouter(logger, healthyPinger(), mount), httptest.NewRequest(http.MethodGet, tt.path, nil))
+
+			entry := logs.String()
+			if strings.Contains(entry, secret) {
+				t.Errorf("log entry %q leaks the path credential", entry)
+			}
+			if !strings.Contains(entry, tt.wantPath) {
+				t.Errorf("log entry %q does not contain %s", entry, tt.wantPath)
+			}
+		})
 	}
 }
 

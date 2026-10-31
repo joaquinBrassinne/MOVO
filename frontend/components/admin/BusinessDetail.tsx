@@ -8,11 +8,15 @@ import { MapPinIcon, XIcon } from "@/components/socios/icons";
 import { applyAdminAction } from "@/lib/admin/api";
 import { useAdminDetail } from "@/lib/admin/hooks";
 import { describeAdminFailure, describeAuditAction } from "@/lib/admin/messages";
+import { formatDate } from "@/lib/admin/subscriptions/format";
+import { useSubscription } from "@/lib/admin/subscriptions/hooks";
 import { ADMIN_ACTION, type AdminAction } from "@/lib/admin/types";
 import type { FormMessage } from "@/lib/business/messages";
 import { BUSINESS_STATUS } from "@/lib/business/types";
 
+import { ConfirmPaymentForm } from "./ConfirmPaymentForm";
 import { StatusPill } from "./StatusPill";
+import { PLAN_NAME } from "./SubscriptionPills";
 
 interface Props {
   id: number;
@@ -36,6 +40,11 @@ export function BusinessDetail({ id, onClose, onChanged }: Props) {
     if (!result.ok) setMessage(describeAdminFailure(result));
 
     setPending(false);
+    detail.reload();
+    onChanged();
+  }
+
+  function refresh() {
     detail.reload();
     onChanged();
   }
@@ -84,15 +93,25 @@ export function BusinessDetail({ id, onClose, onChanged }: Props) {
       {message ? <Notice title={message.title} body={message.body} /> : null}
 
       <section className="space-y-3 rounded-2xl bg-movo-cream p-4">
-        {status === BUSINESS_STATUS.PENDING_REVIEW ? (
+        {status === BUSINESS_STATUS.PENDING_REVIEW && business.pilot ? (
           <ActionButton primary disabled={pending} onClick={() => void act(ADMIN_ACTION.APPROVE)}>
             Aprobar comercio y publicar
           </ActionButton>
+        ) : null}
+        {status === BUSINESS_STATUS.PENDING_REVIEW && !business.pilot ? (
+          <ConfirmPaymentForm
+            businessId={id}
+            submitLabel="Confirmar pago y publicar"
+            onConfirmed={refresh}
+          />
         ) : null}
         {status === BUSINESS_STATUS.ACTIVE ? (
           <ActionButton disabled={pending} onClick={() => void act(ADMIN_ACTION.PAUSE)}>
             Pausar el local
           </ActionButton>
+        ) : null}
+        {status === BUSINESS_STATUS.ACTIVE && !business.pilot ? (
+          <ActiveBilling businessId={id} onConfirmed={refresh} />
         ) : null}
         {status === BUSINESS_STATUS.PAUSED ? (
           <ActionButton
@@ -228,7 +247,14 @@ export function BusinessDetail({ id, onClose, onChanged }: Props) {
             </span>
           </p>
         ) : null}
-        <ConfirmationChecklist key={business.id} />
+        <ConfirmationChecklist
+          key={business.id}
+          legend={
+            status === BUSINESS_STATUS.PENDING_REVIEW && !business.pilot
+              ? "Antes de confirmar el pago"
+              : "Antes de aprobar"
+          }
+        />
       </Section>
 
       <Section title="Historial de auditoría">
@@ -267,7 +293,7 @@ const CONFIRMATION_CHECKS = [
 ] as const;
 
 /** Los tres chequeos antes de aprobar. Es una ayuda de pantalla: no se guarda ni bloquea la acción. */
-function ConfirmationChecklist() {
+function ConfirmationChecklist({ legend }: { legend: string }) {
   const [done, setDone] = useState<ReadonlySet<string>>(new Set());
 
   function toggle(label: string) {
@@ -280,7 +306,7 @@ function ConfirmationChecklist() {
 
   return (
     <fieldset className="space-y-2 border-t border-movo-slate/20 pt-3">
-      <legend className="text-xs font-bold text-movo-slate">Antes de aprobar</legend>
+      <legend className="text-xs font-bold text-movo-slate">{legend}</legend>
       {CONFIRMATION_CHECKS.map((label) => (
         <label key={label} className="flex items-center gap-3 text-sm font-semibold">
           <input
@@ -293,6 +319,52 @@ function ConfirmationChecklist() {
         </label>
       ))}
     </fieldset>
+  );
+}
+
+/**
+ * An active, non-pilot business should have a subscription. Without one (rare, the API allows
+ * it) the admin can still confirm the payment; with one, a one-line summary links to the list.
+ */
+function ActiveBilling({
+  businessId,
+  onConfirmed,
+}: {
+  businessId: number;
+  onConfirmed: () => void;
+}) {
+  const subscription = useSubscription(businessId);
+  const { state } = subscription;
+
+  if (state.status === "loading") return <p className="text-sm text-movo-slate">Cargando pago…</p>;
+  if (state.status === "missing") {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm font-bold">Confirmar pago</p>
+        <p className="text-sm text-movo-slate">Este local está activo pero no tiene suscripción.</p>
+        <ConfirmPaymentForm
+          businessId={businessId}
+          submitLabel="Confirmar pago"
+          onConfirmed={() => {
+            subscription.reload();
+            onConfirmed();
+          }}
+        />
+      </div>
+    );
+  }
+  if (state.status === "failed") {
+    return <p className="text-sm text-movo-slate">No pudimos cargar su suscripción.</p>;
+  }
+
+  const sub = state.data;
+  return (
+    <p className="text-sm">
+      Plan {PLAN_NAME[sub.plan]} hasta el {formatDate(sub.paid_until)}.{" "}
+      <a href="/admin/subscriptions" className="font-bold underline underline-offset-4">
+        Ver suscripciones
+      </a>
+    </p>
   );
 }
 

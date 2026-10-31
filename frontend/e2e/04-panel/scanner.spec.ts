@@ -35,7 +35,7 @@ async function openRedeem(page: Page) {
     .getByRole("navigation", { name: "Secciones del panel" })
     .getByRole("link", { name: "Canjear" })
     .click();
-  await expect(page).toHaveURL(/\/socios\/canjear$/);
+  await expect(page).toHaveURL(/\/owners\/redeem$/);
 }
 
 test.describe("QR scanner", () => {

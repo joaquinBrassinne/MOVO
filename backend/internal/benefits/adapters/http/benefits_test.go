@@ -140,8 +140,8 @@ func (s *server) owner(email, status string) string {
 
 	id, token := s.user(email, "business_admin")
 	_, err := s.pool.Exec(s.t.Context(), `
-INSERT INTO businesses (owner_user_id, category_id, name, slug, whatsapp_number, status)
-VALUES ($1, (SELECT id FROM categories WHERE slug = 'yoga'), 'Studio', $2, '5491112345678', $3)`,
+INSERT INTO businesses (owner_user_id, category_id, name, slug, whatsapp_number, status, pilot)
+VALUES ($1, (SELECT id FROM categories WHERE slug = 'yoga'), 'Studio', $2, '5491112345678', $3, true)`,
 		id, "studio-"+strconv.FormatInt(id, 10), status)
 	if err != nil {
 		s.t.Fatalf("create business: %v", err)

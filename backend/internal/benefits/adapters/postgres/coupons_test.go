@@ -31,8 +31,8 @@ func newShop(ctx context.Context, t *testing.T, pool *pgxpool.Pool, name, status
 		t.Fatalf("insert owner: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
-INSERT INTO businesses (owner_user_id, category_id, name, slug, whatsapp_number, status, monthly_coupon_limit)
-VALUES ($1, (SELECT id FROM categories WHERE slug = 'yoga'), $2, $2, '5491112345678', $3, NULLIF($4, 0)) RETURNING id`, owner, name, status, limit).Scan(&business); err != nil {
+INSERT INTO businesses (owner_user_id, category_id, name, slug, whatsapp_number, status, monthly_coupon_limit, pilot)
+VALUES ($1, (SELECT id FROM categories WHERE slug = 'yoga'), $2, $2, '5491112345678', $3, NULLIF($4, 0), true) RETURNING id`, owner, name, status, limit).Scan(&business); err != nil {
 		t.Fatalf("insert business: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `
@@ -315,7 +315,7 @@ func TestIssueReportsACodeCollisionAndKeepsTheCustomersName(t *testing.T) {
 	}
 
 	// One phone is one customer: a coupon at another business reuses the row and keeps the
-	// name declared last. A refused request rolls back, so it leaves the name alone.
+	// name declared first. A refused request rolls back, so it leaves the name alone.
 	other := newShop(ctx, t, pool, "other", "active", 5)
 	renamed := request(other, "5491100000001", "STUVWXYZ")
 	renamed.Contact.Name = "Ana Maria"
@@ -333,7 +333,7 @@ func TestIssueReportsACodeCollisionAndKeepsTheCustomersName(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*), max(name) FROM customers WHERE phone = '5491100000001'`).Scan(&customers, &name); err != nil {
 		t.Fatalf("read customer: %v", err)
 	}
-	if customers != 1 || name != "Ana Maria" {
-		t.Errorf("customers for the phone = %d named %q; want one named Ana Maria", customers, name)
+	if customers != 1 || name != "Ana" {
+		t.Errorf("customers for the phone = %d named %q; want one named Ana", customers, name)
 	}
 }
