@@ -745,6 +745,7 @@ Problemas detectados probando a mano; se arreglan con test que los reproduzca y 
 8. Captcha o verificación del cliente, si aparece abuso.
 9. Sede principal: hoy ninguna sede se distingue de las demás ("principal + 1" en 12.2 es solo una forma de contar). Hay que poder marcar cuál es la sede principal de cada local (por ejemplo `branches.is_primary`, una sola por negocio) y usarla donde se necesite una sede única, como la ficha o la tarjeta del Home.
 10. Fotos por sede: en el MVP las fotos pertenecen al negocio (`business_images`) y la ficha las muestra todas juntas. Más adelante cada sede puede tener las suyas (por ejemplo `branch_id` opcional en `business_images`) para mostrar la fachada y el interior de cada local.
+11. Revisar Protomaps para el mapa: un archivo PMTiles de Argentina en el bucket de `Storage`, sin servidor de tiles ni dependencia de terceros. Hoy el piloto usa OpenFreeMap (sin SLA) vía `NEXT_PUBLIC_MAP_STYLE_URL`, así que el cambio es solo la URL del estilo. Evaluar antes del lanzamiento: generar y actualizar el archivo, CORS y Range en el bucket, y el estilo con la marca de MOVO (ver 12.3 y `docs/work/map-openfreemap.md`).
 
 ---
 
