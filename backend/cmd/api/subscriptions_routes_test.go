@@ -107,6 +107,20 @@ VALUES ($1, 'Centro', 'Calle 1', 'Cordoba', ST_SetSRID(ST_MakePoint(-64.18, -31.
 		t.Errorf("second confirm = %d %q, want 409 subscription_exists", status, errorCode(body))
 	}
 
+	// The owner reads their own validity, and nobody else can.
+	status, body = h.do(http.MethodGet, "/me/subscription", ownerToken, nil)
+	own, _ := body["subscription"].(map[string]any)
+	if status != http.StatusOK || body["pilot"] != false || own["plan"] != "pro" || own["paid_until"] != today.AddDays(30).String() ||
+		own["grace_until"] != today.AddDays(30+billingdomain.GraceDays).String() || own["status"] != "active" {
+		t.Errorf("owner subscription = %d %v, want pro active until %s", status, body, today.AddDays(30))
+	}
+	if _, leaked := own["notes"]; leaked {
+		t.Error("the owner must not see the admin's notes")
+	}
+	if status, _ := h.do(http.MethodGet, "/me/subscription", adminToken, nil); status != http.StatusForbidden {
+		t.Errorf("subscription as the admin = %d, want 403", status)
+	}
+
 	// The plan the admin chose is the one the owner lives under.
 	if status, body := h.do(http.MethodGet, "/me/plan", ownerToken, nil); status != http.StatusOK || body["plan"] != "pro" {
 		t.Errorf("owner plan = %d %v, want pro", status, body)

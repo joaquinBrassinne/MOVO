@@ -121,6 +121,20 @@ type OwnerAlerts interface {
 	MarkRead(ctx context.Context, ownerID, alertID int64) error
 }
 
+// OwnerSubscription is what the owner sees of their payment state: whether the business
+// is a pilot and, if it has one, its subscription.
+type OwnerSubscription struct {
+	Pilot        bool
+	Subscription *domain.Subscription
+}
+
+// OwnerSubscriptions tells the payment state of an owner's business. The composition root
+// builds it from the business module, so billing never reads businesses.
+type OwnerSubscriptions interface {
+	// SubscriptionOfOwner returns ErrOwnerHasNoBusiness when the owner has no business.
+	SubscriptionOfOwner(ctx context.Context, ownerID int64) (OwnerSubscription, error)
+}
+
 // SubscriptionRow is one subscription with what the super admin needs to act on it:
 // who the business is and where to reach the owner.
 type SubscriptionRow struct {

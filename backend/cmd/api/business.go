@@ -64,6 +64,34 @@ func (o ownerPlans) PlanOfOwner(ctx context.Context, ownerID int64) (billing.Pla
 	return billing.PlanInfo{}, billing.ErrUnknownPlan
 }
 
+// ownerSubscriptions answers the payment state of an owner's business, joining the two
+// modules here so billing never reads businesses.
+type ownerSubscriptions struct {
+	businesses    *businesspostgres.Businesses
+	subscriptions *billingpostgres.Subscriptions
+}
+
+func (o ownerSubscriptions) SubscriptionOfOwner(ctx context.Context, ownerID int64) (billing.OwnerSubscription, error) {
+	b, err := o.businesses.FindByOwner(ctx, ownerID)
+	if errors.Is(err, business.ErrBusinessNotFound) {
+		return billing.OwnerSubscription{}, billing.ErrOwnerHasNoBusiness
+	}
+	if err != nil {
+		return billing.OwnerSubscription{}, err
+	}
+
+	own := billing.OwnerSubscription{Pilot: b.Pilot}
+	sub, err := o.subscriptions.Find(ctx, b.ID)
+	switch {
+	case errors.Is(err, billing.ErrSubscriptionNotFound):
+	case err != nil:
+		return billing.OwnerSubscription{}, err
+	default:
+		own.Subscription = &sub
+	}
+	return own, nil
+}
+
 // newBusinessRoutes composes the business and billing modules: adapters, use
 // cases and HTTP. It returns the mounts of both.
 func newBusinessRoutes(
@@ -128,6 +156,7 @@ func newBusinessRoutes(
 
 	planHandlers := billinghttp.New(catalog).
 		WithOwnerPlans(verifier, ownerPlans{businesses: businesses, resolver: resolver, catalog: catalog}).
+		WithOwnerSubscription(verifier, ownerSubscriptions{businesses: businesses, subscriptions: subscriptions}).
 		WithAlerts(verifier, billingpostgres.NewAlerts(pool))
 	adminHandlers := billinghttp.NewAdmin(log, billinghttp.AdminDeps{
 		Verifier:      verifier,
