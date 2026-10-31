@@ -42,6 +42,8 @@ func (h *Handlers) Mount(r chi.Router) {
 type planJSON struct {
 	Plan  string `json:"plan"`
 	Price int    `json:"price"`
+	// CheckoutURL is the Mercado Pago subscription link; only the public catalog sends it.
+	CheckoutURL string `json:"checkout_url,omitempty"`
 	// The limits are null when the plan is unlimited.
 	MaxBranches       *int `json:"max_branches"`
 	MaxActiveServices *int `json:"max_active_services"`
@@ -60,7 +62,9 @@ func (h *Handlers) handlePlans(w http.ResponseWriter, _ *http.Request) {
 	plans := h.catalog.Plans()
 	out := make([]planJSON, 0, len(plans))
 	for _, p := range plans {
-		out = append(out, toPlanJSON(p))
+		item := toPlanJSON(p)
+		item.CheckoutURL = p.CheckoutURL
+		out = append(out, item)
 	}
 
 	// The catalog only changes with a restart, so a short shared cache is safe.

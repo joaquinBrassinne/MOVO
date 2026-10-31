@@ -421,9 +421,10 @@ PLAN_PRO_MAX_BRANCHES=4
 PLAN_PRO_MAX_ACTIVE_SERVICES=0        # 0 = ilimitado
 PLAN_STARTER_PRICE=19800
 PLAN_PRO_PRICE=29800
-MP_STARTER_URL=                       # link del plan de suscripción de Mercado Pago
+MP_STARTER_URL=                       # link https del plan de suscripción de Mercado Pago (obligatorio)
 MP_PRO_URL=
-SUBSCRIPTION_GRACE_DAYS=7
+# La gracia (7 días) no es variable: vive fija en la vista visible_branches y en
+# billing/domain.GraceDays, y un test verifica que coinciden (decisión de la Fase 5).
 
 # Búsqueda y cupones
 SEARCH_DISTANCE_BUCKET_M=2000         # tramo de distancia para ordenar destacados
@@ -598,7 +599,7 @@ Convenciones de trabajo:
 
 - [x] 5.1 Migración `subscriptions` (S)
 - [x] 5.2 Dominio `billing`: vigencia, gracia y estados derivados (M)
-- [ ] 5.3 Configuración de planes por env y endpoint público `GET /plans` con precio y URL de contratación (S)
+- [x] 5.3 Configuración de planes por env y endpoint público `GET /plans` con precio y URL de contratación (S)
 - [ ] 5.4 Extiende `visible_branches` (creada en 3.1) con una migración nueva (`CREATE OR REPLACE VIEW`) que agrega la condición "pilot o hoy <= paid_until + gracia"; el down restaura la versión mínima. Tests: activo, en gracia, vencido y piloto (M)
 - [ ] 5.5 Super admin: confirmar pago (el admin elige el plan y la vigencia inicial; el plan nunca sale del onboarding ni de la URL de retorno), registrar pago mensual, suspender, cambiar de plan + `audit_log` (M)
 - [ ] 5.6 Vista "por vencer en 7 días" y enlace `wa.me` de recordatorio (S)

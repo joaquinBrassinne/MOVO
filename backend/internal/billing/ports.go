@@ -15,8 +15,10 @@ var ErrUnknownPlan = errors.New("billing: plan is not in the catalog")
 
 // PlanInfo is a plan as shown to owners.
 type PlanInfo struct {
-	Plan         domain.Plan
-	Price        int
+	Plan  domain.Plan
+	Price int
+	// CheckoutURL is where the owner pays: the Mercado Pago link of the plan.
+	CheckoutURL  string
 	Entitlements domain.Entitlements
 }
 
