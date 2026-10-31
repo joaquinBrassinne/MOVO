@@ -70,7 +70,7 @@ Fuente de verdad: `docs/sdd.md` (fases, modelo de datos, flujos). Decisiones de 
 - Trabajo sustancial (seguridad, cobros, datos, varias tareas): antes de empezar, escribí una nota corta en docs/work/<tarea>.md con objetivo, decisiones, hecho y pendiente, y retomá desde ahí si se corta la sesión. El estado general sigue siendo el SDD.
 - Verificá siempre: tests y lint antes de cerrar; después tildá la tarea y dejá un resumen corto.
 - No generes specs ni diseños formales por cada cambio, salvo que lo pida.
-- Para escribir código seguí el skill small-diffs: las ~400 líneas son una guía, no un tope; si un cambio las supera de forma natural, explicalo brevemente y seguí. Frená solo si hay una decisión de producto, seguridad o cobros.
+- Para escribir código seguí el skill ponytail: las ~400 líneas son una guía, no un tope; si un cambio las supera de forma natural, explicalo brevemente y seguí. Frená solo si hay una decisión de producto, seguridad o cobros.
 - Los skills son guías generales: si uno contradice docs/sdd.md o este archivo, gana el proyecto. Para Next.js, verificá la versión en frontend/package.json antes de aplicar patrones del skill nextjs-15.
 
 ## Comandos útiles
