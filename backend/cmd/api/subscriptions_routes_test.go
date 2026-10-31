@@ -128,6 +128,21 @@ VALUES ($1, 'Centro', 'Calle 1', 'Cordoba', ST_SetSRID(ST_MakePoint(-64.18, -31.
 		t.Errorf("owner plan after the change = %d %v, want starter", status, body)
 	}
 
+	// The "por vencer" view lists it once it is about to end, with the reminder link.
+	_, err = h.pool.Exec(ctx, `UPDATE subscriptions SET paid_until = CURRENT_DATE + 3 WHERE business_id = $1`, business)
+	must(err)
+	if status, body := h.do(http.MethodGet, "/admin/subscriptions?status=expiring", adminToken, nil); status != http.StatusOK {
+		t.Errorf("expiring list = %d %v, want 200", status, body)
+	} else if list, _ := body["subscriptions"].([]any); len(list) != 1 || list[0].(map[string]any)["reminder_url"] == "" {
+		t.Errorf("expiring list = %v, want the business with a reminder link", body)
+	}
+	if status, _ := h.do(http.MethodGet, "/admin/subscriptions", ownerToken, nil); status != http.StatusForbidden {
+		t.Errorf("an owner reading the list = %d, want 403", status)
+	}
+	if status, body := h.do(http.MethodGet, "/admin/subscriptions?status=bogus", adminToken, nil); status != http.StatusUnprocessableEntity || errorCode(body) != "validation_failed" {
+		t.Errorf("bad filter = %d %q, want 422 validation_failed", status, errorCode(body))
+	}
+
 	// The three actions are in the history of the business, with who did them.
 	var actions []string
 	rows, err := h.pool.Query(ctx, `SELECT action FROM audit_log WHERE entity = 'business' AND entity_id = $1 ORDER BY id`, business)

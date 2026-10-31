@@ -133,6 +133,7 @@ func newBusinessRoutes(
 		Confirm:       billingcommands.NewConfirmPayment(subscriptions, time.Now),
 		Register:      billingcommands.NewRegisterPayment(subscriptions, time.Now),
 		ChangePlan:    billingcommands.NewChangePlan(subscriptions),
+		List:          billingqueries.NewListSubscriptions(subscriptions),
 	})
 	billingMount = func(r chi.Router) {
 		planHandlers.Mount(r)

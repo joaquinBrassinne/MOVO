@@ -77,6 +77,24 @@ type SubscriptionRepository interface {
 	Update(ctx context.Context, sub, previous domain.Subscription, entry AuditEntry) error
 }
 
+// SubscriptionRow is one subscription with what the super admin needs to act on it:
+// who the business is and where to reach the owner.
+type SubscriptionRow struct {
+	Subscription   domain.Subscription
+	BusinessName   string
+	BusinessStatus string
+	Pilot          bool
+	// OwnerWhatsApp is the number the owner gave, digits only.
+	OwnerWhatsApp string
+}
+
+// SubscriptionDirectory lists every subscription. The MVP has a few dozen businesses
+// (SDD risks table), so the list is read whole and filtered by the domain rules,
+// instead of repeating them in SQL.
+type SubscriptionDirectory interface {
+	List(ctx context.Context) ([]SubscriptionRow, error)
+}
+
 // ErrOwnerHasNoBusiness means the owner has not created a business, so there is no plan.
 var ErrOwnerHasNoBusiness = errors.New("billing: owner has no business")
 

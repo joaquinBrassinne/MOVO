@@ -11,6 +11,7 @@ import (
 
 	"github.com/joaquinBrassinne/MOVO/internal/billing"
 	"github.com/joaquinBrassinne/MOVO/internal/billing/app/commands"
+	"github.com/joaquinBrassinne/MOVO/internal/billing/app/queries"
 	"github.com/joaquinBrassinne/MOVO/internal/billing/domain"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
 )
@@ -35,6 +36,7 @@ type AdminDeps struct {
 	Confirm       *commands.ConfirmPayment
 	Register      *commands.RegisterPayment
 	ChangePlan    *commands.ChangePlan
+	List          *queries.ListSubscriptions
 }
 
 // Admin serves the super admin subscription endpoints under /admin/subscriptions.
@@ -55,6 +57,7 @@ func (a *Admin) Mount(r chi.Router) {
 	r.Route("/admin/subscriptions", func(admin chi.Router) {
 		admin.Use(httpx.Authenticate(a.deps.Verifier), httpx.RequireRole(roleSuperAdmin), noStore)
 
+		admin.Get("/", a.handleList)
 		admin.Get("/{id}", a.handleGet)
 		admin.Post("/{id}", a.handleConfirm)
 		admin.Post("/{id}/payments", a.handleRegisterPayment)
@@ -100,6 +103,36 @@ func (a *Admin) businessID(w http.ResponseWriter, r *http.Request) (int64, bool)
 		return 0, false
 	}
 	return id, true
+}
+
+type listEntryJSON struct {
+	subscriptionJSON
+	BusinessName   string `json:"business_name"`
+	BusinessStatus string `json:"business_status"`
+	Pilot          bool   `json:"pilot"`
+	ExpiringSoon   bool   `json:"expiring_soon"`
+	DaysLeft       int    `json:"days_left"`
+	ReminderURL    string `json:"reminder_url"`
+}
+
+// handleList answers GET /admin/subscriptions?status=active|grace|expired|expiring. The
+// "expiring" filter is the "por vencer en 7 días" view, each entry with its reminder link.
+func (a *Admin) handleList(w http.ResponseWriter, r *http.Request) {
+	entries, err := a.deps.List.Handle(r.Context(), r.URL.Query().Get("status"), domain.DayOf(a.now()))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	out := make([]listEntryJSON, 0, len(entries))
+	for _, e := range entries {
+		item := a.toJSON(e.Subscription)
+		item.Status = string(e.Status)
+		out = append(out, listEntryJSON{
+			subscriptionJSON: item, BusinessName: e.BusinessName, BusinessStatus: e.BusinessStatus,
+			Pilot: e.Pilot, ExpiringSoon: e.ExpiringSoon, DaysLeft: e.DaysLeft, ReminderURL: e.ReminderURL,
+		})
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"subscriptions": out})
 }
 
 func (a *Admin) handleGet(w http.ResponseWriter, r *http.Request) {
@@ -183,11 +216,12 @@ func (a *Admin) handleChangePlan(w http.ResponseWriter, r *http.Request) {
 }
 
 var validation = map[error]fieldError{
-	domain.ErrPlanInvalid:          {"plan", "invalid"},
-	domain.ErrPaidUntilInvalid:     {"paid_until", "invalid"},
-	commands.ErrPaidUntilInThePast: {"paid_until", "in_the_past"},
-	domain.ErrRefInvalid:           {"mp_subscription_ref", "too_long"},
-	domain.ErrNotesInvalid:         {"notes", "too_long"},
+	queries.ErrSubscriptionFilterInvalid: {"status", "invalid"},
+	domain.ErrPlanInvalid:                {"plan", "invalid"},
+	domain.ErrPaidUntilInvalid:           {"paid_until", "invalid"},
+	commands.ErrPaidUntilInThePast:       {"paid_until", "in_the_past"},
+	domain.ErrRefInvalid:                 {"mp_subscription_ref", "too_long"},
+	domain.ErrNotesInvalid:               {"notes", "too_long"},
 }
 
 type fieldError struct{ field, reason string }
