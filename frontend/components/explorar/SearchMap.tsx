@@ -10,6 +10,7 @@ import { useEffect, useRef } from "react";
 import { CircleMarker, MapContainer, Marker, useMap, useMapEvents } from "react-leaflet";
 
 import { PlusIcon } from "@/components/socios/icons";
+import { MountWhileVisible } from "@/components/map/MountWhileVisible";
 import { VectorTileLayer } from "@/components/map/VectorTileLayer";
 import type { Point, SearchResult } from "@/lib/search/types";
 
@@ -67,34 +68,36 @@ export default function SearchMap({
   onLocate,
 }: Props) {
   return (
-    <MapContainer
-      center={[center.lat, center.lng]}
-      zoom={ZOOM}
-      zoomControl={false}
-      className="size-full"
-    >
-      <VectorTileLayer />
-      <FlyTo center={center} recenterKey={recenterKey} />
-      <MoveWatcher onMoved={onMoved} />
-      {user ? (
-        <CircleMarker
-          center={[user.lat, user.lng]}
-          radius={8}
-          pathOptions={{ color: "#ffffff", weight: 3, fillColor: "#3b82f6", fillOpacity: 1 }}
-        />
-      ) : null}
-      {results.map((result) => (
-        <Marker
-          key={result.branch_id}
-          position={[result.lat, result.lng]}
-          icon={pinIcon(result, result.branch_id === selectedId)}
-          zIndexOffset={result.branch_id === selectedId ? 1000 : 0}
-          title={result.business_name}
-          eventHandlers={{ click: () => onSelect(result.branch_id) }}
-        />
-      ))}
-      <Controls onLocate={onLocate} />
-    </MapContainer>
+    <MountWhileVisible>
+      <MapContainer
+        center={[center.lat, center.lng]}
+        zoom={ZOOM}
+        zoomControl={false}
+        className="size-full"
+      >
+        <VectorTileLayer />
+        <FlyTo center={center} recenterKey={recenterKey} />
+        <MoveWatcher onMoved={onMoved} />
+        {user ? (
+          <CircleMarker
+            center={[user.lat, user.lng]}
+            radius={8}
+            pathOptions={{ color: "#ffffff", weight: 3, fillColor: "#3b82f6", fillOpacity: 1 }}
+          />
+        ) : null}
+        {results.map((result) => (
+          <Marker
+            key={result.branch_id}
+            position={[result.lat, result.lng]}
+            icon={pinIcon(result, result.branch_id === selectedId)}
+            zIndexOffset={result.branch_id === selectedId ? 1000 : 0}
+            title={result.business_name}
+            eventHandlers={{ click: () => onSelect(result.branch_id) }}
+          />
+        ))}
+        <Controls onLocate={onLocate} />
+      </MapContainer>
+    </MountWhileVisible>
   );
 }
 

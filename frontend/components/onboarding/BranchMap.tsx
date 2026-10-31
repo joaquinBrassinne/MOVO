@@ -10,6 +10,7 @@ import { useEffect } from "react";
 import { MapContainer, Marker, useMap, useMapEvents } from "react-leaflet";
 
 import { PlusIcon } from "@/components/socios/icons";
+import { MountWhileVisible } from "@/components/map/MountWhileVisible";
 import { VectorTileLayer } from "@/components/map/VectorTileLayer";
 import type { MapView, Pin } from "@/lib/business/useBranchForm";
 
@@ -35,31 +36,33 @@ interface Props {
 
 export default function BranchMap({ pin, view, onMove }: Props) {
   return (
-    <MapContainer
-      center={[view.latitude, view.longitude]}
-      zoom={pin ? STREET_ZOOM : CITY_ZOOM}
-      zoomControl={false}
-      scrollWheelZoom={false}
-      className="size-full"
-    >
-      <VectorTileLayer />
-      <FlyTo view={view} zoomIn={pin !== null} />
-      <PlaceOnClick onPick={onMove} />
-      {pin ? (
-        <Marker
-          position={[pin.latitude, pin.longitude]}
-          icon={PIN_ICON}
-          draggable
-          eventHandlers={{
-            dragend: (event) => {
-              const { lat, lng } = (event.target as L.Marker).getLatLng();
-              onMove({ latitude: lat, longitude: lng });
-            },
-          }}
-        />
-      ) : null}
-      <ZoomButtons />
-    </MapContainer>
+    <MountWhileVisible>
+      <MapContainer
+        center={[view.latitude, view.longitude]}
+        zoom={pin ? STREET_ZOOM : CITY_ZOOM}
+        zoomControl={false}
+        scrollWheelZoom={false}
+        className="size-full"
+      >
+        <VectorTileLayer />
+        <FlyTo view={view} zoomIn={pin !== null} />
+        <PlaceOnClick onPick={onMove} />
+        {pin ? (
+          <Marker
+            position={[pin.latitude, pin.longitude]}
+            icon={PIN_ICON}
+            draggable
+            eventHandlers={{
+              dragend: (event) => {
+                const { lat, lng } = (event.target as L.Marker).getLatLng();
+                onMove({ latitude: lat, longitude: lng });
+              },
+            }}
+          />
+        ) : null}
+        <ZoomButtons />
+      </MapContainer>
+    </MountWhileVisible>
   );
 }
 
