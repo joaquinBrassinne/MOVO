@@ -601,7 +601,7 @@ Convenciones de trabajo:
 - [x] 5.2 Dominio `billing`: vigencia, gracia y estados derivados (M)
 - [x] 5.3 Configuración de planes por env y endpoint público `GET /plans` con precio y URL de contratación (S)
 - [x] 5.4 Extiende `visible_branches` (creada en 3.1) con una migración nueva (`CREATE OR REPLACE VIEW`) que agrega la condición "pilot o hoy <= paid_until + gracia"; el down restaura la versión mínima. Tests: activo, en gracia, vencido y piloto (M)
-- [ ] 5.5 Super admin: confirmar pago (el admin elige el plan y la vigencia inicial; el plan nunca sale del onboarding ni de la URL de retorno), registrar pago mensual, suspender, cambiar de plan + `audit_log` (M)
+- [x] 5.5 Super admin: confirmar pago (el admin elige el plan y la vigencia inicial; el plan nunca sale del onboarding ni de la URL de retorno), registrar pago mensual, suspender, cambiar de plan + `audit_log` (M) — "confirmar pago" activa el negocio y crea la suscripción en una sola transacción; "suspender" es la acción `pause` que ya existe (se oculta al instante, sin esperar la gracia)
 - [ ] 5.6 Vista "por vencer en 7 días" y enlace `wa.me` de recordatorio (S)
 - [ ] 5.7 Aplicar límites del plan al cambiarlo (downgrade sin borrar datos) (M)
 - [ ] 5.8 Frontend: landing con planes y botones de Mercado Pago, Plan y suscripción del dueño (vigencia y aviso de gracia), Super admin → Suscripciones (L)

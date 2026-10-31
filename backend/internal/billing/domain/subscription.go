@@ -2,7 +2,9 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // GraceDays is how many days a business stays visible after paid_until. The same
@@ -26,6 +28,13 @@ type Day struct{ t time.Time }
 // DayOf is the Argentine calendar date of an instant.
 func DayOf(instant time.Time) Day {
 	y, m, d := instant.In(argentina).Date()
+	return Day{time.Date(y, m, d, 0, 0, 0, 0, time.UTC)}
+}
+
+// DayFromDate reads a SQL date: the calendar date is taken as stored, with no zone
+// conversion (a date has no time zone).
+func DayFromDate(date time.Time) Day {
+	y, m, d := date.Date()
 	return Day{time.Date(y, m, d, 0, 0, 0, 0, time.UTC)}
 }
 
@@ -99,6 +108,32 @@ func NewSubscription(businessID int64, plan Plan, paidUntil Day) (Subscription, 
 		return Subscription{}, ErrPaidUntilInvalid
 	}
 	return Subscription{BusinessID: businessID, Plan: plan, PaidUntil: paidUntil}, nil
+}
+
+// Limits of the free-text fields, the same as the CHECKs of the subscriptions table.
+const (
+	maxRefLen   = 100
+	maxNotesLen = 500
+)
+
+// Errors for the free-text fields of a subscription.
+var (
+	ErrRefInvalid   = errors.New("billing: Mercado Pago reference must be at most 100 characters")
+	ErrNotesInvalid = errors.New("billing: notes must be at most 500 characters")
+)
+
+// WithDetails sets the optional Mercado Pago reference and the admin's notes. Both
+// are trimmed; empty means absent.
+func (s Subscription) WithDetails(ref, notes string) (Subscription, error) {
+	ref, notes = strings.TrimSpace(ref), strings.TrimSpace(notes)
+	if utf8.RuneCountInString(ref) > maxRefLen {
+		return Subscription{}, ErrRefInvalid
+	}
+	if utf8.RuneCountInString(notes) > maxNotesLen {
+		return Subscription{}, ErrNotesInvalid
+	}
+	s.MPSubscriptionRef, s.Notes = ref, notes
+	return s, nil
 }
 
 // GraceEnd is the last day the business is still visible.

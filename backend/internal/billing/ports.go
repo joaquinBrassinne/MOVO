@@ -38,6 +38,45 @@ type PlanResolver interface {
 	PlanOf(ctx context.Context, businessID int64) (domain.Plan, error)
 }
 
+// Errors of the subscription use cases.
+var (
+	// ErrBusinessNotFound means there is no business with that id.
+	ErrBusinessNotFound = errors.New("billing: business not found")
+	// ErrBusinessNotConfirmable means the business is not waiting for a payment
+	// confirmation: only a business pending review or already active can get one.
+	ErrBusinessNotConfirmable = errors.New("billing: business is not pending review or active")
+	// ErrSubscriptionExists means the business already has a subscription: register a
+	// payment or change the plan instead of confirming again.
+	ErrSubscriptionExists = errors.New("billing: business already has a subscription")
+	// ErrSubscriptionNotFound means the business has no subscription yet.
+	ErrSubscriptionNotFound = errors.New("billing: subscription not found")
+	// ErrSubscriptionConflict means someone else changed the subscription first.
+	ErrSubscriptionConflict = errors.New("billing: subscription was changed by someone else")
+)
+
+// AuditEntry is one line of the audit trail. It is written about the business
+// (entity "business"), so it shows in the business history of the super admin.
+type AuditEntry struct {
+	ActorID    int64
+	Action     string
+	BusinessID int64
+	Metadata   map[string]any
+}
+
+// SubscriptionRepository stores the subscription of each business. Every write comes
+// with its audit entry and happens in one transaction.
+type SubscriptionRepository interface {
+	// Find returns ErrSubscriptionNotFound when the business has none.
+	Find(ctx context.Context, businessID int64) (domain.Subscription, error)
+	// Confirm creates the subscription and, if the business is pending review,
+	// activates it, all or nothing. It returns ErrBusinessNotFound,
+	// ErrBusinessNotConfirmable or ErrSubscriptionExists and writes nothing.
+	Confirm(ctx context.Context, sub domain.Subscription, confirmedBy int64, entry AuditEntry) error
+	// Update stores the plan and paid_until of sub, provided the stored ones are still
+	// those of previous; otherwise it returns ErrSubscriptionConflict.
+	Update(ctx context.Context, sub, previous domain.Subscription, entry AuditEntry) error
+}
+
 // ErrOwnerHasNoBusiness means the owner has not created a business, so there is no plan.
 var ErrOwnerHasNoBusiness = errors.New("billing: owner has no business")
 

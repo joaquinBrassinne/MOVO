@@ -4,17 +4,18 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/joaquinBrassinne/MOVO/internal/billing"
 	"github.com/joaquinBrassinne/MOVO/internal/billing/adapters/configcatalog"
-	"github.com/joaquinBrassinne/MOVO/internal/billing/adapters/fixedplan"
 	billinghttp "github.com/joaquinBrassinne/MOVO/internal/billing/adapters/http"
 	"github.com/joaquinBrassinne/MOVO/internal/billing/adapters/pilotplan"
+	billingpostgres "github.com/joaquinBrassinne/MOVO/internal/billing/adapters/postgres"
+	billingcommands "github.com/joaquinBrassinne/MOVO/internal/billing/app/commands"
 	billingqueries "github.com/joaquinBrassinne/MOVO/internal/billing/app/queries"
-	billingdomain "github.com/joaquinBrassinne/MOVO/internal/billing/domain"
 	"github.com/joaquinBrassinne/MOVO/internal/business"
 	businesshttp "github.com/joaquinBrassinne/MOVO/internal/business/adapters/http"
 	businesspostgres "github.com/joaquinBrassinne/MOVO/internal/business/adapters/postgres"
@@ -85,9 +86,11 @@ func newBusinessRoutes(
 	admin := businesspostgres.NewAdmin(pool)
 	photos := businesspostgres.NewImages(pool)
 
-	// Pilot businesses get the Pro limits for free; everyone else is on Starter
-	// until subscriptions exist (phase 5). Dropping pilotplan ends the pilot.
-	resolver := pilotplan.New(businesses, fixedplan.New(billingdomain.PlanStarter))
+	// Pilot businesses get the Pro limits for free; everyone else is on the plan of
+	// their subscription (Starter until the admin confirms the payment). Dropping
+	// pilotplan ends the pilot.
+	subscriptions := billingpostgres.NewSubscriptions(pool)
+	resolver := pilotplan.New(businesses, subscriptions)
 	entitlements := entitlementsOf{query: billingqueries.NewEntitlementsFor(catalog, resolver)}
 
 	handlers := businesshttp.New(businesshttp.Deps{
@@ -124,5 +127,16 @@ func newBusinessRoutes(
 	})
 
 	planHandlers := billinghttp.New(catalog).WithOwnerPlans(verifier, ownerPlans{businesses: businesses, resolver: resolver, catalog: catalog})
-	return handlers.Mount, planHandlers.Mount, nil
+	adminHandlers := billinghttp.NewAdmin(log, billinghttp.AdminDeps{
+		Verifier:      verifier,
+		Subscriptions: subscriptions,
+		Confirm:       billingcommands.NewConfirmPayment(subscriptions, time.Now),
+		Register:      billingcommands.NewRegisterPayment(subscriptions, time.Now),
+		ChangePlan:    billingcommands.NewChangePlan(subscriptions),
+	})
+	billingMount = func(r chi.Router) {
+		planHandlers.Mount(r)
+		adminHandlers.Mount(r)
+	}
+	return handlers.Mount, billingMount, nil
 }
