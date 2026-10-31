@@ -6,6 +6,7 @@ package billing
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/joaquinBrassinne/MOVO/internal/billing/domain"
 )
@@ -75,6 +76,49 @@ type SubscriptionRepository interface {
 	// Update stores the plan and paid_until of sub, provided the stored ones are still
 	// those of previous; otherwise it returns ErrSubscriptionConflict.
 	Update(ctx context.Context, sub, previous domain.Subscription, entry AuditEntry) error
+	// ChangePlan is Update for a plan change that also applies the limits of the new
+	// plan (SDD 4.2): under one lock on the business, what exceeds ent is switched off,
+	// oldest kept, nothing deleted, and an alert tells the owner. A pilot keeps the Pro
+	// limits whatever its subscription says, so nothing is switched off for it. The audit
+	// entry gets the switched-off ids in its metadata.
+	ChangePlan(ctx context.Context, sub, previous domain.Subscription, ent domain.Entitlements, entry AuditEntry) (Downgrade, error)
+}
+
+// Item is a branch or a service by id and name.
+type Item struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// Downgrade is what a plan change switched off.
+type Downgrade struct {
+	Branches []Item
+	Services []Item
+}
+
+// Empty reports whether nothing was switched off.
+func (d Downgrade) Empty() bool { return len(d.Branches) == 0 && len(d.Services) == 0 }
+
+// Alert is a notice for the owner of a business.
+type Alert struct {
+	ID        int64
+	Type      string
+	Payload   map[string]any
+	CreatedAt time.Time
+}
+
+// ErrAlertNotFound means the owner has no such alert (or it is not theirs).
+var ErrAlertNotFound = errors.New("billing: alert not found")
+
+// OwnerAlerts is what the owner reads. Both methods are scoped by the owner id taken from
+// the token, so an owner can never see or dismiss the alert of another business.
+type OwnerAlerts interface {
+	// Unread returns the unread alerts of the owner's business, newest first; none
+	// (not an error) when the owner has no business.
+	Unread(ctx context.Context, ownerID int64) ([]Alert, error)
+	// MarkRead dismisses one alert and returns ErrAlertNotFound when it is not the
+	// owner's. Dismissing an already read alert is not an error.
+	MarkRead(ctx context.Context, ownerID, alertID int64) error
 }
 
 // SubscriptionRow is one subscription with what the super admin needs to act on it:

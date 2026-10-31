@@ -112,41 +112,49 @@ func (c *RegisterPayment) Handle(ctx context.Context, actorID, businessID int64)
 	return updated, nil
 }
 
-// ChangePlan moves a subscription to another plan without touching its dates.
+// ChangePlan moves a subscription to another plan without touching its dates, and applies
+// the limits of the new plan: what no longer fits is switched off, never deleted (SDD 4.2).
 type ChangePlan struct {
-	repo billing.SubscriptionRepository
+	repo    billing.SubscriptionRepository
+	catalog billing.PlanCatalog
 }
 
 // NewChangePlan wires the use case.
-func NewChangePlan(repo billing.SubscriptionRepository) *ChangePlan {
-	return &ChangePlan{repo: repo}
+func NewChangePlan(repo billing.SubscriptionRepository, catalog billing.PlanCatalog) *ChangePlan {
+	return &ChangePlan{repo: repo, catalog: catalog}
 }
 
-// Handle returns domain.ErrPlanInvalid, billing.ErrSubscriptionNotFound, ErrNoChange or
-// billing.ErrSubscriptionConflict.
-func (c *ChangePlan) Handle(ctx context.Context, actorID, businessID int64, rawPlan string) (domain.Subscription, error) {
+// Handle returns the new subscription and what was switched off. Errors:
+// domain.ErrPlanInvalid, billing.ErrUnknownPlan, billing.ErrSubscriptionNotFound,
+// ErrNoChange or billing.ErrSubscriptionConflict.
+func (c *ChangePlan) Handle(ctx context.Context, actorID, businessID int64, rawPlan string) (domain.Subscription, billing.Downgrade, error) {
 	plan, err := domain.ParsePlan(rawPlan)
 	if err != nil {
-		return domain.Subscription{}, err
+		return domain.Subscription{}, billing.Downgrade{}, err
+	}
+	ent, err := c.catalog.Entitlements(plan)
+	if err != nil {
+		return domain.Subscription{}, billing.Downgrade{}, fmt.Errorf("limits of plan %s: %w", plan, err)
 	}
 	current, err := c.repo.Find(ctx, businessID)
 	if err != nil {
-		return domain.Subscription{}, fmt.Errorf("find subscription: %w", err)
+		return domain.Subscription{}, billing.Downgrade{}, fmt.Errorf("find subscription: %w", err)
 	}
 	if current.Plan == plan {
-		return domain.Subscription{}, ErrNoChange
+		return domain.Subscription{}, billing.Downgrade{}, ErrNoChange
 	}
 	updated, err := current.ChangePlan(plan)
 	if err != nil {
-		return domain.Subscription{}, err
+		return domain.Subscription{}, billing.Downgrade{}, err
 	}
 
 	entry := billing.AuditEntry{
 		ActorID: actorID, Action: "billing.change_plan", BusinessID: businessID,
 		Metadata: map[string]any{"plan_from": string(current.Plan), "plan_to": string(updated.Plan)},
 	}
-	if err := c.repo.Update(ctx, updated, current, entry); err != nil {
-		return domain.Subscription{}, fmt.Errorf("change plan: %w", err)
+	down, err := c.repo.ChangePlan(ctx, updated, current, ent, entry)
+	if err != nil {
+		return domain.Subscription{}, billing.Downgrade{}, fmt.Errorf("change plan: %w", err)
 	}
-	return updated, nil
+	return updated, down, nil
 }

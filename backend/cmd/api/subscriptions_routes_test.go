@@ -117,9 +117,38 @@ VALUES ($1, 'Centro', 'Calle 1', 'Cordoba', ST_SetSRID(ST_MakePoint(-64.18, -31.
 	if want := today.AddDays(30).AddMonth().String(); status != http.StatusOK || body["paid_until"] != want {
 		t.Errorf("register payment = %d paid_until %v, want 200 %s", status, body["paid_until"], want)
 	}
+	// Two more branches make three: Starter allows two, so the newest is switched off.
+	for _, name := range []string{"Norte", "Sur"} {
+		_, err = h.pool.Exec(ctx, `
+INSERT INTO branches (business_id, name, address, city, location)
+VALUES ($1, $2, 'Calle 2', 'Cordoba', ST_SetSRID(ST_MakePoint(-64.19, -31.43), 4326)::geography)`, business, name)
+		must(err)
+	}
 	status, body = h.do(http.MethodPut, base+"/plan", adminToken, map[string]any{"plan": "starter"})
 	if status != http.StatusOK || body["plan"] != "starter" {
 		t.Errorf("change plan = %d %v, want 200 starter", status, body)
+	}
+	if off, _ := body["deactivated"].(map[string]any)["branches"].([]any); len(off) != 1 || off[0].(map[string]any)["name"] != "Sur" {
+		t.Errorf("deactivated = %v, want the newest branch (Sur)", body["deactivated"])
+	}
+	// The owner is told, can dismiss it, and nobody else sees it.
+	status, body = h.do(http.MethodGet, "/me/alerts", ownerToken, nil)
+	alertList, _ := body["alerts"].([]any)
+	if status != http.StatusOK || len(alertList) != 1 || alertList[0].(map[string]any)["type"] != "plan_downgrade" {
+		t.Fatalf("owner alerts = %d %v, want one plan_downgrade", status, body)
+	}
+	alertID := itoa(int64(alertList[0].(map[string]any)["id"].(float64)))
+	if status, _ := h.do(http.MethodGet, "/me/alerts", "", nil); status != http.StatusUnauthorized {
+		t.Errorf("alerts without a token = %d, want 401", status)
+	}
+	if status, _ := h.do(http.MethodGet, "/me/alerts", adminToken, nil); status != http.StatusForbidden {
+		t.Errorf("alerts as the admin = %d, want 403", status)
+	}
+	if status, _ := h.do(http.MethodPost, "/me/alerts/"+alertID+"/read", ownerToken, nil); status != http.StatusNoContent {
+		t.Errorf("dismiss = %d, want 204", status)
+	}
+	if status, body := h.do(http.MethodGet, "/me/alerts", ownerToken, nil); status != http.StatusOK || len(body["alerts"].([]any)) != 0 {
+		t.Errorf("alerts after dismissing = %d %v, want none", status, body)
 	}
 	if status, body := h.do(http.MethodPut, base+"/plan", adminToken, map[string]any{"plan": "starter"}); status != http.StatusConflict || errorCode(body) != "no_change" {
 		t.Errorf("same plan = %d %q, want 409 no_change", status, errorCode(body))

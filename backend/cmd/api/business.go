@@ -126,13 +126,15 @@ func newBusinessRoutes(
 		AdminDetail:    queries.NewGetBusinessDetail(admin, branches, services),
 	})
 
-	planHandlers := billinghttp.New(catalog).WithOwnerPlans(verifier, ownerPlans{businesses: businesses, resolver: resolver, catalog: catalog})
+	planHandlers := billinghttp.New(catalog).
+		WithOwnerPlans(verifier, ownerPlans{businesses: businesses, resolver: resolver, catalog: catalog}).
+		WithAlerts(verifier, billingpostgres.NewAlerts(pool))
 	adminHandlers := billinghttp.NewAdmin(log, billinghttp.AdminDeps{
 		Verifier:      verifier,
 		Subscriptions: subscriptions,
 		Confirm:       billingcommands.NewConfirmPayment(subscriptions, time.Now),
 		Register:      billingcommands.NewRegisterPayment(subscriptions, time.Now),
-		ChangePlan:    billingcommands.NewChangePlan(subscriptions),
+		ChangePlan:    billingcommands.NewChangePlan(subscriptions, catalog),
 		List:          billingqueries.NewListSubscriptions(subscriptions),
 	})
 	billingMount = func(r chi.Router) {

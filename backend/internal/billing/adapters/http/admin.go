@@ -207,12 +207,29 @@ func (a *Admin) handleChangePlan(w http.ResponseWriter, r *http.Request) {
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	sub, err := a.deps.ChangePlan.Handle(r.Context(), callerID(r), id, req.Plan)
+	sub, down, err := a.deps.ChangePlan.Handle(r.Context(), callerID(r), id, req.Plan)
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, a.toJSON(sub))
+	// deactivated tells the admin what the new plan switched off; the owner gets an alert.
+	httpx.WriteJSON(w, http.StatusOK, struct {
+		subscriptionJSON
+		Deactivated struct {
+			Branches []billing.Item `json:"branches"`
+			Services []billing.Item `json:"services"`
+		} `json:"deactivated"`
+	}{subscriptionJSON: a.toJSON(sub), Deactivated: struct {
+		Branches []billing.Item `json:"branches"`
+		Services []billing.Item `json:"services"`
+	}{Branches: items(down.Branches), Services: items(down.Services)}})
+}
+
+func items(in []billing.Item) []billing.Item {
+	if in == nil {
+		return []billing.Item{}
+	}
+	return in
 }
 
 var validation = map[error]fieldError{

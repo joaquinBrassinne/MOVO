@@ -125,6 +125,20 @@ func (r *Subscriptions) Update(ctx context.Context, sub, previous domain.Subscri
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	if err := storeUpdate(ctx, tx, sub, previous); err != nil {
+		return err
+	}
+	if err := appendAudit(ctx, tx, entry); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("postgres: commit: %w", err)
+	}
+	return nil
+}
+
+// storeUpdate writes plan and paid_until while the stored ones are still those of previous.
+func storeUpdate(ctx context.Context, tx pgx.Tx, sub, previous domain.Subscription) error {
 	tag, err := tx.Exec(ctx, `
 UPDATE subscriptions SET plan = $2, paid_until = $3, updated_at = now()
 WHERE business_id = $1 AND plan = $4 AND paid_until = $5`,
@@ -142,13 +156,128 @@ WHERE business_id = $1 AND plan = $4 AND paid_until = $5`,
 		}
 		return billing.ErrSubscriptionConflict
 	}
+	return nil
+}
+
+// ChangePlan stores the new plan and applies its limits in one transaction. It takes the
+// same lock on the business as the owner's own creates, so an owner adding a branch cannot
+// slip past the new limit while the plan changes.
+func (r *Subscriptions) ChangePlan(ctx context.Context, sub, previous domain.Subscription, ent domain.Entitlements, entry billing.AuditEntry) (billing.Downgrade, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return billing.Downgrade{}, fmt.Errorf("postgres: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var pilot bool
+	err = tx.QueryRow(ctx, `SELECT pilot FROM businesses WHERE id = $1 FOR UPDATE`, sub.BusinessID).Scan(&pilot)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return billing.Downgrade{}, billing.ErrBusinessNotFound
+	}
+	if err != nil {
+		return billing.Downgrade{}, fmt.Errorf("postgres: lock business: %w", err)
+	}
+	if err := storeUpdate(ctx, tx, sub, previous); err != nil {
+		return billing.Downgrade{}, err
+	}
+
+	var down billing.Downgrade
+	if !pilot {
+		if down.Branches, err = switchOff(ctx, tx, "branches", sub.BusinessID, ent.BranchesToDeactivate); err != nil {
+			return billing.Downgrade{}, err
+		}
+		if down.Services, err = switchOff(ctx, tx, "services", sub.BusinessID, ent.ServicesToDeactivate); err != nil {
+			return billing.Downgrade{}, err
+		}
+	}
+
+	if !down.Empty() {
+		payload, err := json.Marshal(map[string]any{
+			"plan_from": string(previous.Plan), "plan_to": string(sub.Plan),
+			"branches": nonNil(down.Branches), "services": nonNil(down.Services),
+		})
+		if err != nil {
+			return billing.Downgrade{}, fmt.Errorf("postgres: encode alert: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO alerts (business_id, type, payload) VALUES ($1, 'plan_downgrade', $2)`, sub.BusinessID, payload); err != nil {
+			return billing.Downgrade{}, fmt.Errorf("postgres: insert alert: %w", err)
+		}
+		entry.Metadata = withSwitchedOff(entry.Metadata, down)
+	}
 	if err := appendAudit(ctx, tx, entry); err != nil {
-		return err
+		return billing.Downgrade{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("postgres: commit: %w", err)
+		return billing.Downgrade{}, fmt.Errorf("postgres: commit: %w", err)
 	}
-	return nil
+	return down, nil
+}
+
+// switchOff deactivates what the policy returns for the active rows of table, oldest
+// first. table is one of two constants of this file, never user input.
+func switchOff(ctx context.Context, tx pgx.Tx, table string, businessID int64, overflow func([]int64) []int64) ([]billing.Item, error) {
+	rows, err := tx.Query(ctx, `SELECT id, name FROM `+table+` WHERE business_id = $1 AND active ORDER BY created_at, id`, businessID)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: list active %s: %w", table, err)
+	}
+	var (
+		ids   []int64
+		names = map[int64]string{}
+	)
+	for rows.Next() {
+		var (
+			id   int64
+			name string
+		)
+		if err := rows.Scan(&id, &name); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("postgres: scan %s: %w", table, err)
+		}
+		ids = append(ids, id)
+		names[id] = name
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: list active %s: %w", table, err)
+	}
+
+	off := overflow(ids)
+	if len(off) == 0 {
+		return nil, nil
+	}
+	if _, err := tx.Exec(ctx, `UPDATE `+table+` SET active = false, updated_at = now() WHERE business_id = $1 AND id = ANY($2)`, businessID, off); err != nil {
+		return nil, fmt.Errorf("postgres: deactivate %s: %w", table, err)
+	}
+	items := make([]billing.Item, 0, len(off))
+	for _, id := range off {
+		items = append(items, billing.Item{ID: id, Name: names[id]})
+	}
+	return items, nil
+}
+
+func nonNil(items []billing.Item) []billing.Item {
+	if items == nil {
+		return []billing.Item{}
+	}
+	return items
+}
+
+func withSwitchedOff(metadata map[string]any, down billing.Downgrade) map[string]any {
+	out := make(map[string]any, len(metadata)+2)
+	for k, v := range metadata {
+		out[k] = v
+	}
+	out["branches_deactivated"] = ids(down.Branches)
+	out["services_deactivated"] = ids(down.Services)
+	return out
+}
+
+func ids(items []billing.Item) []int64 {
+	out := make([]int64, 0, len(items))
+	for _, item := range items {
+		out = append(out, item.ID)
+	}
+	return out
 }
 
 func appendAudit(ctx context.Context, tx pgx.Tx, entry billing.AuditEntry) error {

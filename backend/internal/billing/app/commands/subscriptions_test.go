@@ -17,6 +17,9 @@ type repo struct {
 	subs    map[int64]domain.Subscription
 	audit   []billing.AuditEntry
 	confirm error
+
+	downgrade       billing.Downgrade
+	appliedBranches int
 }
 
 func (r *repo) Find(_ context.Context, id int64) (domain.Subscription, error) {
@@ -41,6 +44,28 @@ func (r *repo) Update(_ context.Context, s, _ domain.Subscription, e billing.Aud
 	r.audit = append(r.audit, e)
 	return nil
 }
+
+// ChangePlan records the limits it was asked to apply and reports a canned downgrade.
+func (r *repo) ChangePlan(_ context.Context, s, _ domain.Subscription, ent domain.Entitlements, e billing.AuditEntry) (billing.Downgrade, error) {
+	r.subs[s.BusinessID] = s
+	r.audit = append(r.audit, e)
+	r.appliedBranches = ent.MaxBranches()
+	return r.downgrade, nil
+}
+
+// catalog gives each plan the limits of SDD 4.2 (starter: 2 branches, pro: 4).
+type catalog struct{}
+
+func (catalog) Entitlements(p domain.Plan) (domain.Entitlements, error) {
+	switch p {
+	case domain.PlanStarter:
+		return domain.NewEntitlements(2, 3)
+	case domain.PlanPro:
+		return domain.NewEntitlements(4, 0)
+	}
+	return domain.Entitlements{}, billing.ErrUnknownPlan
+}
+func (catalog) Plans() []billing.PlanInfo { return nil }
 
 var now = time.Date(2026, 11, 12, 15, 0, 0, 0, time.UTC)
 
@@ -137,23 +162,27 @@ func TestChangePlanKeepsTheDateAuditsAndRefusesNoOps(t *testing.T) {
 	t.Parallel()
 
 	start, _ := domain.NewSubscription(3, domain.PlanPro, day(t, "2026-11-20"))
-	r := &repo{subs: map[int64]domain.Subscription{3: start}}
-	change := commands.NewChangePlan(r)
+	r := &repo{subs: map[int64]domain.Subscription{3: start}, downgrade: billing.Downgrade{Branches: []billing.Item{{ID: 9, Name: "Norte"}}}}
+	change := commands.NewChangePlan(r, catalog{})
 
-	got, err := change.Handle(t.Context(), 7, 3, "starter")
+	got, down, err := change.Handle(t.Context(), 7, 3, "starter")
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
 	if got.Plan != domain.PlanStarter || got.PaidUntil != start.PaidUntil {
 		t.Errorf("subscription = %+v", got)
 	}
+	// The limits of the NEW plan are the ones applied, and what was switched off comes back.
+	if r.appliedBranches != 2 || len(down.Branches) != 1 || down.Branches[0].ID != 9 {
+		t.Errorf("applied branch limit = %d, downgrade = %+v, want the starter limit (2) and the repository's downgrade", r.appliedBranches, down)
+	}
 	if r.audit[0].Action != "billing.change_plan" || r.audit[0].Metadata["plan_from"] != "pro" || r.audit[0].Metadata["plan_to"] != "starter" {
 		t.Errorf("audit = %+v", r.audit[0])
 	}
-	if _, err := change.Handle(t.Context(), 7, 3, "starter"); !errors.Is(err, commands.ErrNoChange) {
+	if _, _, err := change.Handle(t.Context(), 7, 3, "starter"); !errors.Is(err, commands.ErrNoChange) {
 		t.Errorf("same plan error = %v, want ErrNoChange", err)
 	}
-	if _, err := change.Handle(t.Context(), 7, 3, "gold"); !errors.Is(err, domain.ErrPlanInvalid) {
+	if _, _, err := change.Handle(t.Context(), 7, 3, "gold"); !errors.Is(err, domain.ErrPlanInvalid) {
 		t.Errorf("unknown plan error = %v, want ErrPlanInvalid", err)
 	}
 	if len(r.audit) != 1 {

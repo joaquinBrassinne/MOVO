@@ -4,6 +4,8 @@ package billinghttp
 import (
 	"errors"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -16,6 +18,7 @@ type Handlers struct {
 	catalog  billing.PlanCatalog
 	verifier httpx.TokenVerifier
 	owners   billing.OwnerPlans
+	alerts   billing.OwnerAlerts
 }
 
 // New wires the handlers.
@@ -29,6 +32,12 @@ func (h *Handlers) WithOwnerPlans(verifier httpx.TokenVerifier, owners billing.O
 	return h
 }
 
+// WithAlerts enables GET /me/alerts and POST /me/alerts/{id}/read for business owners.
+func (h *Handlers) WithAlerts(verifier httpx.TokenVerifier, alerts billing.OwnerAlerts) *Handlers {
+	h.verifier, h.alerts = verifier, alerts
+	return h
+}
+
 // Mount registers GET /plans, which is public because it only shows what is for sale,
 // and GET /me/plan, which needs an owner token.
 func (h *Handlers) Mount(r chi.Router) {
@@ -36,6 +45,47 @@ func (h *Handlers) Mount(r chi.Router) {
 
 	if h.owners != nil {
 		r.With(httpx.Authenticate(h.verifier), httpx.RequireRole("business_admin")).Get("/me/plan", h.handleMyPlan)
+	}
+	if h.alerts != nil {
+		owner := r.With(httpx.Authenticate(h.verifier), httpx.RequireRole("business_admin"), noStore)
+		owner.Get("/me/alerts", h.handleMyAlerts)
+		owner.Post("/me/alerts/{id}/read", h.handleReadAlert)
+	}
+}
+
+type alertJSON struct {
+	ID        int64          `json:"id"`
+	Type      string         `json:"type"`
+	Payload   map[string]any `json:"payload"`
+	CreatedAt time.Time      `json:"created_at"`
+}
+
+func (h *Handlers) handleMyAlerts(w http.ResponseWriter, r *http.Request) {
+	alerts, err := h.alerts.Unread(r.Context(), callerID(r))
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, "something went wrong", nil)
+		return
+	}
+	out := make([]alertJSON, 0, len(alerts))
+	for _, a := range alerts {
+		out = append(out, alertJSON{ID: a.ID, Type: a.Type, Payload: a.Payload, CreatedAt: a.CreatedAt})
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"alerts": out})
+}
+
+func (h *Handlers) handleReadAlert(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id < 1 {
+		httpx.WriteError(w, http.StatusNotFound, "alert_not_found", "alert not found", nil)
+		return
+	}
+	switch err := h.alerts.MarkRead(r.Context(), callerID(r), id); {
+	case errors.Is(err, billing.ErrAlertNotFound):
+		httpx.WriteError(w, http.StatusNotFound, "alert_not_found", "alert not found", nil)
+	case err != nil:
+		httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, "something went wrong", nil)
+	default:
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
