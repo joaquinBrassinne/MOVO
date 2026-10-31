@@ -24,7 +24,8 @@ export const API_ENV = {
   PLAN_PRO_MAX_BRANCHES: "4",
   PLAN_PRO_MAX_ACTIVE_SERVICES: "0",
   PLAN_PRO_PRICE: "29800",
-  MP_STARTER_URL: "https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=e2e-starter",
+  MP_STARTER_URL:
+    "https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=e2e-starter",
   MP_PRO_URL: "https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=e2e-pro",
   S3_ENDPOINT: "http://localhost:9000",
   S3_BUCKET: "movo-e2e",
