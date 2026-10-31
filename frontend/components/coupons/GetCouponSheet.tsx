@@ -68,7 +68,7 @@ export function GetCouponSheet({ businessName, benefit, onClose }: Props) {
     // Un diálogo modal abierto deja inerte toda la página aunque Next conserve la pantalla anterior
     // oculta: se cierra antes de navegar.
     dialog.current?.close();
-    router.push(`/cupon/${result.data.access_token}?nuevo=1`);
+    router.push(`/coupon/${result.data.access_token}?nuevo=1`);
   }
 
   const { fields, problem } = feedback;
@@ -171,7 +171,7 @@ export function GetCouponSheet({ businessName, benefit, onClose }: Props) {
             <p className="text-sm text-movo-slate">{problem.body}</p>
             {problem.kind === GENERATE_PROBLEM.PENDING ? (
               <Link
-                href="/cupones"
+                href="/coupons"
                 className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold outline-none focus-visible:ring-2 focus-visible:ring-movo-accent"
               >
                 Ver mi cupón activo

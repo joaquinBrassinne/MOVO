@@ -29,7 +29,7 @@ export async function signIn(page: Page, account: { email: string; password: str
   const access = new AccessPage(page);
   await access.gotoLogin();
   await access.login(account.email, account.password);
-  await page.waitForURL((url) => !url.pathname.endsWith("/socios/ingresar"));
+  await page.waitForURL((url) => !url.pathname.endsWith("/owners/sign-in"));
 }
 
 function chunk(type: string, data: Buffer): Buffer {

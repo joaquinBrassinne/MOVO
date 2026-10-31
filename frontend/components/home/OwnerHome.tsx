@@ -74,7 +74,7 @@ export function OwnerHome() {
 
       <div>
         <Link
-          href="/socios/canjear"
+          href="/owners/redeem"
           className="flex h-16 w-full items-center justify-center gap-3 rounded-full bg-movo-accent font-display text-xl font-extrabold shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-movo-ink"
         >
           <QrIcon className="size-6" />
@@ -115,7 +115,7 @@ export function OwnerHome() {
       )}
 
       {quota.state.status === "ready" ? (
-        <QuotaCard quota={quota.state.data} onEdit={() => router.push("/socios/beneficios")} />
+        <QuotaCard quota={quota.state.data} onEdit={() => router.push("/owners/benefits")} />
       ) : null}
 
       <section

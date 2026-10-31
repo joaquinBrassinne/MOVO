@@ -10,13 +10,13 @@ import { getProfile } from "@/lib/server/profile";
 
 export async function generateMetadata({
   params,
-}: PageProps<"/locales/[slug]/reviews">): Promise<Metadata> {
+}: PageProps<"/businesses/[slug]/reviews">): Promise<Metadata> {
   const { slug } = await params;
   const cached = await getProfile(slug);
   if (!cached) return { title: "Local no encontrado — MOVO", robots: { index: false } };
   return {
     title: `Reseñas de ${cached.profile.name} | MOVO`,
-    alternates: { canonical: `/locales/${cached.profile.slug}/reviews` },
+    alternates: { canonical: `/businesses/${cached.profile.slug}/reviews` },
   };
 }
 
@@ -24,7 +24,7 @@ export async function generateMetadata({
 export default async function ReviewsPage({
   params,
   searchParams,
-}: PageProps<"/locales/[slug]/reviews">) {
+}: PageProps<"/businesses/[slug]/reviews">) {
   const [{ slug }, { branch: branchParam }] = await Promise.all([params, searchParams]);
   const cached = await getProfile(slug);
   if (!cached) notFound();
@@ -39,7 +39,7 @@ export default async function ReviewsPage({
       <header className="bg-movo-page text-white">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-4">
           <Link
-            href={`/locales/${profile.slug}`}
+            href={`/businesses/${profile.slug}`}
             aria-label={`Volver a ${profile.name}`}
             className="grid size-11 shrink-0 place-items-center rounded-full bg-white/10 outline-none focus-visible:ring-2 focus-visible:ring-movo-accent"
           >
@@ -64,7 +64,7 @@ export default async function ReviewsPage({
             {profile.branches.map((b) => (
               <Link
                 key={b.branch_id}
-                href={`/locales/${profile.slug}/reviews?branch=${b.branch_id}`}
+                href={`/businesses/${profile.slug}/reviews?branch=${b.branch_id}`}
                 aria-current={b.branch_id === branch.branch_id ? "page" : undefined}
                 className={cn(
                   "inline-flex h-11 items-center rounded-full px-4 text-sm font-bold outline-none focus-visible:ring-2 focus-visible:ring-movo-ink",

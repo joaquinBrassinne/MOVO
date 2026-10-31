@@ -1,5 +1,5 @@
 import { PortalChrome } from "@/components/socios/PortalChrome";
 
-export default function AccesoLayout({ children }: LayoutProps<"/socios">) {
+export default function AccesoLayout({ children }: LayoutProps<"/owners">) {
   return <PortalChrome>{children}</PortalChrome>;
 }

@@ -438,7 +438,7 @@ test.describe("Onboarding", () => {
 
         await page.getByRole("link", { name: "Ver mi panel" }).click();
 
-        await expect(page).toHaveURL(/\/socios\/panel$/);
+        await expect(page).toHaveURL(/\/owners\/dashboard$/);
         await expect(page.getByText(`Socios · ${BUSINESS.name}`)).toBeVisible();
       },
     );

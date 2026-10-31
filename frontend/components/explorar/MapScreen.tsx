@@ -250,7 +250,7 @@ function ResultCard({
         <div className="mt-1 flex items-center justify-between gap-2">
           <span className="text-sm text-movo-slate">a {formatDistance(item.distance_m)}</span>
           <Link
-            href={`/locales/${item.business_slug}`}
+            href={`/businesses/${item.business_slug}`}
             className="inline-flex items-center gap-1 font-bold outline-none focus-visible:underline"
           >
             Ver local

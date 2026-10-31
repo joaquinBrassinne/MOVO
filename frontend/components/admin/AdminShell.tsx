@@ -8,7 +8,7 @@ import { GridIcon, LogOutIcon, StarIcon, StoreIcon } from "@/components/socios/i
 import { useSession } from "@/lib/session/SessionProvider";
 
 const NAV = [
-  { href: "/admin/locales", label: "Locales", Icon: StoreIcon },
+  { href: "/admin/businesses", label: "Locales", Icon: StoreIcon },
   { href: "/admin/subscriptions", label: "Suscripciones", Icon: GridIcon },
   { href: "/admin/reviews", label: "Reseñas", Icon: StarIcon },
 ];

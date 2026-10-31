@@ -22,7 +22,7 @@ async function openData(page: import("@playwright/test").Page) {
     .getByRole("main")
     .getByRole("link", { name: /Datos del negocio/ })
     .click();
-  await expect(page).toHaveURL(/\/socios\/local\/datos$/);
+  await expect(page).toHaveURL(/\/owners\/business\/details$/);
 }
 
 test.describe("Business data", () => {

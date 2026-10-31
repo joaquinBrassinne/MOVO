@@ -78,7 +78,7 @@ export function CouponScreen({ token, fresh }: Props) {
     const saved = readSaved().some((item) => item.token === token);
     saveToken(token);
     await copy(
-      `${window.location.origin}/cupon/${token}`,
+      `${window.location.origin}/coupon/${token}`,
       saved ? "Enlace copiado." : "Cupón guardado en este dispositivo y enlace copiado.",
     );
   }
@@ -87,7 +87,7 @@ export function CouponScreen({ token, fresh }: Props) {
     <div className="min-h-dvh bg-movo-page font-sans text-white">
       <header className="mx-auto flex h-16 max-w-md items-center justify-between px-5">
         <Link
-          href="/cupones"
+          href="/coupons"
           aria-label="Ir a mis cupones"
           className="grid size-11 place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-movo-accent"
         >
@@ -141,7 +141,7 @@ function Problem({ title, body }: { title: string; body: string }) {
       <h1 className="font-display text-2xl font-extrabold">{title}</h1>
       <p className="text-movo-muted">{body}</p>
       <Link
-        href="/cupones"
+        href="/coupons"
         className="inline-flex h-12 items-center rounded-full bg-movo-accent px-6 font-bold text-movo-ink outline-none focus-visible:ring-2 focus-visible:ring-white"
       >
         Ver mis cupones
@@ -261,7 +261,7 @@ function Ticket({ token, coupon, fresh, now, notice, onCopyCode, onKeepLink }: T
 
       {status === COUPON_STATUS.REDEEMED ? (
         <Link
-          href={`/cupon/${token}/review`}
+          href={`/coupon/${token}/review`}
           className="flex h-14 w-full items-center justify-center rounded-full bg-movo-accent font-display text-lg font-bold text-movo-ink outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
           Dejá tu reseña

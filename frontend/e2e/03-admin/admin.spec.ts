@@ -24,7 +24,7 @@ async function openDetail(page: Page) {
 test.describe("Admin locales", () => {
   test.beforeEach(async ({ page }) => {
     await signIn(page, ADMIN);
-    await expect(page).toHaveURL(/\/admin\/locales$/);
+    await expect(page).toHaveURL(/\/admin\/businesses$/);
   });
 
   test(

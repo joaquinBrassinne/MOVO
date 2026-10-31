@@ -53,7 +53,7 @@ test.describe("Business removal", () => {
     { tag: ["@critical", "@e2e", "@removal", "@REMOVAL-E2E-003"] },
     async ({ page }) => {
       await signIn(page, OWNER);
-      await page.goto("/socios/onboarding");
+      await page.goto("/owners/onboarding");
 
       await expect(page.getByText("Este negocio fue dado de baja")).toBeVisible();
       await expect(page.getByRole("button", { name: "Siguiente" })).toHaveCount(0);

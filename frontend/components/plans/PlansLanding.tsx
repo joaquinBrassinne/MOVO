@@ -35,7 +35,7 @@ export function PlansLanding({ plans }: { plans: Plan[] | null }) {
             <Logo className="h-7" />
           </Link>
           <Link
-            href="/socios/ingresar"
+            href="/owners/sign-in"
             className={`rounded-full border border-white/30 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 ${FOCUS}`}
           >
             Ingreso Dueños

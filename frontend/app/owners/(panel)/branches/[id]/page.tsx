@@ -5,7 +5,7 @@ import { BranchEditor } from "@/components/panel/BranchEditor";
 
 export const metadata: Metadata = { title: "Editar sede — MOVO Socios" };
 
-export default async function EditBranchPage({ params }: PageProps<"/socios/sedes/[id]">) {
+export default async function EditBranchPage({ params }: PageProps<"/owners/branches/[id]">) {
   const id = Number((await params).id);
   if (!Number.isSafeInteger(id) || id <= 0) notFound();
 

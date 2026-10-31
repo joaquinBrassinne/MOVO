@@ -16,7 +16,7 @@ export function BusinessData() {
   return (
     <div className="space-y-5">
       <Link
-        href="/socios/local"
+        href="/owners/business"
         className="inline-flex items-center gap-2 text-sm font-bold text-movo-slate outline-none focus-visible:ring-2 focus-visible:ring-movo-accent"
       >
         <ArrowLeftIcon className="size-4" />

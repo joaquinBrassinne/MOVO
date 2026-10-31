@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   referrer: "no-referrer",
 };
 
-export default function CouponPage({ params }: PageProps<"/cupon/[token]">) {
+export default function CouponPage({ params }: PageProps<"/coupon/[token]">) {
   return (
     <Suspense fallback={null}>
       <CouponView params={params} />

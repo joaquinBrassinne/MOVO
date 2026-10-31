@@ -7,7 +7,7 @@ import { getProfile } from "@/lib/server/profile";
 
 export async function generateMetadata({
   params,
-}: PageProps<"/locales/[slug]">): Promise<Metadata> {
+}: PageProps<"/businesses/[slug]">): Promise<Metadata> {
   const { slug } = await params;
   const cached = await getProfile(slug);
   if (!cached) return { title: "Local no encontrado — MOVO", robots: { index: false } };
@@ -20,7 +20,7 @@ export async function generateMetadata({
   return {
     title: `${profile.name} — ${profile.category.name} en ${place.city} | MOVO`,
     description,
-    alternates: { canonical: `/locales/${profile.slug}` },
+    alternates: { canonical: `/businesses/${profile.slug}` },
     openGraph: {
       type: "website",
       title: `${profile.name} — MOVO`,
@@ -30,7 +30,7 @@ export async function generateMetadata({
   };
 }
 
-export default async function LocalPage({ params }: PageProps<"/locales/[slug]">) {
+export default async function LocalPage({ params }: PageProps<"/businesses/[slug]">) {
   const { slug } = await params;
   const cached = await getProfile(slug);
   if (!cached) notFound();

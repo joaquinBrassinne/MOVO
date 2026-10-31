@@ -84,7 +84,7 @@ test.describe("Search views", () => {
     { tag: ["@high", "@e2e", "@search", "@SEARCH-E2E-002"] },
     async ({ page }) => {
       await mockApi(page);
-      await page.goto("/mapa");
+      await page.goto("/map");
 
       await expect(page.locator(".leaflet-marker-icon")).toHaveCount(2);
       await expect(page.getByText("2 disponibles")).toBeVisible();
@@ -94,7 +94,7 @@ test.describe("Search views", () => {
       await expect(page.getByRole("button", { name: "Bajar la lista" })).toBeVisible();
       await expect(page.getByRole("link", { name: /Ver local/ }).first()).toHaveAttribute(
         "href",
-        /\/locales\//,
+        /\/businesses\//,
       );
     },
   );

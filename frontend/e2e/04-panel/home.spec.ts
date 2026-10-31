@@ -59,7 +59,7 @@ test.describe("Owner home", () => {
       await expect(page.getByRole("heading", { name: `Hola, ${BUSINESS.name}` })).toBeVisible();
       await expect(page.getByRole("link", { name: "Canjear cupón" })).toHaveAttribute(
         "href",
-        "/socios/canjear",
+        "/owners/redeem",
       );
       for (const label of [
         "Cupones activos",

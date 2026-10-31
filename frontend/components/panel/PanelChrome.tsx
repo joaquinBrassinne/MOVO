@@ -12,42 +12,42 @@ import { useSession } from "@/lib/session/SessionProvider";
 
 /** Las pestañas del panel; "Mi local" abarca la pantalla de accesos y las que cuelgan de ella. */
 const NAV = [
-  { href: "/socios/panel", label: "Inicio", icon: GridIcon, within: ["/socios/panel"] },
-  { href: "/socios/canjear", label: "Canjear", icon: QrIcon, within: ["/socios/canjear"] },
+  { href: "/owners/dashboard", label: "Inicio", icon: GridIcon, within: ["/owners/dashboard"] },
+  { href: "/owners/redeem", label: "Canjear", icon: QrIcon, within: ["/owners/redeem"] },
   {
-    href: "/socios/beneficios",
+    href: "/owners/benefits",
     label: "Beneficios",
     icon: TicketIcon,
-    within: ["/socios/beneficios"],
+    within: ["/owners/benefits"],
   },
-  { href: "/socios/reviews", label: "Reseñas", icon: StarIcon, within: ["/socios/reviews"] },
+  { href: "/owners/reviews", label: "Reseñas", icon: StarIcon, within: ["/owners/reviews"] },
   {
-    href: "/socios/local",
+    href: "/owners/business",
     label: "Mi local",
     icon: StoreIcon,
     within: [
-      "/socios/local",
-      "/socios/sedes",
-      "/socios/servicios",
-      "/socios/fotos",
-      "/socios/plan",
+      "/owners/business",
+      "/owners/branches",
+      "/owners/services",
+      "/owners/photos",
+      "/owners/plan",
     ],
   },
 ] as const;
 
 /** El título del encabezado según la vista en la que está el dueño. */
 function titleOf(pathname: string): string {
-  if (pathname === "/socios/beneficios") return "Beneficios";
-  if (pathname === "/socios/canjear") return "Canjear cupón";
-  if (pathname === "/socios/reviews") return "Reseñas";
-  if (pathname === "/socios/local/datos") return "Datos del negocio";
-  if (pathname === "/socios/local") return "Mi local";
-  if (pathname === "/socios/servicios") return "Servicios y horarios";
-  if (pathname === "/socios/fotos") return "Fotos del local";
-  if (pathname === "/socios/plan") return "Mi plan";
-  if (pathname === "/socios/sedes") return "Mis sedes";
-  if (pathname === "/socios/sedes/nueva") return "Nueva sede";
-  if (pathname.startsWith("/socios/sedes/")) return "Editar sede";
+  if (pathname === "/owners/benefits") return "Beneficios";
+  if (pathname === "/owners/redeem") return "Canjear cupón";
+  if (pathname === "/owners/reviews") return "Reseñas";
+  if (pathname === "/owners/business/details") return "Datos del negocio";
+  if (pathname === "/owners/business") return "Mi local";
+  if (pathname === "/owners/services") return "Servicios y horarios";
+  if (pathname === "/owners/photos") return "Fotos del local";
+  if (pathname === "/owners/plan") return "Mi plan";
+  if (pathname === "/owners/branches") return "Mis sedes";
+  if (pathname === "/owners/branches/new") return "Nueva sede";
+  if (pathname.startsWith("/owners/branches/")) return "Editar sede";
   return "Panel";
 }
 

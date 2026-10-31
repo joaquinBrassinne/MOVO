@@ -172,7 +172,7 @@ export function SubscriptionDetail({ row, onClose, onChanged }: Props) {
           </a>
         ) : null}
         <a
-          href="/admin/locales"
+          href="/admin/businesses"
           className="inline-block text-sm font-bold underline underline-offset-4"
         >
           Ver el local en Locales (#{row.business_id})
