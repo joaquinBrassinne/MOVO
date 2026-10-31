@@ -14,8 +14,12 @@ Dejar de depender de los tiles públicos de OSM (la política de uso los bloquea
 - `lib/map.ts`, `.env.example` y `docs/sdd.md` (§ stack, riesgos, 12.3) actualizados.
 - typecheck, lint, format:check y build OK.
 
+- Fix al volver atrás: con `cacheComponents` la página queda oculta en `<Activity>` y Leaflet falla con "Map container is being reused". `MountWhileVisible` monta el mapa solo mientras se ve.
+- Fix del mapa en blanco: MapLibre 6 deduce la URL del worker desde `import.meta.url` y Turbopack la rompe ("Worker failed to load"). `setWorkerUrl(new URL("maplibre-gl/dist/maplibre-gl-worker.mjs", import.meta.url))`.
+- Probado a mano en el navegador (2026-10-31): el mapa de búsqueda funciona, incluido volver atrás.
+
 ## Pendiente
-- Revisar a mano en el navegador (`make up` + `npm run dev`): Mapa de búsqueda y pin de la sede; atribución visible.
+- Revisar a mano el pin de la sede (onboarding); atribución visible.
 - Confirmar la política de uso de OpenFreeMap antes de lanzar.
 - Correr e2e (Playwright) con la capa nueva.
 - Migrar a Protomaps antes de producción.
