@@ -40,7 +40,7 @@ test.describe("Owner panel", () => {
     );
 
     test(
-      "The bottom navigation has four tabs and Mi local leads to the rest of the business",
+      "The bottom navigation has five tabs and Mi local leads to the rest of the business",
       { tag: ["@high", "@e2e", "@panel", "@PANEL-E2E-002"] },
       async ({ page }) => {
         const nav = page.getByRole("navigation", { name: "Secciones del panel" });
@@ -49,6 +49,7 @@ test.describe("Owner panel", () => {
           "Inicio",
           "Canjear",
           "Beneficios",
+          "Reseñas",
           "Mi local",
         ]);
 
