@@ -17,7 +17,7 @@ import { BenefitPill } from "./BenefitPill";
 import { CategoryChips } from "./CategoryChips";
 import { CategoryIcon, Icon, VerifiedIcon } from "./icons";
 
-const profilePath = (result: SearchResult) => `/locales/${result.business_slug}`;
+const profilePath = (result: SearchResult) => `/businesses/${result.business_slug}`;
 
 /** Home: buscador, categorías, "Destacados cerca tuyo" y "Cerca tuyo". */
 export function HomeScreen() {
@@ -44,7 +44,7 @@ export function HomeScreen() {
 
       <div className="px-5 pt-5">
         <Link
-          href="/mapa"
+          href="/map"
           className="flex h-14 items-center gap-3 rounded-full bg-movo-cream px-5 text-movo-slate outline-none focus-visible:ring-2 focus-visible:ring-movo-accent"
         >
           <Icon name="pin" className="size-5 text-movo-ink" />
@@ -99,7 +99,7 @@ export function HomeScreen() {
             Cerca tuyo
           </h2>
           <Link
-            href="/mapa"
+            href="/map"
             className="inline-flex items-center gap-1 text-sm font-bold text-movo-accent outline-none focus-visible:underline"
           >
             Ver en el mapa

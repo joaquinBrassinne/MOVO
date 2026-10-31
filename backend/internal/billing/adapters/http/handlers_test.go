@@ -16,8 +16,8 @@ func TestGetPlansListsPricesAndLimitsWithoutAuthentication(t *testing.T) {
 	t.Parallel()
 
 	catalog, err := configcatalog.New(config.Plans{
-		Starter: config.PlanSettings{MaxBranches: 2, MaxActiveServices: 3, Price: 19800},
-		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800},
+		Starter: config.PlanSettings{MaxBranches: 2, MaxActiveServices: 3, Price: 19800, CheckoutURL: "https://mp.example/starter"},
+		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800, CheckoutURL: "https://mp.example/pro"},
 	})
 	if err != nil {
 		t.Fatalf("catalog: %v", err)
@@ -35,6 +35,7 @@ func TestGetPlansListsPricesAndLimitsWithoutAuthentication(t *testing.T) {
 		Plans []struct {
 			Plan              string `json:"plan"`
 			Price             int    `json:"price"`
+			CheckoutURL       string `json:"checkout_url"`
 			MaxBranches       *int   `json:"max_branches"`
 			MaxActiveServices *int   `json:"max_active_services"`
 		} `json:"plans"`
@@ -52,6 +53,9 @@ func TestGetPlansListsPricesAndLimitsWithoutAuthentication(t *testing.T) {
 	}
 	if pro.Plan != "pro" || pro.Price != 29800 || *pro.MaxBranches != 4 || pro.MaxActiveServices != nil {
 		t.Errorf("pro = %+v, want max_active_services null for unlimited", pro)
+	}
+	if starter.CheckoutURL != "https://mp.example/starter" || pro.CheckoutURL != "https://mp.example/pro" {
+		t.Errorf("checkout urls = %q, %q", starter.CheckoutURL, pro.CheckoutURL)
 	}
 	if cc := res.Header.Get("Cache-Control"); cc != "public, max-age=300" {
 		t.Errorf("Cache-Control = %q", cc)

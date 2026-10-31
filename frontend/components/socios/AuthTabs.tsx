@@ -9,8 +9,8 @@ type AuthTabsProps = {
 };
 
 const TABS = [
-  { id: "login", label: "Ingresar", href: "/socios/ingresar", Icon: LogInIcon },
-  { id: "register", label: "Crear cuenta", href: "/socios/crear-cuenta", Icon: UserPlusIcon },
+  { id: "login", label: "Ingresar", href: "/owners/sign-in", Icon: LogInIcon },
+  { id: "register", label: "Crear cuenta", href: "/owners/sign-up", Icon: UserPlusIcon },
 ] as const;
 
 export function AuthTabs({ active, withIcons = false }: AuthTabsProps) {

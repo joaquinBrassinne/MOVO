@@ -44,6 +44,9 @@ func TestVisibleBranchesExposeOnlyActiveBranchesOfActiveBusinesses(t *testing.T)
 			if _, err := pool.Exec(ctx, `UPDATE businesses SET pilot = $2 WHERE id = $1`, businessID, tc.pilot); err != nil {
 				t.Fatalf("set pilot: %v", err)
 			}
+			// Paid up, so only the business status and the branch decide in this test; the
+			// payment dimension is pinned in visible_branches_payment_test.go.
+			paidUntil(ctx, t, pool, businessID, owner, 30)
 			branchID := insertBranch(ctx, t, pool, businessID)
 			if _, err := pool.Exec(ctx, `UPDATE branches SET active = $2 WHERE id = $1`, branchID, tc.branchActive); err != nil {
 				t.Fatalf("set branch active: %v", err)
@@ -67,10 +70,12 @@ func TestVisibleBranchesListOnlyTheActiveBranchesOfABusiness(t *testing.T) {
 
 	pool := dbtest.New(t)
 	ctx := t.Context()
-	business, err := insertBusiness(ctx, pool, insertOwner(ctx, t, pool, "owner@example.com"), "studio", "5491112345678", "active")
+	owner := insertOwner(ctx, t, pool, "owner@example.com")
+	business, err := insertBusiness(ctx, pool, owner, "studio", "5491112345678", "active")
 	if err != nil {
 		t.Fatalf("insert business: %v", err)
 	}
+	paidUntil(ctx, t, pool, business, owner, 30)
 	first := insertBranch(ctx, t, pool, business)
 	second := insertBranch(ctx, t, pool, business)
 	third := insertBranch(ctx, t, pool, business)
@@ -139,10 +144,12 @@ func TestVisibleBranchesFollowTheLiveState(t *testing.T) {
 
 	pool := dbtest.New(t)
 	ctx := t.Context()
-	businessID, err := insertBusiness(ctx, pool, insertOwner(ctx, t, pool, "owner@example.com"), "studio", "5491112345678", "active")
+	owner := insertOwner(ctx, t, pool, "owner@example.com")
+	businessID, err := insertBusiness(ctx, pool, owner, "studio", "5491112345678", "active")
 	if err != nil {
 		t.Fatalf("insert business: %v", err)
 	}
+	paidUntil(ctx, t, pool, businessID, owner, 30)
 	branchID := insertBranch(ctx, t, pool, businessID)
 
 	count := func() (n int) {

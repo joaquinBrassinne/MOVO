@@ -4,17 +4,18 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/joaquinBrassinne/MOVO/internal/billing"
 	"github.com/joaquinBrassinne/MOVO/internal/billing/adapters/configcatalog"
-	"github.com/joaquinBrassinne/MOVO/internal/billing/adapters/fixedplan"
 	billinghttp "github.com/joaquinBrassinne/MOVO/internal/billing/adapters/http"
 	"github.com/joaquinBrassinne/MOVO/internal/billing/adapters/pilotplan"
+	billingpostgres "github.com/joaquinBrassinne/MOVO/internal/billing/adapters/postgres"
+	billingcommands "github.com/joaquinBrassinne/MOVO/internal/billing/app/commands"
 	billingqueries "github.com/joaquinBrassinne/MOVO/internal/billing/app/queries"
-	billingdomain "github.com/joaquinBrassinne/MOVO/internal/billing/domain"
 	"github.com/joaquinBrassinne/MOVO/internal/business"
 	businesshttp "github.com/joaquinBrassinne/MOVO/internal/business/adapters/http"
 	businesspostgres "github.com/joaquinBrassinne/MOVO/internal/business/adapters/postgres"
@@ -63,6 +64,34 @@ func (o ownerPlans) PlanOfOwner(ctx context.Context, ownerID int64) (billing.Pla
 	return billing.PlanInfo{}, billing.ErrUnknownPlan
 }
 
+// ownerSubscriptions answers the payment state of an owner's business, joining the two
+// modules here so billing never reads businesses.
+type ownerSubscriptions struct {
+	businesses    *businesspostgres.Businesses
+	subscriptions *billingpostgres.Subscriptions
+}
+
+func (o ownerSubscriptions) SubscriptionOfOwner(ctx context.Context, ownerID int64) (billing.OwnerSubscription, error) {
+	b, err := o.businesses.FindByOwner(ctx, ownerID)
+	if errors.Is(err, business.ErrBusinessNotFound) {
+		return billing.OwnerSubscription{}, billing.ErrOwnerHasNoBusiness
+	}
+	if err != nil {
+		return billing.OwnerSubscription{}, err
+	}
+
+	own := billing.OwnerSubscription{Pilot: b.Pilot}
+	sub, err := o.subscriptions.Find(ctx, b.ID)
+	switch {
+	case errors.Is(err, billing.ErrSubscriptionNotFound):
+	case err != nil:
+		return billing.OwnerSubscription{}, err
+	default:
+		own.Subscription = &sub
+	}
+	return own, nil
+}
+
 // newBusinessRoutes composes the business and billing modules: adapters, use
 // cases and HTTP. It returns the mounts of both.
 func newBusinessRoutes(
@@ -85,9 +114,11 @@ func newBusinessRoutes(
 	admin := businesspostgres.NewAdmin(pool)
 	photos := businesspostgres.NewImages(pool)
 
-	// Pilot businesses get the Pro limits for free; everyone else is on Starter
-	// until subscriptions exist (phase 5). Dropping pilotplan ends the pilot.
-	resolver := pilotplan.New(businesses, fixedplan.New(billingdomain.PlanStarter))
+	// Pilot businesses get the Pro limits for free; everyone else is on the plan of
+	// their subscription (Starter until the admin confirms the payment). Dropping
+	// pilotplan ends the pilot.
+	subscriptions := billingpostgres.NewSubscriptions(pool)
+	resolver := pilotplan.New(businesses, subscriptions)
 	entitlements := entitlementsOf{query: billingqueries.NewEntitlementsFor(catalog, resolver)}
 
 	handlers := businesshttp.New(businesshttp.Deps{
@@ -123,6 +154,21 @@ func newBusinessRoutes(
 		AdminDetail:    queries.NewGetBusinessDetail(admin, branches, services),
 	})
 
-	planHandlers := billinghttp.New(catalog).WithOwnerPlans(verifier, ownerPlans{businesses: businesses, resolver: resolver, catalog: catalog})
-	return handlers.Mount, planHandlers.Mount, nil
+	planHandlers := billinghttp.New(catalog).
+		WithOwnerPlans(verifier, ownerPlans{businesses: businesses, resolver: resolver, catalog: catalog}).
+		WithOwnerSubscription(verifier, ownerSubscriptions{businesses: businesses, subscriptions: subscriptions}).
+		WithAlerts(verifier, billingpostgres.NewAlerts(pool))
+	adminHandlers := billinghttp.NewAdmin(log, billinghttp.AdminDeps{
+		Verifier:      verifier,
+		Subscriptions: subscriptions,
+		Confirm:       billingcommands.NewConfirmPayment(subscriptions, time.Now),
+		Register:      billingcommands.NewRegisterPayment(subscriptions, time.Now),
+		ChangePlan:    billingcommands.NewChangePlan(subscriptions, catalog),
+		List:          billingqueries.NewListSubscriptions(subscriptions),
+	})
+	billingMount = func(r chi.Router) {
+		planHandlers.Mount(r)
+		adminHandlers.Mount(r)
+	}
+	return handlers.Mount, billingMount, nil
 }

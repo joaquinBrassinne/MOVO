@@ -1,0 +1,4344 @@
+openapi: 3.0.3
+info:
+  title: MOVO API
+  version: 1.0.0
+  description: |
+    HTTP API of the MOVO platform: businesses that offer physical and wellness activities,
+    the map that lists them, and the coupons customers redeem at the business.
+
+    **Conventions**
+    - Every endpoint lives under `/api/v1`, except the `/healthz` and `/readyz` probes.
+    - Bodies are JSON. Every failure uses the same envelope, `{"error": {"code", "message", "details"}}`;
+      `code` is stable and meant for programs, `message` is for people.
+    - Owners and the super admin authenticate with a JWT access token
+      (`Authorization: Bearer <token>`). Customers have no account.
+    - Every response carries `X-Request-Id`; send your own to correlate a request in the logs.
+    - Metrics are aggregated counters, never personal data.
+servers:
+  - url: /api/v1
+    description: Same origin as this page
+security: []
+paths:
+  /healthz:
+    servers:
+      - url: /
+    get:
+      operationId: operationsHealthz
+      summary: Liveness probe
+      description: Answers 200 while the process serves HTTP. It checks no dependency. Served at the server root, not under /api/v1.
+      tags: [Operations]
+      security: []
+      responses:
+        '200':
+          description: The process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityProbeStatus'
+              example:
+                status: ok
+  /readyz:
+    servers:
+      - url: /
+    get:
+      operationId: operationsReadyz
+      summary: Readiness probe
+      description: Pings the database with a bounded timeout. Served at the server root, not under /api/v1. Internal details are never exposed.
+      tags: [Operations]
+      security: []
+      responses:
+        '200':
+          description: The database is reachable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityProbeStatus'
+              example:
+                status: ready
+        '503':
+          description: The database is not reachable (code `not_ready`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: not_ready
+                  message: database is not reachable
+  /auth/register:
+    post:
+      operationId: identityRegister
+      summary: Register a business owner account
+      description: |
+        Creates a `business_admin` user and returns a session. Rate limited per client IP
+        (10 attempts per hour). The response is sent with `Cache-Control: no-store`.
+      tags: [Identity]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityCredentialsRequest'
+      responses:
+        '201':
+          description: Account created and session opened.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: The email is already registered (code `email_taken`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: |
+            Code `validation_failed`. `details` is `{field, reason}` with field `email` (reason `invalid`)
+            or `password` (reasons `too_short`, `too_long`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many sign-ups from this client (code `too_many_attempts`).
+          headers:
+            Retry-After:
+              description: Seconds to wait.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/login:
+    post:
+      operationId: identityLogin
+      summary: Sign in
+      description: |
+        Exchanges email and password for a session. Failed attempts are rate limited
+        (5 attempts per 15 minutes). The response is sent with `Cache-Control: no-store`.
+      tags: [Identity]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityCredentialsRequest'
+      responses:
+        '200':
+          description: Session opened.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Wrong email or password (code `invalid_credentials`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Code `validation_failed` with `details` `{field, reason}` for a malformed email or password length.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many failed attempts (code `too_many_attempts`, `details.retry_after_seconds`).
+          headers:
+            Retry-After:
+              description: Seconds to wait.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: too_many_attempts
+                  message: too many failed attempts, try again later
+                  details:
+                    retry_after_seconds: 600
+  /auth/refresh:
+    post:
+      operationId: identityRefresh
+      summary: Renew a session
+      description: Exchanges a refresh token for a new session. The refresh token is rotated; send the new one next time.
+      tags: [Identity]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityRefreshRequest'
+      responses:
+        '200':
+          description: New session.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: The refresh token is unknown, expired or revoked (code `invalid_session`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/logout:
+    post:
+      operationId: identityLogout
+      summary: Sign out
+      description: Revokes the given refresh token. It needs no access token.
+      tags: [Identity]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityRefreshRequest'
+      responses:
+        '204':
+          description: Session closed. No body.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /search:
+    get:
+      operationId: searchNearby
+      summary: Search branches near a point
+      description: Public proximity search. Ordered by distance band, featured first, then exact distance. Takes no identity.
+      tags: [Search]
+      security: []
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          description: Latitude.
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+        - name: lng
+          in: query
+          required: true
+          description: Longitude.
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+        - name: radius_m
+          in: query
+          required: true
+          description: Search radius in meters (an omitted or zero value is rejected as out_of_range).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50000
+        - name: limit
+          in: query
+          required: true
+          description: Page size (an omitted or zero value is rejected as out_of_range).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+        - name: offset
+          in: query
+          required: false
+          description: Number of results to skip.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: category
+          in: query
+          required: false
+          description: Category slug; empty means all.
+          schema:
+            type: string
+        - name: min_rating
+          in: query
+          required: false
+          description: Minimum rating filter, 0 meaning none. It filters only branches with enough reviews to show stars; it never orders.
+          schema:
+            type: number
+            format: double
+            minimum: 0
+            maximum: 5
+            default: 0
+      responses:
+        '200':
+          description: One page of branch cards.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResults'
+        '422':
+          description: |
+            Code `validation_failed`. `details` is `{field, reason}`; reason is `required` (lat, lng),
+            `invalid` (not a number) or `out_of_range`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /home/featured:
+    get:
+      operationId: searchFeatured
+      summary: Featured branches near a point
+      description: Rotating "Destacados cerca tuyo" section (featured businesses). Takes lat, lng, radius_m and limit; category and offset are ignored.
+      tags: [Search]
+      security: []
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+        - name: radius_m
+          in: query
+          required: true
+          description: Radius in meters.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50000
+        - name: limit
+          in: query
+          required: true
+          description: Maximum number of cards.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        '200':
+          description: Featured branch cards.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchFeaturedResults'
+        '422':
+          description: Code `validation_failed` with `details` `{field, reason}` (required, invalid, out_of_range).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /businesses/{slug}:
+    get:
+      operationId: searchBusinessProfile
+      summary: Public business page
+      description: Data behind the public business page. Only public businesses are served.
+      tags: [Search]
+      security: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Business slug.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The business profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchBusinessProfile'
+        '404':
+          description: The business does not exist or is not public (code `business_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /businesses/{slug}/view:
+    post:
+      operationId: searchRecordProfileView
+      summary: Count a profile view
+      description: Beacon the public page sends after it loads. It increments an aggregate counter; no personal data is stored. Always answers 204 whether or not it counted, so it does not reveal which businesses exist.
+      tags: [Search]
+      security: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Business slug.
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Accepted. No body.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+  /r/wa/{branch_id}:
+    get:
+      operationId: searchOpenWhatsApp
+      summary: Redirect to the branch WhatsApp conversation
+      description: Counts the click and answers 302 with the wa.me link in `Location`. The number never appears in a body.
+      tags: [Search]
+      security: []
+      parameters:
+        - name: branch_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: service
+          in: query
+          required: false
+          description: Service id to mention in the prefilled message.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '302':
+          description: Redirect to WhatsApp.
+          headers:
+            Location:
+              description: The wa.me link.
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+            Referrer-Policy:
+              schema:
+                type: string
+                example: no-referrer
+        '404':
+          description: The branch does not exist or is not public, or branch_id is not a positive integer (code `branch_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: The service parameter is not a positive integer (code `validation_failed`, field service, reason invalid).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    head:
+      operationId: searchPreviewWhatsApp
+      summary: Preview the WhatsApp redirect without counting
+      description: Same answer as GET but no click is counted; used by link previewers.
+      tags: [Search]
+      security: []
+      parameters:
+        - name: branch_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: service
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '302':
+          description: Redirect to WhatsApp (not counted).
+          headers:
+            Location:
+              schema:
+                type: string
+        '404':
+          description: Branch not found (code `branch_not_found`).
+        '422':
+          description: The service parameter is invalid (code `validation_failed`).
+  /categories:
+    get:
+      operationId: businessListCategories
+      summary: List business categories
+      description: Public catalog offered by the sign-up form. Cached for 5 minutes (Cache-Control public, max-age=300).
+      tags: [Catalog]
+      security: []
+      responses:
+        '200':
+          description: Categories.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessCategoryList'
+  /me/business:
+    get:
+      operationId: businessGetMine
+      summary: Get my business
+      description: >-
+        Returns the business of the caller with its branches (and their hours) and photos. Requires role
+        business_admin. Responses are Cache-Control no-store.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The business, branches and images.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessMine'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'The caller has not created a business yet (code business_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    post:
+      operationId: businessCreate
+      summary: Create my business
+      description: >-
+        Creates the business of the caller as a draft. The slug is derived from the name and made unique
+        automatically. Each owner may have only one business. Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessProfileRequest'
+      responses:
+        '201':
+          description: Business created in status draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: 'The caller already has a business (business_exists) or no free slug could be built from the name (slug_unavailable).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '422':
+          description: >-
+            Validation failed. details.field is one of name (invalid, no_letters_or_digits), description (too_long),
+            whatsapp (invalid), category_id (required, unknown).
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    put:
+      operationId: businessUpdate
+      summary: Update my business profile
+      description: >-
+        Replaces category, name, description and WhatsApp. The slug never changes. A deleted business cannot be
+        edited. Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessProfileRequest'
+      responses:
+        '200':
+          description: The updated business.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'The caller has no business (business_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '422':
+          description: 'Validation failed; same fields as business creation.'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/submit:
+    post:
+      operationId: businessSubmit
+      summary: Submit my business for review
+      description: >-
+        Moves the business from draft to pending_review and records the Mercado Pago payer email and name the
+        owner paid with (the super admin crosses them with the payment notice). Nothing is charged or activated
+        here. Only a draft can be submitted. Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessSubmitRequest'
+      responses:
+        '200':
+          description: The business, now in pending_review.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'The caller has no business (business_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The business is not a draft (invalid_state).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '422':
+          description: 'Validation failed. details.field is mp_payer_email or mp_payer_name (reason invalid).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/geocode:
+    post:
+      operationId: businessGeocodeAddress
+      summary: Find the map position of an address
+      description: >-
+        Looks up an address (searched as "address, city, Argentina") so the owner can place the branch pin.
+        Nothing is stored. Call it once per explicit user action, never as-you-type. Requires role business_admin
+        and an existing, non-deleted business.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessGeocodeRequest'
+      responses:
+        '200':
+          description: Position of the best match.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessGeocodeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'No business (business_not_found) or the address was not found (address_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '422':
+          description: 'Validation failed. details.field is address or city (reason invalid).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '429':
+          description: 'The geocoder is busy (geocoder_busy). Retry after the seconds in Retry-After (5).'
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '502':
+          description: 'The geocoder is down (geocoder_unavailable); the owner should place the pin by hand.'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/images/presign:
+    post:
+      operationId: businessPresignImage
+      summary: Get a presigned photo upload URL
+      description: >-
+        Step 1 of a photo upload. The server builds the object key (businesses/{businessId}/{random}.{ext}) and
+        returns a short-lived URL: send the file bytes straight to the object server with the returned method and
+        headers (the body must be exactly size bytes), then call POST /me/business/images with the object_key.
+        Accepted types are JPEG, PNG and WebP, up to 5 MiB. Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessPresignRequest'
+      responses:
+        '200':
+          description: Object key and upload instructions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessPresignResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'The caller has no business (business_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '422':
+          description: 'Validation failed. details.field is content_type (not_allowed) or size (invalid).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/images:
+    post:
+      operationId: businessRegisterImage
+      summary: Register an uploaded photo
+      description: >-
+        Step 2 of a photo upload: registers an object already uploaded through the presigned URL. The photo is
+        appended at the end (position 0 is the cover). The number of photos is limited (max_images in GET
+        /me/business); the error details carry max. Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessRegisterImageRequest'
+      responses:
+        '201':
+          description: Photo registered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessRegisteredImage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'The caller has no business (business_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: >-
+            The photo limit is reached (image_limit_reached, details.max), the photo is already registered
+            (image_exists) or the business was deleted (business_deleted).
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '422':
+          description: 'Validation failed. details.field is object_key (invalid: wrong folder or extension; not_uploaded: the object does not exist).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/images/order:
+    put:
+      operationId: businessReorderImages
+      summary: Reorder my photos
+      description: >-
+        Sets the order of the photos. The list must contain every photo id of the business exactly once; the
+        first becomes the cover. Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessReorderImagesRequest'
+      responses:
+        '204':
+          description: Order saved.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'The caller has no business (business_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '422':
+          description: 'details.field is ids (invalid): the list is not the exact set of the business photo ids.'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/images/{id}:
+    delete:
+      operationId: businessRemoveImage
+      summary: Remove a photo
+      description: >-
+        Removes a photo of the caller business and schedules its object for deletion. A non-numeric or foreign id
+        is answered as not found. Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Photo id.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '204':
+          description: Photo removed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'No business (business_not_found) or no such photo (image_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/branches:
+    post:
+      operationId: businessAddBranch
+      summary: Add a branch
+      description: >-
+        Creates an active branch. The plan limits how many branches may be active at once (via entitlements,
+        pilot businesses get the Pro limits); retired branches do not count. The check is atomic under concurrent
+        requests. Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessBranchRequest'
+      responses:
+        '201':
+          description: Branch created (hours is empty).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessBranch'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'The caller has no business (business_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The plan has no room for another branch (plan_limit_reached, details.resource = branches) or the business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '422':
+          description: >-
+            Validation failed. details.field is one of name, address, city, location (invalid), booking_url
+            (invalid), reference (too_long).
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/branches/{id}:
+    put:
+      operationId: businessEditBranch
+      summary: Edit a branch
+      description: Replaces the details of a branch of the caller business. Keeps its active flag and hours. Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Branch id (non-numeric ids are answered as not found).
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessBranchRequest'
+      responses:
+        '200':
+          description: The updated branch (hours is empty; read them from GET /me/business).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessBranch'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'No business (business_not_found) or no such branch (branch_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '422':
+          description: 'Validation failed; same fields as branch creation.'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    delete:
+      operationId: businessRetireBranch
+      summary: Retire a branch
+      description: >-
+        Takes the branch off the map by setting active to false; it is never deleted because metrics, coupons and
+        reviews reference it. Idempotent. Show it again with PUT /me/business/branches/{id}/active. Requires role
+        business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Branch id (non-numeric ids are answered as not found).
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '204':
+          description: Branch retired.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'No business (business_not_found) or no such branch (branch_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/branches/{id}/hours:
+    put:
+      operationId: businessSetBranchHours
+      summary: Set a branch weekly hours
+      description: >-
+        Replaces the whole weekly schedule of a branch. Several slots per day are allowed; they must not overlap or
+        cross midnight. An empty list means closed. Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Branch id (non-numeric ids are answered as not found).
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessHoursRequest'
+      responses:
+        '200':
+          description: The stored schedule.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessHoursResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'No business (business_not_found) or no such branch (branch_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '422':
+          description: 'details.field is slots; reason is invalid_time (not HH:MM), invalid (bad weekday or end not after start) or overlap.'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/branches/{id}/active:
+    put:
+      operationId: businessSetBranchActive
+      summary: Show or hide a branch
+      description: >-
+        Activates or deactivates a branch. Deactivating is always allowed; activating checks the plan limit of
+        active branches (a no-op when already active). Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Branch id (non-numeric ids are answered as not found).
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessActiveRequest'
+      responses:
+        '200':
+          description: New state of the branch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessBranchActive'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'No business (business_not_found) or no such branch (branch_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The plan has no room (plan_limit_reached, details.resource = branches) or the business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/services:
+    get:
+      operationId: businessListServices
+      summary: List my services
+      description: Lists all services of the caller business (active and inactive) with their schedule. Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Services.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessServiceList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'The caller has no business (business_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    post:
+      operationId: businessAddService
+      summary: Add a service
+      description: >-
+        Creates an active service, for the whole business or one of its branches. The plan limits how many services
+        may be active at once (entitlements; pilot businesses get the Pro limits). Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessServiceRequest'
+      responses:
+        '201':
+          description: Service created (no schedule in the answer).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessService'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'The caller has no business (business_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The plan has no room for another active service (plan_limit_reached, details.resource = services) or the business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '422':
+          description: >-
+            Validation failed. details.field is one of name (invalid), description (too_long), price (invalid),
+            branch_id (invalid: not a branch of this business).
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/services/{id}:
+    put:
+      operationId: businessEditService
+      summary: Edit a service
+      description: Replaces name, description, branch and price of a service. Does not touch its active flag or schedule. Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Service id (non-numeric ids are answered as not found).
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessServiceRequest'
+      responses:
+        '200':
+          description: The updated service (no schedule in the answer).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessService'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'No business (business_not_found) or no such service (service_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '422':
+          description: 'Validation failed; same fields as service creation.'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+    delete:
+      operationId: businessRemoveService
+      summary: Remove a service
+      description: Deletes a service of the caller business. Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Service id (non-numeric ids are answered as not found).
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '204':
+          description: Service removed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'No business (business_not_found) or no such service (service_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/services/{id}/active:
+    put:
+      operationId: businessSetServiceActive
+      summary: Activate or deactivate a service
+      description: >-
+        Deactivating is always allowed; activating checks the plan limit of active services (a no-op when already
+        active). Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Service id (non-numeric ids are answered as not found).
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessActiveRequest'
+      responses:
+        '200':
+          description: The service with its new state (no schedule in the answer).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessService'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'No business (business_not_found) or no such service (service_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The plan has no room (plan_limit_reached, details.resource = services) or the business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/services/{id}/schedule:
+    put:
+      operationId: businessSetServiceSchedule
+      summary: Set a service weekly schedule
+      description: >-
+        Replaces the whole weekly schedule of a service (same slot rules as branch hours: no overlap, no crossing
+        midnight; an empty list clears it). Requires role business_admin.
+      tags: [Business]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Service id (non-numeric ids are answered as not found).
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessHoursRequest'
+      responses:
+        '200':
+          description: The stored schedule.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessServiceScheduleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'No business (business_not_found) or no such service (service_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: 'The business was deleted (business_deleted).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '422':
+          description: 'details.field is slots; reason is invalid_time, invalid or overlap.'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /admin/businesses:
+    get:
+      operationId: businessAdminList
+      summary: List businesses
+      description: >-
+        Super admin list of businesses, filterable and paged, with per-status counts. Requires role
+        super_admin. Responses are Cache-Control no-store.
+      tags: [Business admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Only businesses in this status.
+          schema:
+            $ref: '#/components/schemas/BusinessStatus'
+        - name: q
+          in: query
+          required: false
+          description: Free-text search.
+          schema:
+            type: string
+            maxLength: 100
+        - name: category_id
+          in: query
+          required: false
+          description: Only businesses of this category.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: limit
+          in: query
+          required: false
+          description: Page size.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          description: Rows to skip.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: A page of businesses.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessAdminList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          description: 'An invalid or non-numeric filter or paging value. details.field is filter (invalid).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /admin/businesses/{id}:
+    get:
+      operationId: businessAdminGet
+      summary: Get a business
+      description: >-
+        Super admin detail of a business: owner, branches, service counts and the audit history of what admins did
+        to it. Requires role super_admin.
+      tags: [Business admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Business id (non-numeric ids are answered as not found).
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: The business detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessAdminDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'No such business, or a non-numeric id (business_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /admin/businesses/{id}/actions:
+    post:
+      operationId: businessAdminApplyAction
+      summary: Apply an admin action to a business
+      description: >-
+        Applies one super admin decision (approve, pause, reactivate, delete, verify, revoke_verification,
+        mark_pilot, unmark_pilot) and records it in the audit log in the same transaction. Status changes follow
+        draft/pending_review/active/paused/deleted rules: approve needs pending_review, pause needs active,
+        reactivate needs paused, delete is allowed from any status but deleted. A deleted business cannot change.
+        Requires role super_admin.
+      tags: [Business admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Business id (non-numeric ids are answered as not found).
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessAdminActionRequest'
+      responses:
+        '200':
+          description: The business after the action.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 'No such business, or a non-numeric id (business_not_found).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '409':
+          description: >-
+            invalid_state (the status does not allow the action), business_deleted (the business was deleted),
+            no_change (verify, revoke_verification, mark_pilot or unmark_pilot when already in that state) or
+            conflict (someone changed the business first; reload and retry).
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+        '422':
+          description: 'Unknown action. details.field is action (unknown).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  /me/business/benefits:
+    get:
+      operationId: benefitsListMine
+      summary: List the benefits of my business
+      description: Requires role business_admin. Returns every benefit of the caller's business with its generated and redeemed counts for the current month (Argentina time). The business comes from the token. Responses are sent with Cache-Control no-store.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The benefits.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitsBenefitList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      operationId: benefitsCreate
+      summary: Add a benefit
+      description: Requires role business_admin. Creates an active benefit in the caller's business. Only the field of the chosen type is kept. A title or conditions with a URL or a phone number is rejected (details.reason contains_link or contains_phone).
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BenefitsBenefitInput'
+      responses:
+        '201':
+          description: The created benefit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitsBenefit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The business was deleted and can no longer change (code business_deleted).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /me/business/benefits/{id}:
+    put:
+      operationId: benefitsUpdate
+      summary: Edit a benefit
+      description: Requires role business_admin. Replaces the details of a benefit of the caller's business, keeping its active switch and the admin pause. A malformed id or one from another business answers 404 benefit_not_found.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Benefit id.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BenefitsBenefitInput'
+      responses:
+        '200':
+          description: The updated benefit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitsBenefit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Benefit not found (code benefit_not_found) or the caller has no business (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The business was deleted and can no longer change (code business_deleted).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /me/business/benefits/{id}/active:
+    put:
+      operationId: benefitsSetActive
+      summary: Turn a benefit on or off
+      description: Requires role business_admin. Flips the owner's switch only. It does not lift a pause set by the super admin (admin_paused).
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Benefit id.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BenefitsSetActiveRequest'
+      responses:
+        '200':
+          description: The benefit as stored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitsBenefit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Benefit not found (code benefit_not_found) or the caller has no business (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The business was deleted and can no longer change (code business_deleted).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/overview:
+    get:
+      operationId: benefitsGetOverview
+      summary: Panel home counts
+      description: Requires role business_admin. Active coupons, coupons redeemed today, and the profile views and WhatsApp clicks of the last 7 days. All are aggregated counters, with no personal data.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The counts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitsOverview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/activity:
+    get:
+      operationId: benefitsGetActivity
+      summary: Recent activity of my business
+      description: Requires role business_admin. The newest 20 coupon events (generated or redeemed), newest first, with the customer name and never the phone. The panel polls this route and keeps the since mark itself; the server stores nothing.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: Time of the newest event the panel already showed. new_count counts the events after it.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: The events and how many are new.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitsActivity'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /me/business/coupon-quota:
+    get:
+      operationId: benefitsGetCouponQuota
+      summary: Get the monthly coupon quota
+      description: Requires role business_admin. The monthly cap of generated coupons for the whole business (null is no limit), how many were generated this calendar month in Argentina time, and the date the count restarts.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The quota.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitsCouponQuota'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      operationId: benefitsSetCouponQuota
+      summary: Set the monthly coupon quota
+      description: Requires role business_admin. Accepts an integer greater than 0, or an explicit null for no limit. An absent key is rejected (details.reason required), and a limit below the coupons already generated this month is rejected with details.reason below_generated and details.generated_this_month.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BenefitsSetQuotaRequest'
+      responses:
+        '200':
+          description: The quota after the change.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitsCouponQuota'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The business was deleted and can no longer change (code business_deleted).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /me/business/codes/{code}:
+    get:
+      operationId: benefitsPreviewCoupon
+      summary: Look at a coupon before redeeming it
+      description: "Requires role business_admin. Read-only and without side effects: scanning or typing a code does not redeem it. Shows status, benefit, customer name, expiry and the customer's previous redemptions at this business, never the phone. A code that does not exist, is malformed or belongs to another business answers the same 404 coupon_not_found, so codes of other businesses cannot be probed. The status can change between this preview and the redeem call."
+      tags: [Redemption]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          description: Coupon code as typed. Case, spaces and hyphens are ignored.
+          schema:
+            type: string
+            example: ABCD2345
+      responses:
+        '200':
+          description: The coupon preview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitsCouponPreview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Coupon not found for this business (code coupon_not_found) or the caller has no business (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/codes/redeem:
+    post:
+      operationId: benefitsRedeemCoupon
+      summary: Redeem a coupon
+      description: Requires role business_admin. The redemption is atomic (a single UPDATE of a pending coupon), so two simultaneous calls redeem it only once; the loser gets 409 coupon_redeemed. The business comes from the token, never from the body. When the business has several active branches, branch_id is required.
+      tags: [Redemption]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BenefitsRedeemRequest'
+      responses:
+        '200':
+          description: The coupon was redeemed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitsRedeemed'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Coupon not found for this business (code coupon_not_found) or the caller has no business (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The coupon was already redeemed (code coupon_redeemed) or is past its 48 hours (code coupon_expired).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation failed. details.field is branch_id with reason required (several branches and none given) or unknown (not an active branch of the business).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /benefits/{id}/codes:
+    post:
+      operationId: benefitsGenerateCoupon
+      summary: Generate a coupon
+      description: Public, the customer has no account and nothing is verified. Allowed only for a benefit that is active, not paused by the super admin and whose business is visible, otherwise 404 benefit_not_found. A customer can have only one pending coupon per business (409 pending_coupon), and the business's monthly quota applies (409 quota_reached); both are checked atomically with the insert. Each client origin has an attempt budget per hour; beyond it the answer is 429 with a Retry-After header. The access_token is returned only in this response. Responses are sent with Cache-Control no-store.
+      tags: [Coupons]
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Benefit id. A malformed id answers 404 benefit_not_found.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BenefitsGenerateRequest'
+      responses:
+        '201':
+          description: The generated coupon.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitsGeneratedCoupon'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Benefit not found or not available (code benefit_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The customer already has a pending coupon at this business (code pending_coupon), or the business has no coupons left this month (code quota_reached).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation failed. details.field is name or phone with reason invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many attempts from this origin (code rate_limited).
+          headers:
+            Retry-After:
+              description: Seconds to wait before trying again.
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitsRateLimited'
+  /access/{token}:
+    get:
+      operationId: benefitsViewCoupon
+      summary: See my coupon by access token
+      description: Public. The token in the path is the credential, so the answer is never cached (Cache-Control no-store). Returns only the coupon of that token, never other coupons of the same phone, and carries neither the phone nor the token. An unknown token answers 404 coupon_not_found.
+      tags: [Coupons]
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Access token returned when the coupon was generated.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The coupon.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitsHeldCoupon'
+        '404':
+          description: Coupon not found (code coupon_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/benefits/{id}/paused:
+    put:
+      operationId: benefitsSetPaused
+      summary: Pause or resume a benefit
+      description: Requires role super_admin. Hides any benefit whatever the owner does, or lifts the pause without turning on what the owner turned off. The actor comes from the token and the change is recorded in the audit log.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Benefit id.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BenefitsSetPausedRequest'
+      responses:
+        '200':
+          description: The benefit as stored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitsBenefit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Benefit not found (code benefit_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /access/{token}/review:
+    get:
+      operationId: reviewsGetForm
+      summary: Read the review form of a coupon
+      description: >-
+        Public. The access token in the path is the whole credential. Returns what the
+        review form shows and its state. `branch_name`, `city`, `redeemed_at` and
+        `review_until` are null until the coupon is redeemed. The answer is never cached
+        (`Cache-Control: no-store`).
+      tags: [Reviews]
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Coupon access token.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The review form.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewsForm'
+        '404':
+          description: No coupon matches the token (`coupon_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: {code: coupon_not_found, message: coupon not found}
+  /access/{token}/reviews:
+    post:
+      operationId: reviewsCreate
+      summary: Leave a review for a redeemed coupon
+      description: >-
+        Public. The customer has no account; the token in the path authorizes the review.
+        Branch and customer name come from the coupon. Rules: the coupon must be redeemed,
+        the review must be written within 30 days of redemption, and each coupon can be
+        reviewed once. The comment is optional, trimmed, at most 500 characters, without
+        control characters, links or phone numbers. The shown name is the customer's first
+        name plus last initial unless `show_name` is false, then "Cliente de MOVO". A new
+        review starts as `visible`. The answer is never cached.
+      tags: [Reviews]
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Coupon access token.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewsCreateRequest'
+            example:
+              rating: 5
+              comment: Muy buena clase
+              show_name: true
+      responses:
+        '201':
+          description: The review as it will be shown.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewsCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: No coupon matches the token (`coupon_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: >-
+            The coupon cannot be reviewed. `code` is `coupon_not_redeemed`,
+            `review_window_closed` or `already_reviewed`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: {code: already_reviewed, message: this coupon was already reviewed}
+        '422':
+          description: >-
+            `validation_failed` with `details.field` (`rating` or `comment`) and
+            `details.reason` (`out_of_range` for the rating; `invalid`, `contains_link` or
+            `contains_phone` for the comment).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: validation_failed
+                  message: the comment is not valid
+                  details: {field: comment, reason: contains_link}
+  /branches/{id}/reviews:
+    get:
+      operationId: reviewsListBranch
+      summary: List the public reviews of a branch
+      description: >-
+        Public. Newest first, cursor paginated. Visible and reported reviews are listed;
+        hidden ones are not. Entries carry no id, customer or coupon. `rating` filters by
+        exactly that many stars and `min_rating` by that many or more; both must be 1 to 5
+        and `min_rating` cannot exceed `rating`.
+      tags: [Reviews]
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Branch id.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque `next_cursor` of the previous page (at most 64 characters).
+          schema:
+            type: string
+            maxLength: 64
+        - name: limit
+          in: query
+          required: false
+          description: Page size.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: rating
+          in: query
+          required: false
+          description: Only reviews with exactly this number of stars.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+        - name: min_rating
+          in: query
+          required: false
+          description: Only reviews with this number of stars or more.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+      responses:
+        '200':
+          description: A page of reviews. `next_cursor` is null on the last page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewsPublicList'
+        '404':
+          description: The branch does not exist or the id is malformed (`branch_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: >-
+            `validation_failed` with `details.field` `rating` (out_of_range), `cursor`
+            (invalid) or `limit` (invalid).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /branches/{id}/reviews/summary:
+    get:
+      operationId: reviewsGetSummary
+      summary: Get the rating summary of a branch
+      description: >-
+        Public. Count, average (rounded to one decimal) and how many reviews gave each
+        number of stars. Reported reviews count; hidden ones do not. Every star value from
+        1 to 5 is present in `distribution`, with 0 when nobody gave it.
+      tags: [Reviews]
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Branch id.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: The rating summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewsSummary'
+        '404':
+          description: The branch does not exist or the id is malformed (`branch_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/reviews:
+    get:
+      operationId: reviewsListOwn
+      summary: List the reviews of the owner's business
+      description: >-
+        Requires role `business_admin`. The business comes from the token. Lists visible
+        and reported reviews (hidden ones are left out), newest first, with the ids that
+        reporting needs. Never exposes the customer or the coupon. Not cached.
+      tags: [Reviews]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque `next_cursor` of the previous page (at most 64 characters).
+          schema:
+            type: string
+            maxLength: 64
+        - name: limit
+          in: query
+          required: false
+          description: Page size.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: A page of reviews.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewsModerationList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The owner has not created a business yet (`business_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The business was deleted and can no longer change (`business_deleted`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `cursor` or `limit`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/reviews/{id}/report:
+    post:
+      operationId: reviewsReport
+      summary: Report a review of the owner's business
+      description: >-
+        Requires role `business_admin`. Moves a visible review to `reported` so the super
+        admin can moderate it, and writes the audit entry `review.report` in the same
+        transaction. The review keeps showing publicly and keeps counting in the rating
+        until the super admin hides it. Reporting a review that is already reported or
+        hidden changes nothing and writes no audit entry. A review of another business
+        answers like one that does not exist. No request body.
+      tags: [Reviews]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Review id.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: The moderation state of the review.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewsModerated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: >-
+            `review_not_found` (also for a malformed id or a review of another business) or
+            `business_not_found` (the owner has no business yet).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The business was deleted and can no longer change (`business_deleted`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/reviews:
+    get:
+      operationId: reviewsModerationQueue
+      summary: List the moderation queue
+      description: >-
+        Requires role `super_admin`. Lists reviews in the `reported` queue by default, or
+        the `hidden` ones with `status=hidden` (reviews whose text was already purged are
+        left out). Newest first, cursor paginated. Not cached.
+      tags: [Reviews moderation]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Queue to list.
+          schema:
+            type: string
+            enum: [reported, hidden]
+            default: reported
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque `next_cursor` of the previous page (at most 64 characters).
+          schema:
+            type: string
+            maxLength: 64
+        - name: limit
+          in: query
+          required: false
+          description: Page size.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: A page of reviews.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewsModerationList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          description: '`validation_failed` with `details.field` `status`, `cursor` or `limit`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/reviews/{id}/status:
+    put:
+      operationId: reviewsSetStatus
+      summary: Hide or restore a review
+      description: >-
+        Requires role `super_admin`. Sets the review to `hidden` or back to `visible`;
+        `reported` cannot be set here. Writes the audit entry `review.hide` or
+        `review.restore` (with the previous status) in the same transaction. A hidden
+        review leaves public lists and the rating. After 72 hours hidden, its comment and
+        name are erased by a background job and it can no longer be restored.
+      tags: [Reviews moderation]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Review id.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewsSetStatusRequest'
+            example:
+              status: hidden
+      responses:
+        '200':
+          description: The new moderation state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewsModerated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The review does not exist or the id is malformed (`review_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The review was hidden too long and its text was erased (`review_purged`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `status` (the value is not hidden or visible).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /plans:
+    get:
+      operationId: billingListPlans
+      summary: List the plans for sale
+      description: >-
+        Public catalog read from configuration. Includes the Mercado Pago subscription
+        link of each plan. Cacheable for 5 minutes (`Cache-Control: public, max-age=300`).
+        A null limit means unlimited.
+      tags: [Plans]
+      security: []
+      responses:
+        '200':
+          description: The plan catalog.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [plans]
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BillingPlan'
+  /me/plan:
+    get:
+      operationId: billingGetMyPlan
+      summary: Get the plan of the owner's business
+      description: >-
+        Requires role `business_admin`. The owner comes from the token. Pilot businesses
+        resolve to the Pro plan. Same shape as the catalog entry but without
+        `checkout_url`. Not cached.
+      tags: [Subscription]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The plan and its limits.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingPlan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The owner has not created a business yet (`business_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/subscription:
+    get:
+      operationId: billingGetMySubscription
+      summary: Get the payment state of the owner's business
+      description: >-
+        Requires role `business_admin`. `subscription` is null for a pilot or a business
+        that has none yet. Its status is `active`, `grace` or `expired`; notes and
+        Mercado Pago references are never shown to the owner. Grace lasts 7 days after
+        `paid_until`. Not cached.
+      tags: [Subscription]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The payment state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingMySubscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The owner has not created a business yet (`business_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/alerts:
+    get:
+      operationId: billingListMyAlerts
+      summary: List the unread alerts of the owner's business
+      description: >-
+        Requires role `business_admin`. Today the only alert `type` is `plan_downgrade`,
+        created when a plan change switches off branches or services. Not cached.
+      tags: [Subscription]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Unread alerts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [alerts]
+                properties:
+                  alerts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BillingAlert'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /me/alerts/{id}/read:
+    post:
+      operationId: billingMarkAlertRead
+      summary: Mark an alert as read
+      description: >-
+        Requires role `business_admin`. An alert of another business answers like one that
+        does not exist. No request body.
+      tags: [Subscription]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Alert id.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '204':
+          description: Marked as read.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The alert does not exist or the id is malformed (`alert_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/subscriptions:
+    get:
+      operationId: billingListSubscriptions
+      summary: List subscriptions
+      description: >-
+        Requires role `super_admin`. Sorted by `paid_until`, earliest first. Each entry has
+        the business and a `wa.me` reminder link (empty when the owner has no WhatsApp).
+        `status=expiring` is the "por vencer" view: active subscriptions ending within 7
+        days, today included. Not cached.
+      tags: [Subscriptions]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Filter. Omit for all.
+          schema:
+            type: string
+            enum: [active, grace, expired, expiring]
+      responses:
+        '200':
+          description: The subscriptions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [subscriptions]
+                properties:
+                  subscriptions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BillingSubscriptionEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          description: '`validation_failed` with `details.field` `status` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/subscriptions/{id}:
+    get:
+      operationId: billingGetSubscription
+      summary: Get the subscription of a business
+      description: Requires role `super_admin`. `{id}` is the business id. Not cached.
+      tags: [Subscriptions]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Business id.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: The subscription.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingSubscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: >-
+            `business_not_found` (malformed id) or `subscription_not_found` (the business
+            has no subscription yet).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: {code: subscription_not_found, message: this business has no subscription yet}
+    post:
+      operationId: billingConfirmPayment
+      summary: Confirm the first payment and create the subscription
+      description: >-
+        Requires role `super_admin`. Creates the subscription of a business that is
+        `pending_review` or `active`, activates it if it was pending review, and writes the
+        audit entry `billing.confirm_payment`, all in one transaction. `paid_until` must be
+        today or later (Argentina time). Notes and reference are trimmed.
+      tags: [Subscriptions]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Business id.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillingConfirmRequest'
+            example:
+              plan: starter
+              paid_until: '2026-11-30'
+              mp_subscription_ref: 2c93808488a1
+              notes: Paid by card
+      responses:
+        '201':
+          description: The created subscription.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingSubscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The business does not exist or the id is malformed (`business_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: >-
+            `business_not_confirmable` (the business is not pending review or active),
+            `subscription_exists` (use register payment or change plan) or `conflict`
+            (concurrent change).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: subscription_exists
+                  message: "this business already has a subscription: register a payment or change the plan"
+        '422':
+          description: >-
+            `validation_failed` with `details.field` and `reason`: `plan` invalid;
+            `paid_until` invalid or in_the_past; `mp_subscription_ref` too_long (over 100
+            characters); `notes` too_long (over 500 characters).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/subscriptions/{id}/payments:
+    post:
+      operationId: billingRegisterPayment
+      summary: Register a monthly payment
+      description: >-
+        Requires role `super_admin`. Extends `paid_until` by one calendar month (clamped to
+        the end of shorter months). If `paid_until` is still valid (today or later) the
+        month is added to it, so paying early loses nothing; if it lapsed, the month is
+        added from today. Writes the audit entry `billing.register_payment` with the
+        previous and new dates. No request body.
+      tags: [Subscriptions]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Business id.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: The updated subscription.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingSubscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: '`business_not_found` (malformed id) or `subscription_not_found`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The subscription was changed by someone else, reload and retry (`conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/subscriptions/{id}/plan:
+    put:
+      operationId: billingChangePlan
+      summary: Change the plan of a subscription
+      description: >-
+        Requires role `super_admin`. Dates do not change. When the new plan has lower
+        limits, the excess branches and services are switched off (not for pilot
+        businesses) and listed in `deactivated`; the owner gets a `plan_downgrade` alert.
+        Writes the audit entry `billing.change_plan`.
+      tags: [Subscriptions]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Business id.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillingChangePlanRequest'
+            example:
+              plan: starter
+      responses:
+        '200':
+          description: The updated subscription and what the change switched off.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingChangePlanResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: '`business_not_found` (malformed id) or `subscription_not_found`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: '`no_change` (already on that plan) or `conflict` (concurrent change).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `plan` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token returned by the sign-in and refresh endpoints.
+  responses:
+    BadRequest:
+      description: The request could not be read (malformed JSON, unknown field, bad parameter).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: The access token is missing, invalid or expired.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: The token is valid but its role cannot use this endpoint.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: The resource does not exist, or it is not visible to the caller.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ValidationFailed:
+      description: The request is well formed but a field is invalid. `details` names the fields.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: Too many attempts from this client; try again later.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable machine readable code, such as `validation_failed` or `not_found`.
+              example: validation_failed
+            message:
+              type: string
+              description: Human readable explanation. Never carries internal error text.
+            details:
+              description: Optional per-field context. Its shape depends on the code.
+    IdentityCredentialsRequest:
+      type: object
+      additionalProperties: false
+      description: Email and password. Unknown fields are rejected with 400 invalid_request.
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          description: Email address (trimmed and lower-cased by the server). Validated by the domain.
+          example: owner@example.com
+        password:
+          type: string
+          minLength: 10
+          maxLength: 128
+          description: Password, 10 to 128 characters.
+          example: correct-horse-battery
+    IdentityRefreshRequest:
+      type: object
+      additionalProperties: false
+      description: The opaque refresh token issued by a previous session response.
+      properties:
+        refresh_token:
+          type: string
+          description: Refresh token.
+    IdentityUser:
+      type: object
+      required: [id, email, role]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 42
+        email:
+          type: string
+          example: owner@example.com
+        role:
+          type: string
+          enum: [business_admin, super_admin]
+    IdentitySession:
+      type: object
+      required: [user, access_token, access_expires_at, refresh_token, refresh_expires_at]
+      properties:
+        user:
+          $ref: '#/components/schemas/IdentityUser'
+        access_token:
+          type: string
+          description: JWT to send in the Authorization header as a Bearer token.
+        access_expires_at:
+          type: string
+          format: date-time
+        refresh_token:
+          type: string
+          description: Opaque token to renew the session; it is rotated on each refresh.
+        refresh_expires_at:
+          type: string
+          format: date-time
+    IdentityRateLimitDetails:
+      type: object
+      required: [retry_after_seconds]
+      properties:
+        retry_after_seconds:
+          type: integer
+          description: Seconds to wait before retrying (same value as the Retry-After header).
+          example: 600
+    SearchBranchCard:
+      type: object
+      description: Light branch card for the map and lists. It never carries the WhatsApp number.
+      required: [branch_id, business_name, business_slug, branch_name, address, city, reference, lat, lng, distance_m, rating_avg, rating_count, verified, featured, category_slug, category_name, benefit_label]
+      properties:
+        branch_id:
+          type: integer
+          format: int64
+        business_name:
+          type: string
+        business_slug:
+          type: string
+        branch_name:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        reference:
+          type: string
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        distance_m:
+          type: integer
+          description: Distance from the searched point, in meters (rounded).
+        rating_avg:
+          type: number
+          format: double
+        rating_count:
+          type: integer
+          description: Number of reviews. The rating is only meaningful from 3 reviews on; below that the UI shows "Nuevo".
+        verified:
+          type: boolean
+        featured:
+          type: boolean
+        category_slug:
+          type: string
+        category_name:
+          type: string
+        benefit_label:
+          type: string
+          nullable: true
+          description: Short label of the best benefit offered right now (for example "-15%"), null when there is none.
+          example: '-15%'
+    SearchResults:
+      type: object
+      required: [results, next_offset]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchBranchCard'
+        next_offset:
+          type: integer
+          nullable: true
+          description: Offset to request the next page, null when there are no more results.
+    SearchFeaturedResults:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchBranchCard'
+    SearchSlot:
+      type: object
+      required: [weekday, start, end]
+      properties:
+        weekday:
+          type: integer
+          description: Day of the week as stored by the platform.
+        start:
+          type: string
+          example: '09:00'
+        end:
+          type: string
+          example: '18:00'
+    SearchOpenNow:
+      type: object
+      description: Whether the branch is open at request time (Cordoba time zone).
+      required: [open, closes_at, opens_at, opens_weekday]
+      properties:
+        open:
+          type: boolean
+        closes_at:
+          type: string
+          nullable: true
+          description: End of the current opening stretch; only when open.
+        opens_at:
+          type: string
+          nullable: true
+          description: Next opening time; only when closed and there are slots.
+        opens_weekday:
+          type: integer
+          nullable: true
+          description: Weekday of the next opening; only when closed and there are slots.
+    SearchProfileBranch:
+      type: object
+      required: [branch_id, name, address, city, reference, external_booking_url, lat, lng, rating_avg, rating_count, hours, open_now]
+      properties:
+        branch_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        reference:
+          type: string
+        external_booking_url:
+          type: string
+          nullable: true
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        rating_avg:
+          type: number
+          format: double
+        rating_count:
+          type: integer
+        hours:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchSlot'
+        open_now:
+          $ref: '#/components/schemas/SearchOpenNow'
+    SearchProfileService:
+      type: object
+      required: [id, branch_id, name, description, price, schedule]
+      properties:
+        id:
+          type: integer
+          format: int64
+        branch_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Branch the service belongs to, null when it applies to the whole business.
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: integer
+          nullable: true
+          description: Price in ARS, null when not set.
+        schedule:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchSlot'
+    SearchProfileBenefit:
+      type: object
+      description: A benefit offered right now. Fields of the other types are null; the monthly limit is never exposed.
+      required: [id, type, percent, amount_ars, title, conditions, short_label]
+      properties:
+        id:
+          type: integer
+          format: int64
+        type:
+          type: string
+          enum: [percent, amount, custom]
+        percent:
+          type: integer
+          nullable: true
+          description: Only for type percent.
+        amount_ars:
+          type: integer
+          nullable: true
+          description: Only for type amount.
+        title:
+          type: string
+          nullable: true
+          description: Only for type custom.
+        conditions:
+          type: string
+          nullable: true
+        short_label:
+          type: string
+          example: '-15%'
+    SearchCategory:
+      type: object
+      required: [slug, name]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+    SearchBusinessProfile:
+      type: object
+      description: Public page of a business. It has no WhatsApp number; the button goes through /r/wa/{branch_id}.
+      required: [name, slug, description, category, verified, branches, services, benefits, images]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        category:
+          $ref: '#/components/schemas/SearchCategory'
+        verified:
+          type: boolean
+        branches:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchProfileBranch'
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchProfileService'
+        benefits:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchProfileBenefit'
+        images:
+          type: array
+          description: Image URLs.
+          items:
+            type: string
+    IdentityProbeStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          description: '"ok" for liveness, "ready" for readiness.'
+          example: ok
+    BusinessStatus:
+      type: string
+      description: >-
+        Lifecycle of a business. Owner submit moves draft to pending_review; the super admin
+        moves pending_review to active (approve), active to paused (pause), paused to active
+        (reactivate) and any status but deleted to deleted (delete, logical). Public visibility
+        additionally depends on the subscription and is not stored here.
+      enum: [draft, pending_review, active, paused, deleted]
+    Business:
+      type: object
+      description: The business of an owner. Each owner has at most one.
+      required: [id, category_id, name, slug, description, whatsapp, status, pilot, verified, mp_payer_email, mp_payer_name, mp_plan_hint, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 12
+        category_id:
+          type: integer
+          format: int64
+          example: 3
+        name:
+          type: string
+          example: Pilates Norte
+        slug:
+          type: string
+          description: Public URL name derived from the name at creation; it never changes afterwards.
+          example: pilates-norte
+        description:
+          type: string
+          example: Estudio de pilates reformer y mat.
+        whatsapp:
+          type: string
+          description: Normalized digits-only number with country code.
+          example: '5491155551234'
+        status:
+          $ref: '#/components/schemas/BusinessStatus'
+        pilot:
+          type: boolean
+          description: Pilot businesses get the Pro plan limits for free.
+        verified:
+          type: boolean
+          description: True when a super admin vouched for the business identity.
+        mp_payer_email:
+          type: string
+          description: Mercado Pago email declared by the owner on submit; empty before. A hint, never proof of payment.
+          example: duena@example.com
+        mp_payer_name:
+          type: string
+          description: Full name declared by the owner on submit; empty before.
+          example: Ana Perez
+        mp_plan_hint:
+          type: string
+          description: Value of the plan return parameter recorded on submit, or empty. It never activates a plan.
+          example: pro
+        created_at:
+          type: string
+          format: date-time
+    BusinessProfileRequest:
+      type: object
+      description: Profile fields of a business. All are written on both create and update (full replacement).
+      required: [category_id, name, whatsapp]
+      properties:
+        category_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Id from GET /categories.
+          example: 3
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Trimmed. Must contain letters or digits (the slug is built from it).
+          example: Pilates Norte
+        description:
+          type: string
+          maxLength: 500
+          description: Trimmed. Optional.
+          example: Estudio de pilates reformer y mat.
+        whatsapp:
+          type: string
+          description: Phone number; normalized to 8 to 15 digits, not starting with 0.
+          example: '+54 9 11 5555-1234'
+    BusinessSubmitRequest:
+      type: object
+      description: Declaration the owner makes when sending the draft to review.
+      required: [mp_payer_email, mp_payer_name]
+      properties:
+        mp_payer_email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Bare address (no display name) whose domain contains a dot.
+          example: duena@example.com
+        mp_payer_name:
+          type: string
+          minLength: 3
+          maxLength: 100
+          description: Full name the owner paid with on Mercado Pago.
+          example: Ana Perez
+        mp_return_params:
+          type: object
+          description: >-
+            Query parameters Mercado Pago added to the return URL. Only an aid for the super admin.
+            Malformed entries are silently dropped (empty, key over 40 chars, value over 200 chars,
+            more than 10 entries). The plan key is exposed as mp_plan_hint.
+          additionalProperties:
+            type: string
+          example:
+            plan: pro
+    BusinessSlot:
+      type: object
+      description: One opening interval of a weekday.
+      required: [weekday, start, end]
+      properties:
+        weekday:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: 0 is Sunday, 6 is Saturday.
+          example: 1
+        start:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          description: 'Opening time, HH:MM (24 h).'
+          example: '09:00'
+        end:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          description: 'Closing time, HH:MM; must be after start (slots do not cross midnight).'
+          example: '13:00'
+    BusinessHoursRequest:
+      type: object
+      description: >-
+        Full replacement of a weekly schedule. Slots of the same weekday must not overlap
+        (touching ones are allowed). An empty list means closed.
+      required: [slots]
+      properties:
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/BusinessSlot'
+    BusinessBranchRequest:
+      type: object
+      required: [name, address, city, latitude, longitude]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Sede Palermo
+        address:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: Honduras 4800
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Buenos Aires
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          description: The point (0, 0) is rejected, it means the pin was never placed.
+          example: -34.5889
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          example: -58.4305
+        booking_url:
+          type: string
+          maxLength: 500
+          description: Optional absolute http or https URL; empty means none.
+          example: https://reservas.example.com/palermo
+        reference:
+          type: string
+          maxLength: 100
+          description: Optional free text to help find the place.
+          example: Piso 2, timbre B
+    BusinessBranch:
+      type: object
+      required: [id, name, address, city, latitude, longitude, booking_url, reference, active, hours]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        booking_url:
+          type: string
+        reference:
+          type: string
+        active:
+          type: boolean
+          description: Inactive (retired) branches are off the map but keep their history. Only active branches count against the plan.
+        hours:
+          type: array
+          description: Opening hours. Always empty on create and edit answers and in the admin detail; read them from GET /me/business.
+          items:
+            $ref: '#/components/schemas/BusinessSlot'
+    BusinessImage:
+      type: object
+      required: [id, position, url]
+      properties:
+        id:
+          type: integer
+          format: int64
+        position:
+          type: integer
+          description: Order of the photo; 0 is the cover.
+        url:
+          type: string
+          format: uri
+          description: Short-lived download URL.
+    BusinessMine:
+      type: object
+      required: [business, branches, images, max_images]
+      properties:
+        business:
+          $ref: '#/components/schemas/Business'
+        branches:
+          type: array
+          items:
+            $ref: '#/components/schemas/BusinessBranch'
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/BusinessImage'
+        max_images:
+          type: integer
+          description: How many photos the business may register.
+          example: 10
+    BusinessPresignRequest:
+      type: object
+      required: [content_type, size]
+      properties:
+        content_type:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+          description: SVG is not accepted.
+        size:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 5242880
+          description: Exact size in bytes of the file to upload (max 5 MiB). It is part of the signature.
+          example: 183422
+    BusinessPresignResponse:
+      type: object
+      required: [object_key, upload]
+      properties:
+        object_key:
+          type: string
+          description: Key built by the server under businesses/{businessId}/. Send it to POST /me/business/images after uploading.
+          example: businesses/12/9f2c1ab07d3e4c55.jpg
+        upload:
+          type: object
+          required: [url, method, headers]
+          description: Send the file bytes with this method, to this URL, with these headers.
+          properties:
+            url:
+              type: string
+              format: uri
+            method:
+              type: string
+              example: PUT
+            headers:
+              type: object
+              additionalProperties:
+                type: string
+              example:
+                Content-Type: image/jpeg
+    BusinessGeocodeRequest:
+      type: object
+      required: [address, city]
+      properties:
+        address:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: Honduras 4800
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Buenos Aires
+    BusinessGeocodeResponse:
+      type: object
+      required: [latitude, longitude, display_name]
+      properties:
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        display_name:
+          type: string
+    BusinessRegisterImageRequest:
+      type: object
+      required: [object_key]
+      properties:
+        object_key:
+          type: string
+          maxLength: 200
+          description: >-
+            Key returned by the presign step: businesses/{businessId}/{name}.{jpg|png|webp}, a direct
+            child of the business folder. The object must already be uploaded.
+          example: businesses/12/9f2c1ab07d3e4c55.jpg
+    BusinessRegisteredImage:
+      type: object
+      required: [id, position, object_key]
+      properties:
+        id:
+          type: integer
+          format: int64
+        position:
+          type: integer
+        object_key:
+          type: string
+    BusinessReorderImagesRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          description: Every image id of the business exactly once, in the desired order. The first one becomes the cover.
+          items:
+            type: integer
+            format: int64
+          example: [31, 29, 30]
+    BusinessActiveRequest:
+      type: object
+      required: [active]
+      properties:
+        active:
+          type: boolean
+    BusinessBranchActive:
+      type: object
+      required: [id, active]
+      properties:
+        id:
+          type: integer
+          format: int64
+        active:
+          type: boolean
+    BusinessHoursResponse:
+      type: object
+      required: [hours]
+      properties:
+        hours:
+          type: array
+          items:
+            $ref: '#/components/schemas/BusinessSlot'
+    BusinessServiceRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Pilates reformer
+        description:
+          type: string
+          maxLength: 500
+        branch_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Branch of this business offering the service; null or absent means the whole business.
+        price:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100000000
+          description: Estimated price in whole pesos; null or absent means not set (0 is stored as not set).
+          example: 12000
+    BusinessService:
+      type: object
+      description: A service as the write endpoints answer, without its schedule.
+      required: [id, branch_id, name, description, price, active]
+      properties:
+        id:
+          type: integer
+          format: int64
+        branch_id:
+          type: integer
+          format: int64
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: integer
+          nullable: true
+        active:
+          type: boolean
+          description: Only active services count against the plan.
+    BusinessServiceWithSchedule:
+      allOf:
+        - $ref: '#/components/schemas/BusinessService'
+        - type: object
+          required: [schedule]
+          properties:
+            schedule:
+              type: array
+              items:
+                $ref: '#/components/schemas/BusinessSlot'
+    BusinessServiceList:
+      type: object
+      required: [services]
+      properties:
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/BusinessServiceWithSchedule'
+    BusinessServiceScheduleResponse:
+      type: object
+      required: [schedule]
+      properties:
+        schedule:
+          type: array
+          items:
+            $ref: '#/components/schemas/BusinessSlot'
+    BusinessCategory:
+      type: object
+      required: [id, slug, name]
+      properties:
+        id:
+          type: integer
+          format: int64
+        slug:
+          type: string
+          example: pilates
+        name:
+          type: string
+          example: Pilates
+    BusinessCategoryList:
+      type: object
+      required: [categories]
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/BusinessCategory'
+    BusinessAdminItem:
+      description: A business as the super admin sees it.
+      allOf:
+        - $ref: '#/components/schemas/Business'
+        - type: object
+          required: [owner_email, category_name, branch_count]
+          properties:
+            owner_email:
+              type: string
+              format: email
+            category_name:
+              type: string
+            branch_count:
+              type: integer
+    BusinessAdminList:
+      type: object
+      required: [businesses, total, counts]
+      properties:
+        businesses:
+          type: array
+          items:
+            $ref: '#/components/schemas/BusinessAdminItem'
+        total:
+          type: integer
+          description: Number of businesses matching the filters (before paging).
+        counts:
+          type: object
+          description: Number of businesses per status. Statuses with no rows may be absent.
+          additionalProperties:
+            type: integer
+          example:
+            pending_review: 4
+            active: 31
+    BusinessAdminAction:
+      type: string
+      description: >-
+        approve (pending_review to active), pause (active to paused), reactivate (paused to active),
+        delete (any status but deleted to deleted), verify / revoke_verification (toggle the verified seal),
+        mark_pilot / unmark_pilot (toggle the pilot flag). The last four return no_change when already in that state.
+      enum: [approve, pause, reactivate, delete, verify, revoke_verification, mark_pilot, unmark_pilot]
+    BusinessAdminActionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          $ref: '#/components/schemas/BusinessAdminAction'
+    BusinessAdminAudit:
+      type: object
+      required: [actor_email, action, at, metadata]
+      properties:
+        actor_email:
+          type: string
+        action:
+          type: string
+          description: Audit action name, for example business.approve or business.profile_update.
+          example: business.approve
+        at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: Free-form details, for example status_from and status_to.
+    BusinessAdminDetail:
+      type: object
+      required: [business, branches, services_total, services_active, history]
+      properties:
+        business:
+          $ref: '#/components/schemas/BusinessAdminItem'
+        branches:
+          type: array
+          description: Branches (active and retired) with empty hours.
+          items:
+            $ref: '#/components/schemas/BusinessBranch'
+        services_total:
+          type: integer
+        services_active:
+          type: integer
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/BusinessAdminAudit'
+    BenefitsType:
+      type: string
+      enum: [percent, amount, custom]
+      description: "percent is a discount of 1-100 %, amount a fixed discount in ARS, custom a free-text title."
+    BenefitsCouponStatus:
+      type: string
+      enum: [pending, redeemed, expired]
+      description: Coupon status. A pending coupon past its 48 hours is reported as expired even before the stored status is updated.
+    BenefitsActivityKind:
+      type: string
+      enum: [coupon_generated, coupon_redeemed]
+    BenefitsClaimedBenefit:
+      type: object
+      description: A benefit as a customer reads it. Only the field of its type is set; the others are null.
+      required: [id, type, percent, amount_ars, title, conditions, short_label]
+      properties:
+        id:
+          type: integer
+          format: int64
+        type:
+          $ref: '#/components/schemas/BenefitsType'
+        percent:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 100
+        amount_ars:
+          type: integer
+          nullable: true
+          minimum: 1
+        title:
+          type: string
+          nullable: true
+          maxLength: 80
+        conditions:
+          type: string
+          nullable: true
+          maxLength: 120
+        short_label:
+          type: string
+          description: Label for cards and pills, such as "-15%", "-$2.000" or "Beneficio".
+          example: "-15%"
+    BenefitsBenefit:
+      description: A benefit as the owner panel reads it.
+      allOf:
+        - $ref: '#/components/schemas/BenefitsClaimedBenefit'
+        - type: object
+          required: [active, admin_paused]
+          properties:
+            active:
+              type: boolean
+              description: The owner's switch.
+            admin_paused:
+              type: boolean
+              description: True when the super admin paused the benefit. The owner cannot change it.
+    BenefitsBenefitListItem:
+      description: A benefit of the list with its counts for the current month (Argentina time).
+      allOf:
+        - $ref: '#/components/schemas/BenefitsBenefit'
+        - type: object
+          required: [generated_this_month, redeemed_this_month]
+          properties:
+            generated_this_month:
+              type: integer
+              minimum: 0
+            redeemed_this_month:
+              type: integer
+              minimum: 0
+    BenefitsBenefitList:
+      type: object
+      required: [benefits]
+      properties:
+        benefits:
+          type: array
+          items:
+            $ref: '#/components/schemas/BenefitsBenefitListItem'
+    BenefitsBenefitInput:
+      type: object
+      description: Details of a benefit. Only the field of the chosen type is read and kept. Free texts are plain text, trimmed, with no URL, web address or phone number (8 or more digits) and no control characters.
+      required: [type]
+      properties:
+        type:
+          $ref: '#/components/schemas/BenefitsType'
+        percent:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Required when type is percent.
+        amount_ars:
+          type: integer
+          minimum: 1
+          description: Required when type is amount.
+        title:
+          type: string
+          maxLength: 80
+          description: Required when type is custom.
+        conditions:
+          type: string
+          maxLength: 120
+          description: Optional conditions, empty for none.
+      example:
+        type: percent
+        percent: 15
+        conditions: Valid Monday to Thursday
+    BenefitsSetActiveRequest:
+      type: object
+      required: [active]
+      properties:
+        active:
+          type: boolean
+    BenefitsSetPausedRequest:
+      type: object
+      required: [paused]
+      properties:
+        paused:
+          type: boolean
+    BenefitsGenerateRequest:
+      type: object
+      required: [name, phone]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Name the business will read. Trimmed.
+          example: Ana Gomez
+        phone:
+          type: string
+          description: 'WhatsApp number with country code. Spaces, hyphens, parentheses and a leading "+" are accepted; it is stored as 8-15 digits without "00" and not starting with 0.'
+          example: "+54 9 11 5555-1234"
+    BenefitsGeneratedCoupon:
+      type: object
+      required: [code, access_token, expires_at, benefit]
+      properties:
+        code:
+          type: string
+          pattern: '^[A-HJ-NP-Z2-9]{8}$'
+          description: Coupon code, 8 characters without 0, O, 1 or I.
+          example: ABCD2345
+        access_token:
+          type: string
+          description: Secret that lets the customer see the coupon at GET /access/{token}. Returned only here; the server keeps only its hash.
+        expires_at:
+          type: string
+          format: date-time
+          description: Generation time plus 48 hours.
+        benefit:
+          $ref: '#/components/schemas/BenefitsClaimedBenefit'
+    BenefitsHeldCoupon:
+      type: object
+      description: A coupon as its customer sees it. It carries neither the phone nor the token.
+      required: [code, status, business_name, expires_at, redeemed_at, benefit]
+      properties:
+        code:
+          type: string
+        status:
+          $ref: '#/components/schemas/BenefitsCouponStatus'
+        business_name:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        redeemed_at:
+          type: string
+          format: date-time
+          nullable: true
+        benefit:
+          $ref: '#/components/schemas/BenefitsClaimedBenefit'
+    BenefitsPastRedemption:
+      type: object
+      required: [redeemed_at, branch_name, benefit]
+      properties:
+        redeemed_at:
+          type: string
+          format: date-time
+        branch_name:
+          type: string
+        benefit:
+          $ref: '#/components/schemas/BenefitsClaimedBenefit'
+    BenefitsCouponPreview:
+      type: object
+      description: A coupon of the caller's business before it is redeemed. It has no phone.
+      required: [code, status, customer_name, customer_redeemed_count, previous_redemptions, expires_at, redeemed_at, benefit]
+      properties:
+        code:
+          type: string
+        status:
+          $ref: '#/components/schemas/BenefitsCouponStatus'
+        customer_name:
+          type: string
+        customer_redeemed_count:
+          type: integer
+          minimum: 0
+          description: How many coupons this customer already redeemed at the business.
+        previous_redemptions:
+          type: array
+          description: The newest of those redemptions. Empty when there are none.
+          items:
+            $ref: '#/components/schemas/BenefitsPastRedemption'
+        expires_at:
+          type: string
+          format: date-time
+        redeemed_at:
+          type: string
+          format: date-time
+          nullable: true
+        benefit:
+          $ref: '#/components/schemas/BenefitsClaimedBenefit'
+    BenefitsRedeemRequest:
+      type: object
+      required: [code]
+      description: The business is taken from the token, never from the body.
+      properties:
+        code:
+          type: string
+          description: Coupon code as typed. Case, spaces and hyphens are ignored ("abcd-2345" is "ABCD2345").
+          example: ABCD2345
+        branch_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Branch where the coupon was redeemed. Null or absent means the business's only active branch; required when it has several.
+    BenefitsRedeemed:
+      type: object
+      required: [code, redeemed_at, customer_name, branch_id, benefit]
+      properties:
+        code:
+          type: string
+        redeemed_at:
+          type: string
+          format: date-time
+        customer_name:
+          type: string
+        branch_id:
+          type: integer
+          format: int64
+        benefit:
+          $ref: '#/components/schemas/BenefitsClaimedBenefit'
+    BenefitsActivityItem:
+      type: object
+      required: [type, at, customer_name, benefit]
+      properties:
+        type:
+          $ref: '#/components/schemas/BenefitsActivityKind'
+        at:
+          type: string
+          format: date-time
+        customer_name:
+          type: string
+        benefit:
+          $ref: '#/components/schemas/BenefitsClaimedBenefit'
+    BenefitsActivity:
+      type: object
+      required: [items, new_count]
+      properties:
+        items:
+          type: array
+          maxItems: 20
+          description: Up to 20 events, newest first. Never carries a phone.
+          items:
+            $ref: '#/components/schemas/BenefitsActivityItem'
+        new_count:
+          type: integer
+          minimum: 0
+          description: How many events of all of them happened after the since mark.
+    BenefitsCouponQuota:
+      type: object
+      required: [limit, generated_this_month, resets_on]
+      properties:
+        limit:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: Monthly cap of generated coupons for the whole business. Null means no limit.
+        generated_this_month:
+          type: integer
+          minimum: 0
+        resets_on:
+          type: string
+          format: date
+          description: Date the count starts again (first day of next month, Argentina time).
+          example: "2026-11-01"
+    BenefitsSetQuotaRequest:
+      type: object
+      required: [limit]
+      properties:
+        limit:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: Integer greater than 0, or an explicit null for no limit. The key must be present and cannot be below the coupons already generated this month.
+    BenefitsOverview:
+      type: object
+      description: Counts of the panel home. Views and clicks are aggregated counters of the last 7 days, with no personal data.
+      required: [active_coupons, redeemed_today, profile_views_7d, whatsapp_clicks_7d]
+      properties:
+        active_coupons:
+          type: integer
+          minimum: 0
+        redeemed_today:
+          type: integer
+          minimum: 0
+        profile_views_7d:
+          type: integer
+          minimum: 0
+        whatsapp_clicks_7d:
+          type: integer
+          minimum: 0
+    BenefitsRateLimited:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code:
+              type: string
+              enum: [rate_limited]
+            message:
+              type: string
+            details:
+              type: object
+              required: [retry_after_seconds]
+              properties:
+                retry_after_seconds:
+                  type: integer
+                  minimum: 1
+    ReviewsForm:
+      type: object
+      description: The review form of a coupon.
+      required: [state, business_name, branch_name, city, code, display_name, redeemed_at, review_until]
+      properties:
+        state:
+          type: string
+          description: >-
+            `open` can be reviewed now, `reviewed` already has its review, `window_closed`
+            the 30 days are over, `not_redeemed` the coupon was not redeemed yet.
+          enum: [open, reviewed, window_closed, not_redeemed]
+        business_name:
+          type: string
+        branch_name:
+          type: string
+          nullable: true
+          description: Null until the coupon is redeemed.
+        city:
+          type: string
+          nullable: true
+          description: Null until the coupon is redeemed.
+        code:
+          type: string
+          description: Coupon code.
+        display_name:
+          type: string
+          description: Name the review would show.
+        redeemed_at:
+          type: string
+          format: date-time
+          nullable: true
+        review_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: Redemption time plus 30 days.
+    ReviewsCreateRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          maxLength: 500
+          description: Optional. Trimmed; no control characters, links or phone numbers.
+        show_name:
+          type: boolean
+          default: true
+          description: Show the customer's name; when false the review shows "Cliente de MOVO".
+    ReviewsCreated:
+      type: object
+      description: The review as it will be shown. Carries no id, customer or coupon.
+      required: [rating, display_name, show_name, created_at]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          description: Omitted when empty.
+        display_name:
+          type: string
+          example: Ana P.
+        show_name:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+    ReviewsPublicReview:
+      type: object
+      description: A review as the public reads it, with no id, customer or coupon.
+      required: [rating, display_name, created_at]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          description: Omitted when empty.
+        display_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    ReviewsPublicList:
+      type: object
+      required: [reviews, next_cursor]
+      properties:
+        reviews:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewsPublicReview'
+        next_cursor:
+          type: string
+          nullable: true
+          description: Pass as `cursor` for the next page. Null on the last page.
+    ReviewsSummary:
+      type: object
+      required: [count, average, distribution]
+      properties:
+        count:
+          type: integer
+          minimum: 0
+        average:
+          type: number
+          format: double
+          description: Rounded to one decimal.
+          example: 4.5
+        distribution:
+          type: object
+          description: Number of reviews per star value; keys "1" to "5" are always present.
+          additionalProperties:
+            type: integer
+            minimum: 0
+          example: {'1': 0, '2': 0, '3': 1, '4': 4, '5': 5}
+    ReviewsStatus:
+      type: string
+      description: Moderation state of a review.
+      enum: [visible, reported, hidden]
+    ReviewsModerationReview:
+      type: object
+      description: A review as its owner or the super admin reads it. No customer or coupon.
+      required: [id, branch_id, branch_name, business_id, business_name, rating, display_name, status, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        branch_id:
+          type: integer
+          format: int64
+        branch_name:
+          type: string
+        business_id:
+          type: integer
+          format: int64
+        business_name:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          description: Omitted when empty.
+        display_name:
+          type: string
+        status:
+          $ref: '#/components/schemas/ReviewsStatus'
+        created_at:
+          type: string
+          format: date-time
+    ReviewsModerationList:
+      type: object
+      required: [reviews, next_cursor]
+      properties:
+        reviews:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewsModerationReview'
+        next_cursor:
+          type: string
+          nullable: true
+          description: Pass as `cursor` for the next page. Null on the last page.
+    ReviewsModerated:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: integer
+          format: int64
+        status:
+          $ref: '#/components/schemas/ReviewsStatus'
+    ReviewsSetStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [hidden, visible]
+    BillingPlan:
+      type: object
+      required: [plan, price, max_branches, max_active_services]
+      properties:
+        plan:
+          $ref: '#/components/schemas/BillingPlanName'
+        price:
+          type: integer
+          description: Monthly price.
+        checkout_url:
+          type: string
+          description: Mercado Pago subscription link. Only the public catalog sends it.
+        max_branches:
+          type: integer
+          nullable: true
+          description: Null means unlimited.
+        max_active_services:
+          type: integer
+          nullable: true
+          description: Null means unlimited.
+    BillingPlanName:
+      type: string
+      enum: [starter, pro]
+    BillingSubscription:
+      type: object
+      description: >-
+        Payment state of a business. Dates are Argentina calendar dates. The status is
+        derived for today: `active` up to and including `paid_until`, `grace` for the next
+        7 days, `expired` after that.
+      required: [business_id, plan, paid_until, grace_until, status]
+      properties:
+        business_id:
+          type: integer
+          format: int64
+        plan:
+          $ref: '#/components/schemas/BillingPlanName'
+        paid_until:
+          type: string
+          format: date
+          example: '2026-11-30'
+        grace_until:
+          type: string
+          format: date
+          description: Last day the business is still visible (`paid_until` plus 7 days).
+        status:
+          $ref: '#/components/schemas/BillingSubscriptionStatus'
+        mp_subscription_ref:
+          type: string
+          maxLength: 100
+          description: Omitted when empty.
+        notes:
+          type: string
+          maxLength: 500
+          description: Admin notes. Omitted when empty.
+    BillingSubscriptionStatus:
+      type: string
+      description: >-
+        `pilot` and `none` are business-level states (a pilot, or no subscription) that
+        the subscription endpoints themselves never return; they are listed for the
+        full vocabulary.
+      enum: [active, grace, expired, pilot, none]
+    BillingSubscriptionEntry:
+      allOf:
+        - $ref: '#/components/schemas/BillingSubscription'
+        - type: object
+          required: [business_name, business_status, pilot, expiring_soon, days_left, reminder_url]
+          properties:
+            business_name:
+              type: string
+            business_status:
+              type: string
+              description: Status of the business (for example `active`).
+            pilot:
+              type: boolean
+            expiring_soon:
+              type: boolean
+              description: Active and ending within 7 days, today included.
+            days_left:
+              type: integer
+              description: Days from today to `paid_until`; negative once past.
+            reminder_url:
+              type: string
+              description: '`wa.me` link with a prefilled reminder. Empty when the owner has no WhatsApp.'
+    BillingConfirmRequest:
+      type: object
+      required: [plan, paid_until]
+      properties:
+        plan:
+          $ref: '#/components/schemas/BillingPlanName'
+        paid_until:
+          type: string
+          format: date
+          description: Today or later.
+        mp_subscription_ref:
+          type: string
+          maxLength: 100
+          description: Optional Mercado Pago reference.
+        notes:
+          type: string
+          maxLength: 500
+          description: Optional admin notes.
+    BillingChangePlanRequest:
+      type: object
+      required: [plan]
+      properties:
+        plan:
+          $ref: '#/components/schemas/BillingPlanName'
+    BillingItem:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+    BillingChangePlanResponse:
+      allOf:
+        - $ref: '#/components/schemas/BillingSubscription'
+        - type: object
+          required: [deactivated]
+          properties:
+            deactivated:
+              type: object
+              description: What the new plan switched off. Both lists are empty when nothing was.
+              required: [branches, services]
+              properties:
+                branches:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/BillingItem'
+                services:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/BillingItem'
+    BillingMySubscription:
+      type: object
+      required: [pilot, subscription]
+      properties:
+        pilot:
+          type: boolean
+        subscription:
+          type: object
+          nullable: true
+          description: Null for a pilot or a business with no subscription.
+          required: [plan, paid_until, grace_until, status]
+          properties:
+            plan:
+              $ref: '#/components/schemas/BillingPlanName'
+            paid_until:
+              type: string
+              format: date
+            grace_until:
+              type: string
+              format: date
+            status:
+              type: string
+              enum: [active, grace, expired]
+    BillingAlert:
+      type: object
+      required: [id, type, payload, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        type:
+          type: string
+          example: plan_downgrade
+        payload:
+          type: object
+          description: >-
+            For `plan_downgrade`: `plan_from`, `plan_to`, and `branches` and `services`
+            as lists of `{id, name}` that were switched off.
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time

@@ -83,7 +83,7 @@ export function RegisterForm() {
       <p className="pt-2 text-center text-base text-movo-muted">
         ¿Ya tenés cuenta?{" "}
         <Link
-          href="/socios/ingresar"
+          href="/owners/sign-in"
           className="font-semibold text-movo-accent underline underline-offset-4"
         >
           Ingresar

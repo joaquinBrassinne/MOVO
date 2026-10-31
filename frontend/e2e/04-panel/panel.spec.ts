@@ -31,16 +31,16 @@ test.describe("Owner panel", () => {
       "An approved owner lands on the panel and cannot go back to the onboarding",
       { tag: ["@critical", "@e2e", "@panel", "@PANEL-E2E-001"] },
       async ({ page }) => {
-        await expect(page).toHaveURL(/\/socios\/panel$/);
+        await expect(page).toHaveURL(/\/owners\/dashboard$/);
         await expect(page.getByText(`Socios · ${BUSINESS.name}`)).toBeVisible();
 
-        await page.goto("/socios/onboarding");
-        await expect(page).toHaveURL(/\/socios\/panel$/);
+        await page.goto("/owners/onboarding");
+        await expect(page).toHaveURL(/\/owners\/dashboard$/);
       },
     );
 
     test(
-      "The bottom navigation has four tabs and Mi local leads to the rest of the business",
+      "The bottom navigation has five tabs and Mi local leads to the rest of the business",
       { tag: ["@high", "@e2e", "@panel", "@PANEL-E2E-002"] },
       async ({ page }) => {
         const nav = page.getByRole("navigation", { name: "Secciones del panel" });
@@ -49,15 +49,16 @@ test.describe("Owner panel", () => {
           "Inicio",
           "Canjear",
           "Beneficios",
+          "Reseñas",
           "Mi local",
         ]);
 
         await nav.getByRole("link", { name: "Mi local" }).click();
-        await expect(page).toHaveURL(/\/socios\/local$/);
+        await expect(page).toHaveURL(/\/owners\/business$/);
         await expect(page.getByRole("heading", { level: 1 })).toHaveText("Mi local");
 
         await main.getByRole("link", { name: /Servicios/ }).click();
-        await expect(page).toHaveURL(/\/socios\/servicios$/);
+        await expect(page).toHaveURL(/\/owners\/services$/);
         await expect(page.getByRole("heading", { level: 1 })).toHaveText("Servicios y horarios");
         // Las pantallas que cuelgan de Mi local mantienen su pestaña marcada.
         await expect(nav.getByRole("link", { name: "Mi local" })).toHaveAttribute(
@@ -67,22 +68,22 @@ test.describe("Owner panel", () => {
 
         await nav.getByRole("link", { name: "Mi local" }).click();
         await main.getByRole("link", { name: /Sedes y horarios/ }).click();
-        await expect(page).toHaveURL(/\/socios\/sedes$/);
+        await expect(page).toHaveURL(/\/owners\/branches$/);
         await expect(page.getByRole("heading", { level: 1 })).toHaveText("Mis sedes");
 
         await nav.getByRole("link", { name: "Mi local" }).click();
         await main.getByRole("link", { name: /Fotos/ }).click();
-        await expect(page).toHaveURL(/\/socios\/fotos$/);
+        await expect(page).toHaveURL(/\/owners\/photos$/);
 
         await nav.getByRole("link", { name: "Inicio" }).click();
-        await expect(page).toHaveURL(/\/socios\/panel$/);
+        await expect(page).toHaveURL(/\/owners\/dashboard$/);
       },
     );
   });
 
   test.describe("Services", () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto("/socios/servicios");
+      await page.goto("/owners/services");
     });
 
     test(
@@ -210,7 +211,7 @@ test.describe("Owner panel", () => {
 
   test.describe("Branches", () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto("/socios/sedes");
+      await page.goto("/owners/branches");
     });
 
     test(
@@ -233,7 +234,7 @@ test.describe("Owner panel", () => {
       { tag: ["@high", "@e2e", "@panel", "@PANEL-E2E-010"] },
       async ({ page }) => {
         await page.getByRole("link", { name: "Agregar sede" }).click();
-        await expect(page).toHaveURL(/\/socios\/sedes\/nueva$/);
+        await expect(page).toHaveURL(/\/owners\/branches\/new$/);
 
         await page.getByRole("button", { name: "Guardar sede" }).click();
 
@@ -241,7 +242,7 @@ test.describe("Owner panel", () => {
         await expect(page.getByText("Ingresá la dirección")).toBeVisible();
         await expect(page.getByText("Ingresá la ciudad")).toBeVisible();
         await expect(page.getByText("Marcá la ubicación en el mapa")).toBeVisible();
-        await expect(page).toHaveURL(/\/socios\/sedes\/nueva$/);
+        await expect(page).toHaveURL(/\/owners\/branches\/new$/);
       },
     );
 
@@ -249,7 +250,7 @@ test.describe("Owner panel", () => {
       "Rejects opening hours where closing is not after opening",
       { tag: ["@high", "@e2e", "@panel", "@PANEL-E2E-011"] },
       async ({ page }) => {
-        await page.goto("/socios/sedes/nueva");
+        await page.goto("/owners/branches/new");
         const form = new OnboardingPage(page);
         await page.getByLabel("Nombre de la sede").fill("Sede Centro");
         await form.fillAddress({ address: "Belgrano 250", city: BRANCH.city });
@@ -261,7 +262,7 @@ test.describe("Owner panel", () => {
         await page.getByRole("button", { name: "Guardar sede" }).click();
 
         await expect(page.getByText("Horarios incorrectos")).toBeVisible();
-        await expect(page).toHaveURL(/\/socios\/sedes\/nueva$/);
+        await expect(page).toHaveURL(/\/owners\/branches\/new$/);
       },
     );
 
@@ -269,7 +270,7 @@ test.describe("Owner panel", () => {
       "Creates a branch with opening hours, copying Monday to Friday",
       { tag: ["@critical", "@e2e", "@panel", "@PANEL-E2E-012"] },
       async ({ page }) => {
-        await page.goto("/socios/sedes/nueva");
+        await page.goto("/owners/branches/new");
         const form = new OnboardingPage(page);
         await page.getByLabel("Nombre de la sede").fill("Sede Centro");
         await form.fillAddress({ address: "Belgrano 250", city: BRANCH.city });
@@ -289,7 +290,7 @@ test.describe("Owner panel", () => {
 
         await page.getByRole("button", { name: "Guardar sede" }).click();
 
-        await expect(page).toHaveURL(/\/socios\/sedes$/);
+        await expect(page).toHaveURL(/\/owners\/branches$/);
         await expect(branchCard(page, "Sede Centro")).toContainText("Belgrano 250, Río Tercero");
         await expect(page.getByText("2 de 2 sedes activas")).toBeVisible();
         await expect(page.getByText("Llegaste al límite de sedes de tu plan")).toBeVisible();
@@ -314,7 +315,7 @@ test.describe("Owner panel", () => {
         await page.getByLabel("Lunes: cierra").fill("21:00");
         await page.getByRole("button", { name: "Guardar sede" }).click();
 
-        await expect(page).toHaveURL(/\/socios\/sedes$/);
+        await expect(page).toHaveURL(/\/owners\/branches$/);
         await expect(branchCard(page, "Sede Centro Norte")).toBeVisible();
 
         await page.getByRole("link", { name: "Editar Sede Centro Norte" }).click();
@@ -340,7 +341,7 @@ test.describe("Owner panel", () => {
         await form.fillAddress({ address: "Sarmiento 90", city: BRANCH.city });
         await form.searchAndPin();
         await page.getByRole("button", { name: "Guardar sede" }).click();
-        await expect(page).toHaveURL(/\/socios\/sedes$/);
+        await expect(page).toHaveURL(/\/owners\/branches$/);
         await expect(page.getByText("2 de 2 sedes activas")).toBeVisible();
 
         // ...y con el plan lleno la API rechaza volver a mostrar la oculta.
@@ -354,11 +355,11 @@ test.describe("Owner panel", () => {
       "Says so when the branch does not exist",
       { tag: ["@medium", "@e2e", "@panel", "@PANEL-E2E-015"] },
       async ({ page }) => {
-        await page.goto("/socios/sedes/99999");
+        await page.goto("/owners/branches/99999");
 
         await expect(page.getByText("No encontramos esa sede")).toBeVisible();
         await page.getByRole("link", { name: "Volver a Mis sedes" }).click();
-        await expect(page).toHaveURL(/\/socios\/sedes$/);
+        await expect(page).toHaveURL(/\/owners\/branches$/);
       },
     );
   });
@@ -372,14 +373,14 @@ test.describe("Owner panel", () => {
         await expect(page.getByRole("banner").getByText(OWNER.email)).toBeVisible();
         await page.getByRole("banner").getByRole("button", { name: "Cerrar sesión" }).click();
 
-        await expect(page).toHaveURL(/\/socios\/ingresar$/);
+        await expect(page).toHaveURL(/\/owners\/sign-in$/);
 
-        await page.goto("/socios/panel");
-        await expect(page).toHaveURL(/\/socios\/ingresar$/);
+        await page.goto("/owners/dashboard");
+        await expect(page).toHaveURL(/\/owners\/sign-in$/);
 
         // La cookie de refresco se borró: recargar no devuelve la sesión.
         await page.reload();
-        await expect(page).toHaveURL(/\/socios\/ingresar$/);
+        await expect(page).toHaveURL(/\/owners\/sign-in$/);
       },
     );
   });

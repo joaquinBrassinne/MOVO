@@ -26,11 +26,11 @@ npm run start        # sirve el build
 
 ## Portal de socios (Fase 1)
 
-| Ruta                   | Qué es                                                                     |
-| ---------------------- | -------------------------------------------------------------------------- |
-| `/socios/ingresar`     | Ingreso del dueño                                                          |
-| `/socios/crear-cuenta` | Alta del dueño                                                             |
-| `/socios/panel`        | **Provisorio**: confirma la sesión y cierra sesión. La Fase 2 lo reemplaza |
+| Ruta                | Qué es                                                                     |
+| ------------------- | -------------------------------------------------------------------------- |
+| `/owners/sign-in`   | Ingreso del dueño                                                          |
+| `/owners/sign-up`   | Alta del dueño                                                             |
+| `/owners/dashboard` | **Provisorio**: confirma la sesión y cierra sesión. La Fase 2 lo reemplaza |
 
 Variables (en `frontend/.env.local`, que git ignora):
 
@@ -50,4 +50,4 @@ cd backend && JWT_SECRET=<32+ caracteres> go run ./cmd/api   # API en :8080
 cd frontend && npm run dev                       # http://localhost:3000
 ```
 
-Abrir `http://localhost:3000/socios/crear-cuenta`. En desarrollo usar `localhost`, no `127.0.0.1`: Next bloquea los recursos de desarrollo desde otros orígenes y la página no hidrata.
+Abrir `http://localhost:3000/owners/sign-up`. En desarrollo usar `localhost`, no `127.0.0.1`: Next bloquea los recursos de desarrollo desde otros orígenes y la página no hidrata.

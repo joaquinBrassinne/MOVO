@@ -7,10 +7,10 @@ import { describeAuthFailure, type AuthFeedback } from "./messages";
 import { useSession } from "./SessionProvider";
 import type { SessionUser } from "./types";
 
-export const SIGN_IN_PATH = "/socios/ingresar";
-export const PANEL_PATH = "/socios/panel";
-export const ONBOARDING_PATH = "/socios/onboarding";
-export const ADMIN_PATH = "/admin/locales";
+export const SIGN_IN_PATH = "/owners/sign-in";
+export const PANEL_PATH = "/owners/dashboard";
+export const ONBOARDING_PATH = "/owners/onboarding";
+export const ADMIN_PATH = "/admin/businesses";
 
 /** La pantalla de inicio de cada rol: el super admin va a su directorio, el dueño a su panel. */
 export function homePath(user: SessionUser): string {

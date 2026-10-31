@@ -6,6 +6,10 @@ import { ADMIN, BRANCH, BUSINESS, OWNER, signIn } from "../helpers";
 // ciclo de vida del local: se aprueba, se verifica, se marca piloto y se pausa.
 test.describe.configure({ mode: "serial" });
 
+/** A `YYYY-MM-DD` date `days` days ahead; the UTC day is never before Argentina's today. */
+const inDays = (days: number) =>
+  new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
 const row = (page: Page) => page.getByRole("button", { name: new RegExp(BUSINESS.name) });
 const tableRow = (page: Page) => page.getByRole("row").filter({ hasText: BUSINESS.name });
 const detail = (page: Page) =>
@@ -20,7 +24,7 @@ async function openDetail(page: Page) {
 test.describe("Admin locales", () => {
   test.beforeEach(async ({ page }) => {
     await signIn(page, ADMIN);
-    await expect(page).toHaveURL(/\/admin\/locales$/);
+    await expect(page).toHaveURL(/\/admin\/businesses$/);
   });
 
   test(
@@ -112,9 +116,7 @@ test.describe("Admin locales", () => {
         await panel.getByLabel(check).check();
       }
       await expect(panel).toContainText("Todavía no hay acciones registradas.");
-      await expect(
-        panel.getByRole("button", { name: "Aprobar comercio y publicar" }),
-      ).toBeVisible();
+      await expect(panel.getByRole("button", { name: "Confirmar pago y publicar" })).toBeVisible();
 
       await panel.getByRole("button", { name: "Cerrar el detalle" }).click();
       await expect(detail(page)).toHaveCount(0);
@@ -122,18 +124,18 @@ test.describe("Admin locales", () => {
   );
 
   test(
-    "Approving publishes the business and records it in the history",
+    "Confirming the payment publishes the business and records it in the history",
     { tag: ["@critical", "@e2e", "@admin", "@ADMIN-E2E-005"] },
     async ({ page }) => {
       const panel = await openDetail(page);
 
-      await panel.getByRole("button", { name: "Aprobar comercio y publicar" }).click();
+      await panel.getByLabel("Plan asignado").selectOption("starter");
+      await panel.getByLabel("Vigencia inicial (paid_until)").fill(inDays(30));
+      await panel.getByRole("button", { name: "Confirmar pago y publicar" }).click();
 
       await expect(panel.getByRole("button", { name: "Pausar el local" })).toBeVisible();
-      await expect(panel.getByRole("button", { name: "Aprobar comercio y publicar" })).toHaveCount(
-        0,
-      );
-      await expect(panel.getByText("Aprobado y publicado")).toBeVisible();
+      await expect(panel.getByRole("button", { name: "Confirmar pago y publicar" })).toHaveCount(0);
+      await expect(panel.getByText("Pago confirmado y local publicado")).toBeVisible();
       await expect(panel.getByText(new RegExp(ADMIN.email))).toBeVisible();
       await expect(page.getByRole("tab", { name: "Activos (1)" })).toBeVisible();
       await expect(page.getByRole("tab", { name: "En revisión (0)" })).toBeVisible();
@@ -205,7 +207,7 @@ test.describe("Admin locales", () => {
         "Piloto quitado",
         "Marcado como piloto",
         "Marcado como verificado",
-        "Aprobado y publicado",
+        "Pago confirmado y local publicado",
       ]);
     },
   );

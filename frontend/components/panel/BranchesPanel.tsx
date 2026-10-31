@@ -54,7 +54,7 @@ export function BranchesPanel() {
         </p>
       ) : (
         <Link
-          href="/socios/sedes/nueva"
+          href="/owners/branches/new"
           className="flex h-14 items-center justify-center gap-2 rounded-full bg-movo-accent font-display text-lg font-bold outline-none focus-visible:ring-2 focus-visible:ring-movo-ink"
         >
           <PlusIcon />
@@ -130,7 +130,7 @@ export function BranchesPanel() {
                   Visible al público
                 </label>
                 <Link
-                  href={`/socios/sedes/${branch.id}`}
+                  href={`/owners/branches/${branch.id}`}
                   aria-label={`Editar ${branch.name}`}
                   className="grid size-10 place-items-center rounded-full bg-movo-sand outline-none focus-visible:ring-2 focus-visible:ring-movo-accent"
                 >

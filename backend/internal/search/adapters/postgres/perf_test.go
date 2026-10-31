@@ -43,6 +43,8 @@ func seedBusinesses(ctx context.Context, t *testing.T, pool *pgxpool.Pool, n int
 		        u.id % 20 = 0,
 		        CASE WHEN u.id % 3 = 0 THEN now() END
 		 FROM users u WHERE u.email LIKE 'seed%'`,
+		`INSERT INTO subscriptions (business_id, plan, paid_until, confirmed_by)
+		 SELECT b.id, 'starter', CURRENT_DATE + 30, b.owner_user_id FROM businesses b WHERE b.slug LIKE 'seed-%'`,
 		`INSERT INTO branches (business_id, name, address, city, location, active)
 		 SELECT b.id, 'Sede', 'Calle ' || b.id, 'Ciudad',
 		        CASE WHEN b.id % 10 < 6

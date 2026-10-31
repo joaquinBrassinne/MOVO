@@ -28,8 +28,8 @@ func TestReviewFormOpensWithATokenTheCouponsModuleIssued(t *testing.T) {
 	}
 	must(h.pool.QueryRow(ctx, `SELECT id FROM users WHERE email = 'owner@example.com'`).Scan(&owner))
 	must(h.pool.QueryRow(ctx, `
-INSERT INTO businesses (owner_user_id, category_id, name, slug, whatsapp_number, status)
-VALUES ($1, (SELECT id FROM categories WHERE slug = 'yoga'), 'Studio', 'studio', '5491112345678', 'active') RETURNING id`, owner).Scan(&business))
+INSERT INTO businesses (owner_user_id, category_id, name, slug, whatsapp_number, status, pilot)
+VALUES ($1, (SELECT id FROM categories WHERE slug = 'yoga'), 'Studio', 'studio', '5491112345678', 'active', true) RETURNING id`, owner).Scan(&business))
 	must(h.pool.QueryRow(ctx, `
 INSERT INTO branches (business_id, name, address, city, location)
 VALUES ($1, 'Centro', 'Calle 1', 'Cordoba', ST_SetSRID(ST_MakePoint(-64.18, -31.42), 4326)::geography) RETURNING id`, business).Scan(&branch))

@@ -33,7 +33,7 @@ func info(plan domain.Plan, s config.PlanSettings) (billing.PlanInfo, error) {
 	if err != nil {
 		return billing.PlanInfo{}, fmt.Errorf("configcatalog: plan %s: %w", plan, err)
 	}
-	return billing.PlanInfo{Plan: plan, Price: s.Price, Entitlements: entitlements}, nil
+	return billing.PlanInfo{Plan: plan, Price: s.Price, CheckoutURL: s.CheckoutURL, Entitlements: entitlements}, nil
 }
 
 // Entitlements returns the limits of the plan.
