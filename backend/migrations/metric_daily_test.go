@@ -166,10 +166,12 @@ func TestRetiringABranchKeepsItsMetricsButDeletingItIsRefused(t *testing.T) {
 
 	pool := dbtest.New(t)
 	ctx := t.Context()
-	business, err := insertBusiness(ctx, pool, insertOwner(ctx, t, pool, "owner@example.com"), "studio", "5491112345678", "active")
+	owner := insertOwner(ctx, t, pool, "owner@example.com")
+	business, err := insertBusiness(ctx, pool, owner, "studio", "5491112345678", "active")
 	if err != nil {
 		t.Fatalf("insert business: %v", err)
 	}
+	paidUntil(ctx, t, pool, business, owner, 30)
 	counted := insertBranch(ctx, t, pool, business)
 	empty := insertBranch(ctx, t, pool, business)
 	if _, err := pool.Exec(ctx, `INSERT INTO metric_daily (business_id, branch_id, date, metric, count) VALUES ($1, $2, '2026-03-01', 'whatsapp_click', 5)`, business, counted); err != nil {

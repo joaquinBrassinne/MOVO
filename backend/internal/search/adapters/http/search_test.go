@@ -45,8 +45,8 @@ func addBranch(t *testing.T, pool *pgxpool.Pool, n int, distM float64) (branch i
 		t.Fatalf("insert owner: %v", err)
 	}
 	if err := pool.QueryRow(t.Context(),
-		`INSERT INTO businesses (owner_user_id, category_id, name, slug, whatsapp_number, status, verified_at)
-		 VALUES ($1, (SELECT id FROM categories WHERE slug = 'yoga'), $2, $3, '5491112345678', 'active', now()) RETURNING id`,
+		`INSERT INTO businesses (owner_user_id, category_id, name, slug, whatsapp_number, status, verified_at, pilot)
+		 VALUES ($1, (SELECT id FROM categories WHERE slug = 'yoga'), $2, $3, '5491112345678', 'active', now(), true) RETURNING id`,
 		owner, fmt.Sprintf("Studio %d", n), fmt.Sprintf("studio-%d", n)).Scan(&business); err != nil {
 		t.Fatalf("insert business: %v", err)
 	}

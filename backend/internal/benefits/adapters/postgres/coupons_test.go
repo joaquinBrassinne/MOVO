@@ -31,8 +31,8 @@ func newShop(ctx context.Context, t *testing.T, pool *pgxpool.Pool, name, status
 		t.Fatalf("insert owner: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
-INSERT INTO businesses (owner_user_id, category_id, name, slug, whatsapp_number, status, monthly_coupon_limit)
-VALUES ($1, (SELECT id FROM categories WHERE slug = 'yoga'), $2, $2, '5491112345678', $3, NULLIF($4, 0)) RETURNING id`, owner, name, status, limit).Scan(&business); err != nil {
+INSERT INTO businesses (owner_user_id, category_id, name, slug, whatsapp_number, status, monthly_coupon_limit, pilot)
+VALUES ($1, (SELECT id FROM categories WHERE slug = 'yoga'), $2, $2, '5491112345678', $3, NULLIF($4, 0), true) RETURNING id`, owner, name, status, limit).Scan(&business); err != nil {
 		t.Fatalf("insert business: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `

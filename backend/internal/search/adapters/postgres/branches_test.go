@@ -42,6 +42,13 @@ func (s *seeded) add(t *testing.T, category, status string, distM float64, pilot
 		owner, category, fmt.Sprintf("Studio %d", s.n), fmt.Sprintf("studio-%d", s.n), status, pilot).Scan(&business); err != nil {
 		t.Fatalf("insert business: %v", err)
 	}
+	// The view shows a business only if it is a pilot or paid; a paid one stands in for
+	// "not a pilot" here.
+	if _, err := s.pool.Exec(t.Context(),
+		`INSERT INTO subscriptions (business_id, plan, paid_until, confirmed_by)
+		 VALUES ($1, 'starter', CURRENT_DATE + 30, $2)`, business, owner); err != nil {
+		t.Fatalf("insert subscription: %v", err)
+	}
 	if err := s.pool.QueryRow(t.Context(),
 		`INSERT INTO branches (business_id, name, address, city, location)
 		 VALUES ($1, 'Centro', 'Calle 1', 'Río Tercero', ST_SetSRID(ST_MakePoint($2::float8, $3::float8), 4326)::geography) RETURNING id`,
