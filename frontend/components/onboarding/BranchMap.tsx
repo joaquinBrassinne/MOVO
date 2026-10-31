@@ -7,10 +7,10 @@ import "leaflet/dist/leaflet.css";
 
 import L from "leaflet";
 import { useEffect } from "react";
-import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, Marker, useMap, useMapEvents } from "react-leaflet";
 
 import { PlusIcon } from "@/components/socios/icons";
-import { TILES_ATTRIBUTION, TILES_URL } from "@/lib/map";
+import { VectorTileLayer } from "@/components/map/VectorTileLayer";
 import type { MapView, Pin } from "@/lib/business/useBranchForm";
 
 const CITY_ZOOM = 12;
@@ -42,7 +42,7 @@ export default function BranchMap({ pin, view, onMove }: Props) {
       scrollWheelZoom={false}
       className="size-full"
     >
-      <TileLayer url={TILES_URL} attribution={TILES_ATTRIBUTION} />
+      <VectorTileLayer />
       <FlyTo view={view} zoomIn={pin !== null} />
       <PlaceOnClick onPick={onMove} />
       {pin ? (

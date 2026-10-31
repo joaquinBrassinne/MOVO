@@ -7,10 +7,10 @@ import "leaflet/dist/leaflet.css";
 
 import L from "leaflet";
 import { useEffect, useRef } from "react";
-import { CircleMarker, MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { CircleMarker, MapContainer, Marker, useMap, useMapEvents } from "react-leaflet";
 
 import { PlusIcon } from "@/components/socios/icons";
-import { TILES_ATTRIBUTION, TILES_URL } from "@/lib/map";
+import { VectorTileLayer } from "@/components/map/VectorTileLayer";
 import type { Point, SearchResult } from "@/lib/search/types";
 
 import { categoryIconName, iconMarkup } from "./icons";
@@ -73,7 +73,7 @@ export default function SearchMap({
       zoomControl={false}
       className="size-full"
     >
-      <TileLayer url={TILES_URL} attribution={TILES_ATTRIBUTION} />
+      <VectorTileLayer />
       <FlyTo center={center} recenterKey={recenterKey} />
       <MoveWatcher onMoved={onMoved} />
       {user ? (
