@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { TicketIcon } from "@/components/benefits/icons";
 import {
   ArrowRightIcon,
   ClockIcon,
@@ -32,6 +33,12 @@ const SECTIONS = [
     title: "Fotos",
     body: "La galería que se ve en la ficha de tu local.",
     icon: ImageIcon,
+  },
+  {
+    href: "/socios/plan",
+    title: "Mi plan",
+    body: "Tu plan, qué incluye y hasta cuándo está vigente.",
+    icon: TicketIcon,
   },
 ] as const;
 

@@ -25,7 +25,13 @@ const NAV = [
     href: "/socios/local",
     label: "Mi local",
     icon: StoreIcon,
-    within: ["/socios/local", "/socios/sedes", "/socios/servicios", "/socios/fotos"],
+    within: [
+      "/socios/local",
+      "/socios/sedes",
+      "/socios/servicios",
+      "/socios/fotos",
+      "/socios/plan",
+    ],
   },
 ] as const;
 
@@ -38,6 +44,7 @@ function titleOf(pathname: string): string {
   if (pathname === "/socios/local") return "Mi local";
   if (pathname === "/socios/servicios") return "Servicios y horarios";
   if (pathname === "/socios/fotos") return "Fotos del local";
+  if (pathname === "/socios/plan") return "Mi plan";
   if (pathname === "/socios/sedes") return "Mis sedes";
   if (pathname === "/socios/sedes/nueva") return "Nueva sede";
   if (pathname.startsWith("/socios/sedes/")) return "Editar sede";
