@@ -60,7 +60,7 @@ Plataforma SaaS (B2B2C) que conecta personas con actividades físicas y de biene
 | Tareas diarias | Loop simple en `cmd/worker` con lock consultivo de Postgres | Sin cola de jobs en el MVP; visibilidad y vencimientos se calculan al leer |
 | Caché | Redis (**Fase 7**, cuando haya métricas) | Cache-aside con TTL; también rate limiting distribuido |
 | Frontend | Next.js (App Router) + Tailwind | SSR para SEO de fichas de locales |
-| Mapas | React Leaflet + tiles configurables por variable de entorno | Piloto: tiles públicos de OSM; producción: Protomaps (PMTiles) o proveedor (sección 12.3) |
+| Mapas | React Leaflet + capa vectorial MapLibre GL (`@maplibre/maplibre-gl-leaflet`), estilo configurable por variable de entorno | Piloto: OpenFreeMap; producción: Protomaps (PMTiles) o proveedor (sección 12.3) |
 | Storage | S3 compatible: RustFS en local, gestionado (R2/B2/S3) en prod | URLs prefirmadas |
 | Cobros | Planes de suscripción de Mercado Pago (links por env) | Sin API ni webhooks en el MVP |
 | Contacto | Enlace `wa.me` con mensaje prearmado | Sin Twilio ni WhatsApp Business |
@@ -676,7 +676,7 @@ Problemas detectados probando a mano; se arreglan con test que los reproduzca y 
 
 | Riesgo | Mitigación |
 |---|---|
-| Servidor público de **Nominatim** (1 req/s por aplicación, sin autocompletado) y **tiles de OSM** (no pensados para producción a escala) | Puerto `Geocoder` y tiles configurables por env; geocodificar solo al dar de alta una sede, con caché; en producción usar Protomaps/proveedor (sección 12.3) |
+| Servidor público de **Nominatim** (1 req/s por aplicación, sin autocompletado) y **tiles públicos de OSM** (bloquean el uso sin política; ya no se usan para el mapa) | Puerto `Geocoder` y estilo del mapa configurable por env (`NEXT_PUBLIC_MAP_STYLE_URL`); geocodificar solo al dar de alta una sede, con caché; en producción usar Protomaps/proveedor (sección 12.3) |
 | Error humano al registrar pagos manualmente y falta de escala | Vista "por vencer", gracia de 7 días, runbook y automatización con webhooks cuando haya ≈15–20 locales |
 | Alguien llega a `/onboarding` sin haber pagado | El negocio queda en `pending_review` y solo el super admin lo activa tras confirmar el pago |
 | Doble canje de cupón | `UPDATE` atómico + test de concurrencia |
@@ -726,7 +726,7 @@ Problemas detectados probando a mano; se arreglan con test que los reproduzca y 
 ### 12.3 Mapas y geocodificación (decisión recomendada)
 | Necesidad | Piloto (Fases 2–4) | Producción |
 |---|---|---|
-| Tiles del mapa | Tiles públicos de OSM con URL en variable de entorno, atribución y caché | Protomaps (archivo PMTiles propio en el bucket) o proveedor como MapTiler |
+| Tiles del mapa | OpenFreeMap (estilo vectorial MapLibre, sin API key) con URL en `NEXT_PUBLIC_MAP_STYLE_URL` y atribución visible | Protomaps (archivo PMTiles propio en el bucket) o proveedor como MapTiler: solo cambia la URL del estilo |
 | Geocodificar la dirección de una sede | Nominatim público, solo al dar de alta una sede, con User-Agent propio, caché y limitador global de 1 req/s | Mismo adaptador, o Nominatim/Photon autoalojado si el volumen crece |
 | Ubicación del cliente | `navigator.geolocation` del navegador (sin geocoding) | Igual |
 | Buscar "mi ciudad/barrio" | Lista local de localidades cargada en DB | Igual, o API Georef del Estado argentino si sigue activa |
@@ -745,6 +745,7 @@ Problemas detectados probando a mano; se arreglan con test que los reproduzca y 
 8. Captcha o verificación del cliente, si aparece abuso.
 9. Sede principal: hoy ninguna sede se distingue de las demás ("principal + 1" en 12.2 es solo una forma de contar). Hay que poder marcar cuál es la sede principal de cada local (por ejemplo `branches.is_primary`, una sola por negocio) y usarla donde se necesite una sede única, como la ficha o la tarjeta del Home.
 10. Fotos por sede: en el MVP las fotos pertenecen al negocio (`business_images`) y la ficha las muestra todas juntas. Más adelante cada sede puede tener las suyas (por ejemplo `branch_id` opcional en `business_images`) para mostrar la fachada y el interior de cada local.
+11. Revisar Protomaps para el mapa: un archivo PMTiles de Argentina en el bucket de `Storage`, sin servidor de tiles ni dependencia de terceros. Hoy el piloto usa OpenFreeMap (sin SLA) vía `NEXT_PUBLIC_MAP_STYLE_URL`, así que el cambio es solo la URL del estilo. Evaluar antes del lanzamiento: generar y actualizar el archivo, CORS y Range en el bucket, y el estilo con la marca de MOVO (ver 12.3 y `docs/work/map-openfreemap.md`).
 
 ---
 

@@ -7,11 +7,12 @@ import "leaflet/dist/leaflet.css";
 
 import L from "leaflet";
 import { useEffect, useRef } from "react";
-import { CircleMarker, MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { CircleMarker, MapContainer, Marker, useMap, useMapEvents } from "react-leaflet";
 
 import { MountedOnly } from "@/components/MountedOnly";
 import { PlusIcon } from "@/components/socios/icons";
-import { TILES_ATTRIBUTION, TILES_URL } from "@/lib/map";
+import { MountWhileVisible } from "@/components/map/MountWhileVisible";
+import { VectorTileLayer } from "@/components/map/VectorTileLayer";
 import type { Point, SearchResult } from "@/lib/search/types";
 
 import { categoryIconName, iconMarkup } from "./icons";
@@ -76,34 +77,36 @@ function SearchMapView({
   onLocate,
 }: Props) {
   return (
-    <MapContainer
-      center={[center.lat, center.lng]}
-      zoom={ZOOM}
-      zoomControl={false}
-      className="size-full"
-    >
-      <TileLayer url={TILES_URL} attribution={TILES_ATTRIBUTION} />
-      <FlyTo center={center} recenterKey={recenterKey} />
-      <MoveWatcher onMoved={onMoved} />
-      {user ? (
-        <CircleMarker
-          center={[user.lat, user.lng]}
-          radius={8}
-          pathOptions={{ color: "#ffffff", weight: 3, fillColor: "#3b82f6", fillOpacity: 1 }}
-        />
-      ) : null}
-      {results.map((result) => (
-        <Marker
-          key={result.branch_id}
-          position={[result.lat, result.lng]}
-          icon={pinIcon(result, result.branch_id === selectedId)}
-          zIndexOffset={result.branch_id === selectedId ? 1000 : 0}
-          title={result.business_name}
-          eventHandlers={{ click: () => onSelect(result.branch_id) }}
-        />
-      ))}
-      <Controls onLocate={onLocate} />
-    </MapContainer>
+    <MountWhileVisible>
+      <MapContainer
+        center={[center.lat, center.lng]}
+        zoom={ZOOM}
+        zoomControl={false}
+        className="size-full"
+      >
+        <VectorTileLayer />
+        <FlyTo center={center} recenterKey={recenterKey} />
+        <MoveWatcher onMoved={onMoved} />
+        {user ? (
+          <CircleMarker
+            center={[user.lat, user.lng]}
+            radius={8}
+            pathOptions={{ color: "#ffffff", weight: 3, fillColor: "#3b82f6", fillOpacity: 1 }}
+          />
+        ) : null}
+        {results.map((result) => (
+          <Marker
+            key={result.branch_id}
+            position={[result.lat, result.lng]}
+            icon={pinIcon(result, result.branch_id === selectedId)}
+            zIndexOffset={result.branch_id === selectedId ? 1000 : 0}
+            title={result.business_name}
+            eventHandlers={{ click: () => onSelect(result.branch_id) }}
+          />
+        ))}
+        <Controls onLocate={onLocate} />
+      </MapContainer>
+    </MountWhileVisible>
   );
 }
 
