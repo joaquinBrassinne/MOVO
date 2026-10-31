@@ -41,6 +41,7 @@ Fuente de verdad: `docs/sdd.md` (fases, modelo de datos, flujos). Decisiones de 
 - Tareas programadas en el worker con lock consultivo en Postgres; no usar goroutines sueltas para trabajo que no se puede perder.
 - Canje de códigos con `UPDATE ... WHERE status='pending' ... RETURNING` (atómico). El `business_id` sale del token, nunca del body.
 - Migraciones SQL puras con up/down. Logs con `slog`. Config por variables de entorno.
+- Contrato HTTP en `backend/api/openapi.yaml` (OpenAPI 3.0, escrito a mano). Toda ruta nueva o cambiada se documenta ahí en el mismo commit: `TestOpenAPIMatchesTheRouter` falla si el router y el contrato no coinciden. Con `API_DOCS=true` la API sirve Swagger UI en `/docs`.
 
 ## Reglas de Desarrollo (Frontend)
 - Componentes limpios; lógica de negocio y llamadas a la API en hooks personalizados.

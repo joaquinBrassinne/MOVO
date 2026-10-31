@@ -7,6 +7,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -17,6 +18,7 @@ const (
 	envDatabaseURL     = "DATABASE_URL"
 	envLogLevel        = "LOG_LEVEL"
 	envShutdownTimeout = "SHUTDOWN_TIMEOUT"
+	envAPIDocs         = "API_DOCS"
 )
 
 // Defaults applied when the corresponding variable is unset or empty.
@@ -39,6 +41,9 @@ type Config struct {
 	LogLevel string
 	// ShutdownTimeout bounds the graceful shutdown budget.
 	ShutdownTimeout time.Duration
+	// APIDocs serves the interactive API documentation at /docs. Off by default: it is a
+	// development aid, not part of the public surface.
+	APIDocs bool
 }
 
 // Load builds a Config from the values returned by get, which is normally
@@ -64,12 +69,32 @@ func Load(get func(string) string) (Config, error) {
 		return Config{}, err
 	}
 
+	apiDocs, err := parseAPIDocs(get(envAPIDocs))
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		HTTPAddr:        valueOrDefault(get(envHTTPAddr), defaultHTTPAddr),
 		DatabaseURL:     databaseURL,
 		LogLevel:        logLevel,
 		ShutdownTimeout: shutdownTimeout,
+		APIDocs:         apiDocs,
 	}, nil
+}
+
+// parseAPIDocs reads API_DOCS as a boolean; unset or empty means off.
+func parseAPIDocs(raw string) (bool, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return false, nil
+	}
+
+	enabled, err := strconv.ParseBool(trimmed)
+	if err != nil {
+		return false, fmt.Errorf("config: %s %q must be true or false: %w", envAPIDocs, raw, err)
+	}
+	return enabled, nil
 }
 
 // parseLogLevel normalizes LOG_LEVEL to a lowercase member of logLevels.

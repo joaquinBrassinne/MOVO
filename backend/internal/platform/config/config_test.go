@@ -39,6 +39,33 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
+// TestLoadAPIDocs: the interactive docs are off unless API_DOCS says otherwise, and a
+// value that is not a boolean stops the start-up instead of silently leaving them off.
+func TestLoadAPIDocs(t *testing.T) {
+	for _, tt := range []struct {
+		input   string
+		want    bool
+		wantErr bool
+	}{
+		{input: "", want: false},
+		{input: "false", want: false},
+		{input: "true", want: true},
+		{input: " 1 ", want: true},
+		{input: "yes please", wantErr: true},
+	} {
+		cfg, err := config.Load(env(map[string]string{"DATABASE_URL": testDatabaseURL, "API_DOCS": tt.input}))
+		if tt.wantErr {
+			if err == nil || !strings.Contains(err.Error(), "API_DOCS") {
+				t.Errorf("API_DOCS=%q: error = %v, want one naming API_DOCS", tt.input, err)
+			}
+			continue
+		}
+		if err != nil || cfg.APIDocs != tt.want {
+			t.Errorf("API_DOCS=%q: APIDocs = %v, err = %v, want %v", tt.input, cfg.APIDocs, err, tt.want)
+		}
+	}
+}
+
 // TestLoadEmptyOptionalVariablesUseDefaults covers S3, S4 and S5: an empty
 // value is treated as unset.
 func TestLoadEmptyOptionalVariablesUseDefaults(t *testing.T) {
