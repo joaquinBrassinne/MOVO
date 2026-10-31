@@ -597,7 +597,7 @@ Convenciones de trabajo:
 **Objetivo:** cobrar a los locales y controlar su visibilidad sin integrar la API de Mercado Pago.
 
 - [x] 5.1 Migración `subscriptions` (S)
-- [ ] 5.2 Dominio `billing`: vigencia, gracia y estados derivados (M)
+- [x] 5.2 Dominio `billing`: vigencia, gracia y estados derivados (M)
 - [ ] 5.3 Configuración de planes por env y endpoint público `GET /plans` con precio y URL de contratación (S)
 - [ ] 5.4 Extiende `visible_branches` (creada en 3.1) con una migración nueva (`CREATE OR REPLACE VIEW`) que agrega la condición "pilot o hoy <= paid_until + gracia"; el down restaura la versión mínima. Tests: activo, en gracia, vencido y piloto (M)
 - [ ] 5.5 Super admin: confirmar pago (el admin elige el plan y la vigencia inicial; el plan nunca sale del onboarding ni de la URL de retorno), registrar pago mensual, suspender, cambiar de plan + `audit_log` (M)
