@@ -51,8 +51,10 @@ const (
 )
 
 // newBenefitsRoutes composes the benefits module: adapters, use cases and HTTP.
-func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.TokenVerifier, couponAttempts int) func(chi.Router) {
+func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.TokenVerifier, couponAttempts int, permission benefits.MetricsPermission) func(chi.Router) {
 	owners := ownerBusinesses{businesses: businesspostgres.NewBusinesses(pool)}
+	// Every Pro metric goes through this one gate.
+	gate := queries.NewProGate(owners, permission)
 	repo := benefitspostgres.NewBenefits(pool)
 	coupons := benefitspostgres.NewCoupons(pool)
 	limiter := ratelimit.New(ratelimit.Config{MaxAttempts: couponAttempts, Window: couponWindow, MaxKeys: couponMaxKeys}, nil)
@@ -67,6 +69,7 @@ func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.Toke
 		Overview:   queries.NewGetOverview(owners, coupons, nil),
 		Metrics:    queries.NewGetMetrics(owners, coupons, nil),
 		Activities: queries.NewGetTopActivities(owners, coupons, nil),
+		Conversion: queries.NewGetConversion(gate, coupons, nil),
 		Quota:      queries.NewGetCouponQuota(owners, coupons, nil),
 		SetQuota:   commands.NewSetCouponQuota(owners, coupons, nil),
 		Generate:   commands.NewGenerateCode(coupons, limiter, nil, nil),

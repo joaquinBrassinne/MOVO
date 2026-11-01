@@ -1916,6 +1916,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /me/business/metrics/conversion:
+    get:
+      operationId: benefitsGetConversion
+      summary: Conversion rates (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. Views to coupons (at the level
+        of the business, since profile views are per business) and coupons to redemptions (of the coupons
+        generated in the period, how many were redeemed so far), each with its movement against the previous
+        period of the same length, plus the redemptions per WhatsApp tap by branch and the taps per view by
+        activity. Rates are fractions (0.25 is 25 %) and null when there is nothing to divide by; the previous
+        rate and the change are null when the previous period had fewer than `minimum_sample` coupons. With
+        fewer than `minimum_sample` coupons generated in the period the answer is only
+        `{status: insufficient_data}` with the period and the counts. Counts only, no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The conversion metric, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsConversion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /me/business/activity:
     get:
       operationId: benefitsGetActivity
@@ -3107,6 +3155,14 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    ProMetricForbidden:
+      description: >-
+        Not a business_admin (code `forbidden`), or the business's plan does not include the advanced
+        metrics (code `plan_upgrade_required`, with a message inviting to upgrade to Pro). No data is sent.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     NotFound:
       description: The resource does not exist, or it is not visible to the caller.
       content:
@@ -3159,6 +3215,93 @@ components:
           maxLength: 128
           description: Password, 10 to 128 characters.
           example: correct-horse-battery
+    MetricsPeriod:
+      type: object
+      required: [days, from, to]
+      properties:
+        days:
+          type: integer
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+    MetricsRate:
+      type: object
+      required: [numerator, denominator, rate, previous_rate, change]
+      properties:
+        numerator:
+          type: integer
+        denominator:
+          type: integer
+        rate:
+          type: number
+          nullable: true
+          description: numerator / denominator as a fraction; null when the denominator is zero.
+        previous_rate:
+          type: number
+          nullable: true
+        change:
+          type: number
+          nullable: true
+          description: rate minus previous_rate, as a fraction.
+    MetricsConversion:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        views_to_coupons:
+          $ref: '#/components/schemas/MetricsRate'
+        coupons_to_redemptions:
+          $ref: '#/components/schemas/MetricsRate'
+        by_branch:
+          type: array
+          items:
+            type: object
+            required: [branch_id, name, whatsapp_clicks, redemptions, rate]
+            properties:
+              branch_id:
+                type: integer
+                format: int64
+              name:
+                type: string
+              whatsapp_clicks:
+                type: integer
+              redemptions:
+                type: integer
+              rate:
+                type: number
+                nullable: true
+        by_activity:
+          type: array
+          items:
+            type: object
+            required: [service_id, name, views, whatsapp_clicks, rate]
+            properties:
+              service_id:
+                type: integer
+                format: int64
+              name:
+                type: string
+              views:
+                type: integer
+              whatsapp_clicks:
+                type: integer
+              rate:
+                type: number
+                nullable: true
     AdminCouponCounts:
       type: object
       required: [generated, redeemed]

@@ -81,12 +81,16 @@ func servedRoutes(t *testing.T) []string {
 	if err != nil {
 		t.Fatalf("newBusinessRoutes: %v", err)
 	}
+	metricsAccess, err := newMetricsPermission(pool, plans)
+	if err != nil {
+		t.Fatalf("newMetricsPermission: %v", err)
+	}
 	router := httpx.NewRouter(log, pool,
 		newIdentityRoutes(log, pool, config.Auth{RefreshTokenTTL: time.Hour}, signer),
 		businessMount,
 		billingMount,
 		newSearchRoutes(log, pool, images),
-		newBenefitsRoutes(log, pool, signer, 5),
+		newBenefitsRoutes(log, pool, signer, 5, metricsAccess),
 		newReviewsRoutes(log, pool, signer),
 		newAdminRoutes(log, pool, signer),
 	)

@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/joaquinBrassinne/MOVO/internal/benefits"
 	"github.com/joaquinBrassinne/MOVO/internal/billing"
 	"github.com/joaquinBrassinne/MOVO/internal/billing/adapters/configcatalog"
 	billinghttp "github.com/joaquinBrassinne/MOVO/internal/billing/adapters/http"
@@ -33,6 +34,39 @@ type entitlementsOf struct {
 
 func (e entitlementsOf) For(ctx context.Context, businessID int64) (business.Entitlements, error) {
 	return e.query.Handle(ctx, businessID)
+}
+
+// metricsPermission adapts the billing query to the port the benefits module declares: a
+// business may read the Pro metrics when its entitlements (a pilot gets the Pro ones) say so.
+type metricsPermission struct {
+	query *billingqueries.EntitlementsFor
+}
+
+func (m metricsPermission) AdvancedMetrics(ctx context.Context, businessID int64) (bool, error) {
+	granted, err := m.query.Handle(ctx, businessID)
+	if err != nil {
+		return false, err
+	}
+	return granted.AdvancedMetrics(), nil
+}
+
+// newMetricsPermission builds the Pro metrics permission from the plan settings and the same
+// resolver the business routes use, so both answer alike.
+func newMetricsPermission(pool *pgxpool.Pool, plans config.Plans) (benefits.MetricsPermission, error) {
+	catalog, err := configcatalog.New(plans)
+	if err != nil {
+		return nil, err
+	}
+	resolver, _ := newPlanResolver(pool)
+	return metricsPermission{query: billingqueries.NewEntitlementsFor(catalog, resolver)}, nil
+}
+
+// newPlanResolver tells which plan a business is on: pilot businesses get the Pro limits for
+// free; everyone else is on the plan of their subscription (Starter until the admin confirms
+// the payment). Dropping pilotplan ends the pilot. It also returns the subscriptions store.
+func newPlanResolver(pool *pgxpool.Pool) (billing.PlanResolver, *billingpostgres.Subscriptions) {
+	subscriptions := billingpostgres.NewSubscriptions(pool)
+	return pilotplan.New(businesspostgres.NewBusinesses(pool), subscriptions), subscriptions
 }
 
 // ownerPlans answers which plan an owner's business is on. It joins the two modules
@@ -114,11 +148,7 @@ func newBusinessRoutes(
 	admin := businesspostgres.NewAdmin(pool)
 	photos := businesspostgres.NewImages(pool)
 
-	// Pilot businesses get the Pro limits for free; everyone else is on the plan of
-	// their subscription (Starter until the admin confirms the payment). Dropping
-	// pilotplan ends the pilot.
-	subscriptions := billingpostgres.NewSubscriptions(pool)
-	resolver := pilotplan.New(businesses, subscriptions)
+	resolver, subscriptions := newPlanResolver(pool)
 	entitlements := entitlementsOf{query: billingqueries.NewEntitlementsFor(catalog, resolver)}
 
 	handlers := businesshttp.New(businesshttp.Deps{

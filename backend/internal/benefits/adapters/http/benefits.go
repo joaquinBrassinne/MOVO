@@ -73,6 +73,8 @@ type Deps struct {
 	Metrics *queries.GetMetrics
 	// Activities serves the most demanded activities; without it the route is not mounted.
 	Activities *queries.GetTopActivities
+	// Conversion serves the Pro conversion metric; without it the route is not mounted.
+	Conversion *queries.GetConversion
 	// Quota and SetQuota serve the monthly coupon cap of the business; each route is
 	// mounted only when its use case is set.
 	Quota    *queries.GetCouponQuota
@@ -127,6 +129,9 @@ func (h *Handlers) Mount(r chi.Router) {
 	}
 	if h.Activities != nil {
 		owner.Get("/me/business/metrics/activities", h.handleActivities)
+	}
+	if h.Conversion != nil {
+		owner.Get("/me/business/metrics/conversion", h.handleConversion)
 	}
 	if h.Quota != nil {
 		owner.Get("/me/business/coupon-quota", h.handleQuota)

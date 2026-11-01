@@ -129,12 +129,18 @@ func run() error {
 		return err
 	}
 
+	metricsAccess, err := newMetricsPermission(pool, plans)
+	if err != nil {
+		pool.Close()
+		return err
+	}
+
 	if err := seedSuperAdmin(signalCtx, log, pool, auth); err != nil {
 		pool.Close()
 		return err
 	}
 
-	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount, newSearchRoutes(log, pool, images), newBenefitsRoutes(log, pool, signer, coupons.MaxAttempts), newReviewsRoutes(log, pool, signer), newAdminRoutes(log, pool, signer))
+	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount, newSearchRoutes(log, pool, images), newBenefitsRoutes(log, pool, signer, coupons.MaxAttempts, metricsAccess), newReviewsRoutes(log, pool, signer), newAdminRoutes(log, pool, signer))
 	// The client address feeds the login and coupon limits, so it is resolved before any route.
 	handler := clientip.Middleware(proxies.Trusted)(router)
 	if cfg.APIDocs {

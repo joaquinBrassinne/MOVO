@@ -323,6 +323,51 @@ type EssentialMetrics struct {
 	CouponsRedeemed  int64
 }
 
+// MinimumSample is how many coupons a business must have generated in a period before the
+// Pro metrics show percentages (SDD 4.3). Below it a rate says nothing.
+const MinimumSample = 20
+
+// ConversionCounts are the raw counts behind the conversion rates of one period. The
+// coupon counts follow a cohort: of the coupons generated in the period, how many have been
+// redeemed so far.
+type ConversionCounts struct {
+	ProfileViews     int64
+	CouponsGenerated int64
+	CouponsRedeemed  int64
+}
+
+// BranchConversion is what one branch got in the period: the taps on its WhatsApp button and
+// the coupons redeemed there (redeemed_branch_id).
+type BranchConversion struct {
+	BranchID       int64
+	Name           string
+	WhatsAppClicks int64
+	Redemptions    int64
+}
+
+// ActivityConversion is what one activity got in the period: the times it was looked at and
+// the taps on WhatsApp from it.
+type ActivityConversion struct {
+	ServiceID      int64
+	Name           string
+	Views          int64
+	WhatsAppClicks int64
+}
+
+// Conversion is everything the conversion metric needs: the counts of the period and of the
+// one before it, and the breakdown of the period by branch and by activity.
+type Conversion struct {
+	Current    ConversionCounts
+	Previous   ConversionCounts
+	ByBranch   []BranchConversion
+	ByActivity []ActivityConversion
+}
+
+// ConversionReader reads the conversion counts of a business. It only counts.
+type ConversionReader interface {
+	Conversion(ctx context.Context, businessID int64, current, previous MetricsPeriod) (Conversion, error)
+}
+
 // ActivityDemand is how much one activity (a service) was asked for in a period: the times
 // it was looked at and the times someone tapped WhatsApp from it. Counts only.
 type ActivityDemand struct {
