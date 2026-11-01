@@ -15,6 +15,7 @@ import (
 
 	benefitspostgres "github.com/joaquinBrassinne/MOVO/internal/benefits/adapters/postgres"
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/app/commands"
+	billingpostgres "github.com/joaquinBrassinne/MOVO/internal/billing/adapters/postgres"
 	businesspostgres "github.com/joaquinBrassinne/MOVO/internal/business/adapters/postgres"
 	businesscommands "github.com/joaquinBrassinne/MOVO/internal/business/app/commands"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/advisory"
@@ -35,6 +36,7 @@ const (
 	lockExpireCoupons      int64 = 4001
 	lockPurgeHiddenReviews int64 = 4002
 	lockPurgeObjects       int64 = 4003
+	lockUnredeemedAlerts   int64 = 4004
 )
 
 // taskTimeout is the most a task may run before it is cut off, so a stuck call cannot
@@ -81,7 +83,21 @@ func run() error {
 		return err
 	}
 
+	plans, err := config.LoadPlans(os.Getenv)
+	if err != nil {
+		return err
+	}
+	alertCfg, err := config.LoadAlerts(os.Getenv)
+	if err != nil {
+		return err
+	}
+	pro, err := newProMetrics(pool, plans)
+	if err != nil {
+		return err
+	}
+
 	expire := commands.NewExpireCoupons(benefitspostgres.NewCoupons(pool), nil)
+	unredeemed := commands.NewRaiseUnredeemedAlerts(benefitspostgres.NewCoupons(pool), pro, billingpostgres.NewAlerts(pool), alertCfg.MinCodes, alertCfg.MinRedeemRate, nil)
 	purgeObjects := businesscommands.NewPurgeObjects(storage.NewS3(storageCfg), businesspostgres.NewCleanup(pool), log)
 	purge := reviewscommands.NewPurgeHiddenReviews(reviewspostgres.NewReviews(pool), nil)
 	tasks := []task{
@@ -89,6 +105,13 @@ func run() error {
 			n, err := expire.Handle(ctx)
 			if err == nil {
 				log.Info("expired overdue coupons", slog.Int64("count", n))
+			}
+			return err
+		}},
+		{name: "unredeemed-alerts", lock: lockUnredeemedAlerts, run: func(ctx context.Context) error {
+			n, err := unredeemed.Handle(ctx)
+			if err == nil {
+				log.Info("raised unredeemed coupon alerts", slog.Int("count", n))
 			}
 			return err
 		}},

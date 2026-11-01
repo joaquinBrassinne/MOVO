@@ -609,3 +609,29 @@ type MetricsPermission interface {
 type MetricsReader interface {
 	Essential(ctx context.Context, businessID int64, period MetricsPeriod) (EssentialMetrics, error)
 }
+
+// AlertUnredeemedCoupons is the type of the alert that tells an owner most coupons are not
+// being redeemed (SDD 4.3, metric 15). The payload only has counts and rates.
+const AlertUnredeemedCoupons = "unredeemed_coupons"
+
+// CouponRate is how many coupons a business generated in a window and how many of them were
+// redeemed by now (a cohort, like the conversion rate).
+type CouponRate struct {
+	BusinessID int64
+	Generated  int64
+	Redeemed   int64
+}
+
+// LowRedemptionScanner finds the active businesses whose coupons generated in [from, to) are
+// at least minCoupons and redeemed at a rate under below.
+type LowRedemptionScanner interface {
+	LowRedemption(ctx context.Context, from, to time.Time, minCoupons int, below float64) ([]CouponRate, error)
+}
+
+// AlertRaiser leaves a notice for a business owner. The composition root joins it to the
+// billing module's alerts, which the owner already reads.
+type AlertRaiser interface {
+	// Raise stores the alert unless the business already got one of that type created after
+	// notBefore, and reports whether it stored it.
+	Raise(ctx context.Context, businessID int64, alertType string, payload map[string]any, notBefore time.Time) (bool, error)
+}

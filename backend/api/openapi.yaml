@@ -3181,8 +3181,9 @@ paths:
       operationId: billingListMyAlerts
       summary: List the unread alerts of the owner's business
       description: >-
-        Requires role `business_admin`. Today the only alert `type` is `plan_downgrade`,
-        created when a plan change switches off branches or services. Not cached.
+        Requires role `business_admin`. The alert `type` is `plan_downgrade` (created when a
+        plan change switches off branches or services) or `unredeemed_coupons` (the redemption
+        rate of the last 30 days is under the threshold; Pro only, at most one per week). Not cached.
       tags: [Subscription]
       security:
         - bearerAuth: []
@@ -5626,12 +5627,15 @@ components:
           format: int64
         type:
           type: string
+          enum: [plan_downgrade, unredeemed_coupons]
           example: plan_downgrade
         payload:
           type: object
           description: >-
             For `plan_downgrade`: `plan_from`, `plan_to`, and `branches` and `services`
-            as lists of `{id, name}` that were switched off.
+            as lists of `{id, name}` that were switched off. For `unredeemed_coupons`:
+            `period_days` (30), `coupons_generated`, `coupons_redeemed`, `redeem_rate` and
+            `threshold`; counts and rates only.
           additionalProperties: true
         created_at:
           type: string
