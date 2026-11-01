@@ -29,7 +29,7 @@ func TestRecordMetricCountsTheSameVisitorOnceInTheWindow(t *testing.T) {
 		want    bool
 	}{
 		{"first click", click, "198.51.100.1", true},
-		{"same click, same address", click,"198.51.100.1", false},
+		{"same click, same address", click, "198.51.100.1", false},
 		{"same click, other address", click, "198.51.100.2", true},
 		{"other branch, same address", otherBranch, "198.51.100.1", true},
 		{"first service view", service, "198.51.100.1", true},

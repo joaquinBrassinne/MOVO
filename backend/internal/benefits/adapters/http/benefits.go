@@ -69,6 +69,8 @@ type Deps struct {
 	Overview *queries.GetOverview
 	// Metrics serves the owner's metrics over a period; without it the route is not mounted.
 	Metrics *queries.GetMetrics
+	// Activities serves the most demanded activities; without it the route is not mounted.
+	Activities *queries.GetTopActivities
 	// Quota and SetQuota serve the monthly coupon cap of the business; each route is
 	// mounted only when its use case is set.
 	Quota    *queries.GetCouponQuota
@@ -120,6 +122,9 @@ func (h *Handlers) Mount(r chi.Router) {
 	}
 	if h.Metrics != nil {
 		owner.Get("/me/business/metrics", h.handleMetrics)
+	}
+	if h.Activities != nil {
+		owner.Get("/me/business/metrics/activities", h.handleActivities)
 	}
 	if h.Quota != nil {
 		owner.Get("/me/business/coupon-quota", h.handleQuota)
@@ -668,16 +673,65 @@ type metricsJSON struct {
 	} `json:"coupons"`
 }
 
+// periodParam reads ?period= (0 when absent). It answers the 422 itself when the value is
+// not a number, and reports whether the handler may go on.
+func (h *Handlers) periodParam(w http.ResponseWriter, r *http.Request) (int, bool) {
+	raw := r.URL.Query().Get("period")
+	if raw == "" {
+		return 0, true
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		h.fail(w, r, benefits.ErrMetricsPeriodInvalid)
+		return 0, false
+	}
+	return n, true
+}
+
+type demandJSON struct {
+	ServiceID int64  `json:"service_id"`
+	Name      string `json:"name"`
+	Views     int64  `json:"views"`
+	Clicks    int64  `json:"whatsapp_clicks"`
+}
+
+type activitiesJSON struct {
+	Period     periodJSON     `json:"period"`
+	Activities []demandJSON `json:"activities"`
+}
+
+type periodJSON struct {
+	Days int    `json:"days"`
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// handleActivities answers GET /me/business/metrics/activities?period=7|30|90.
+func (h *Handlers) handleActivities(w http.ResponseWriter, r *http.Request) {
+	days, ok := h.periodParam(w, r)
+	if !ok {
+		return
+	}
+	got, err := h.Activities.Handle(r.Context(), callerID(r), days)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	out := activitiesJSON{
+		Period:     periodJSON{Days: got.Period.Days, From: got.Period.FromDay, To: got.Period.ToDay},
+		Activities: make([]demandJSON, 0, len(got.Activities)),
+	}
+	for _, a := range got.Activities {
+		out.Activities = append(out.Activities, demandJSON{ServiceID: a.ServiceID, Name: a.Name, Views: a.Views, Clicks: a.Clicks})
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
 // handleMetrics answers GET /me/business/metrics?period=7|30|90 (30 by default).
 func (h *Handlers) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	days := 0
-	if raw := r.URL.Query().Get("period"); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil {
-			h.fail(w, r, benefits.ErrMetricsPeriodInvalid)
-			return
-		}
-		days = n
+	days, ok := h.periodParam(w, r)
+	if !ok {
+		return
 	}
 	got, err := h.Metrics.Handle(r.Context(), callerID(r), days)
 	if err != nil {

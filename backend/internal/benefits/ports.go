@@ -323,6 +323,22 @@ type EssentialMetrics struct {
 	CouponsRedeemed  int64
 }
 
+// ActivityDemand is how much one activity (a service) was asked for in a period: the times
+// it was looked at and the times someone tapped WhatsApp from it. Counts only.
+type ActivityDemand struct {
+	ServiceID int64
+	Name      string
+	Views     int64
+	Clicks    int64
+}
+
+// DemandReader ranks the activities of a business by demand.
+type DemandReader interface {
+	// TopActivities returns at most limit activities, the most asked for first (views plus
+	// clicks, then name). Services deleted by the owner are left out.
+	TopActivities(ctx context.Context, businessID int64, period MetricsPeriod, limit int) ([]ActivityDemand, error)
+}
+
 // MetricsReader reads the metrics of a business over a period. It only counts.
 type MetricsReader interface {
 	Essential(ctx context.Context, businessID int64, period MetricsPeriod) (EssentialMetrics, error)

@@ -1840,6 +1840,79 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /me/business/metrics/activities:
+    get:
+      operationId: benefitsGetTopActivities
+      summary: Most demanded activities of my business
+      description: >-
+        Requires role business_admin. The five services with the most demand over the period:
+        the times each was looked at plus the times someone tapped WhatsApp from it, most
+        asked for first. Deleted services are left out. Available on every plan. Counts only,
+        no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The ranking, empty when nothing was asked for.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [period, activities]
+                properties:
+                  period:
+                    type: object
+                    required: [days, from, to]
+                    properties:
+                      days:
+                        type: integer
+                      from:
+                        type: string
+                        format: date
+                      to:
+                        type: string
+                        format: date
+                  activities:
+                    type: array
+                    items:
+                      type: object
+                      required: [service_id, name, views, whatsapp_clicks]
+                      properties:
+                        service_id:
+                          type: integer
+                          format: int64
+                        name:
+                          type: string
+                        views:
+                          type: integer
+                        whatsapp_clicks:
+                          type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /me/business/activity:
     get:
       operationId: benefitsGetActivity

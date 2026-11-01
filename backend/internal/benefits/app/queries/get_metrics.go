@@ -37,11 +37,9 @@ func NewGetMetrics(owners benefits.OwnerBusinesses, metrics benefits.MetricsRead
 // DefaultMetricsDays; any other value is benefits.ErrMetricsPeriodInvalid. The business
 // comes from the session.
 func (q *GetMetrics) Handle(ctx context.Context, ownerID int64, days int) (MetricsResult, error) {
-	if days == 0 {
-		days = DefaultMetricsDays
-	}
-	if days != 7 && days != 30 && days != 90 {
-		return MetricsResult{}, benefits.ErrMetricsPeriodInvalid
+	days, err := validDays(days)
+	if err != nil {
+		return MetricsResult{}, err
 	}
 	businessID, err := q.owners.EditableBusinessOf(ctx, ownerID)
 	if err != nil {
@@ -54,6 +52,17 @@ func (q *GetMetrics) Handle(ctx context.Context, ownerID int64, days int) (Metri
 		return MetricsResult{}, fmt.Errorf("read metrics: %w", err)
 	}
 	return MetricsResult{Period: period, Metrics: got}, nil
+}
+
+// validDays applies the closed list of periods: 7, 30 or 90 days, and 0 for the default.
+func validDays(days int) (int, error) {
+	if days == 0 {
+		return DefaultMetricsDays, nil
+	}
+	if days != 7 && days != 30 && days != 90 {
+		return 0, benefits.ErrMetricsPeriodInvalid
+	}
+	return days, nil
 }
 
 // periodOf is the window of the last days days that ends with the day of now.
