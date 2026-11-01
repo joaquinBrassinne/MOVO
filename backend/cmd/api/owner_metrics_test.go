@@ -86,9 +86,9 @@ VALUES ($1, $2, $3, $4, $5, 'pending', now() + interval '48 hours', now() - $6 *
 		days                  float64
 		views, generated, red float64
 	}{
-		{"/me/business/metrics?days=7", 7, 5, 2, 1},
+		{"/me/business/metrics?period=7", 7, 5, 2, 1},
 		{"/me/business/metrics", 30, 8, 2, 1},
-		{"/me/business/metrics?days=90", 90, 108, 4, 2},
+		{"/me/business/metrics?period=90", 90, 108, 4, 2},
 	} {
 		status, body := h.do(http.MethodGet, tc.path, ownerToken, nil)
 		period, _ := body["period"].(map[string]any)
@@ -99,10 +99,10 @@ VALUES ($1, $2, $3, $4, $5, 'pending', now() + interval '48 hours', now() - $6 *
 		}
 	}
 
-	if status, body := h.do(http.MethodGet, "/me/business/metrics?days=14", ownerToken, nil); status != http.StatusUnprocessableEntity || errorCode(body) != "validation_failed" {
+	if status, body := h.do(http.MethodGet, "/me/business/metrics?period=14", ownerToken, nil); status != http.StatusUnprocessableEntity || errorCode(body) != "validation_failed" {
 		t.Errorf("days=14 = %d %q, want 422 validation_failed", status, errorCode(body))
 	}
-	if status, body := h.do(http.MethodGet, "/me/business/metrics?days=abc", ownerToken, nil); status != http.StatusUnprocessableEntity || errorCode(body) != "validation_failed" {
+	if status, body := h.do(http.MethodGet, "/me/business/metrics?period=abc", ownerToken, nil); status != http.StatusUnprocessableEntity || errorCode(body) != "validation_failed" {
 		t.Errorf("days=abc = %d %q, want 422 validation_failed", status, errorCode(body))
 	}
 	if status, _ := h.do(http.MethodGet, "/me/business/metrics", "", nil); status != http.StatusUnauthorized {

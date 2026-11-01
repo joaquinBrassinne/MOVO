@@ -1791,10 +1791,10 @@ paths:
       security:
         - bearerAuth: []
       parameters:
-        - name: days
+        - name: period
           in: query
           required: false
-          description: Length of the period. 30 when omitted.
+          description: Length of the period in days. 30 when omitted.
           schema:
             type: integer
             enum: [7, 30, 90]
@@ -1835,7 +1835,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '422':
-          description: '`validation_failed` with `details.field` `days` (invalid).'
+          description: '`validation_failed` with `details.field` `period` (invalid).'
           content:
             application/json:
               schema:

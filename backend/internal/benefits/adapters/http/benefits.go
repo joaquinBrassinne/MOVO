@@ -523,8 +523,8 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, http.StatusConflict, CodeBusinessDeleted, "this business was deleted and can no longer change", nil)
 		return
 	case errors.Is(err, benefits.ErrMetricsPeriodInvalid):
-		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the days are not valid",
-			map[string]string{"field": "days", "reason": "invalid"})
+		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the period is not valid",
+			map[string]string{"field": "period", "reason": "invalid"})
 		return
 	}
 	var below *domain.QuotaBelowGeneratedError
@@ -668,10 +668,10 @@ type metricsJSON struct {
 	} `json:"coupons"`
 }
 
-// handleMetrics answers GET /me/business/metrics?days=7|30|90 (30 by default).
+// handleMetrics answers GET /me/business/metrics?period=7|30|90 (30 by default).
 func (h *Handlers) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	days := 0
-	if raw := r.URL.Query().Get("days"); raw != "" {
+	if raw := r.URL.Query().Get("period"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil {
 			h.fail(w, r, benefits.ErrMetricsPeriodInvalid)
