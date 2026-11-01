@@ -176,7 +176,7 @@ Todas las tablas con `id` (UUID v7 o `bigserial`), `created_at`, `updated_at`. M
 | `refresh_tokens` | user_id, token_hash, expires_at, revoked_at, replaced_by |
 | `customers` | name, phone (WhatsApp, normalizado), created_at — contacto declarado, **sin verificación ni contraseña** |
 | `categories` | slug, name — seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel; y `trekking-outdoor` ("Trekking y outdoor"), agregada en una migración aparte. En esa categoría la **sede es el punto de encuentro** de la salida y **cada salida se carga como un servicio** (con sus días y horarios) |
-| `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description (≤ 500 caracteres), whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, mp_payer_email (email con el que pagó en Mercado Pago, obligatorio al enviar a revisión), mp_payer_name (nombre completo del titular, obligatorio, mínimo 3 caracteres), mp_return_params (parámetros de la URL de retorno, solo pista para el admin), monthly_coupon_limit (entero > 0, nullable: null es sin límite; tope de cupones generados en el mes calendario, en hora de Argentina, para todo el negocio; lo configura el dueño) |
+| `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description (≤ 500 caracteres), whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, mp_payer_email (email con el que pagó en Mercado Pago, obligatorio al enviar a revisión), mp_payer_name (nombre completo del titular, obligatorio, mínimo 3 caracteres), mp_return_params (parámetros de la URL de retorno, solo pista para el admin), monthly_coupon_limit (entero > 0, nullable: null es sin límite; tope de cupones generados en el mes calendario, en hora de Argentina, para todo el negocio; lo configura el dueño), average_ticket_ars (entero > 0, nullable: ticket promedio en pesos que el dueño carga en "Datos del negocio"; solo se ofrece a negocios con permiso Pro y alimenta el retorno estimado de §4.3) |
 | `branches` | business_id, name, address, city, reference (opcional, ≤ 100), `location geography(Point,4326)`, external_booking_url (opcional), rating_avg, rating_count, active — **la búsqueda se hace por sede** |
 | `business_hours` | branch_id, weekday, opens_at, closes_at (varias franjas por día; no se pisan, no cruzan la medianoche; sin franjas = cerrado) |
 | `business_images` | business_id, object_key, position |
@@ -226,7 +226,7 @@ Cualquier negocio (comercio o profesional) puede contratar cualquier plan; el ti
 | Ubicación en el mapa (pin fijo) | ✅ | ✅ |
 | Cupones (porcentaje, monto fijo u otro beneficio, definidos por el dueño) | ✅ | ✅ |
 | Reseñas y puntuación | ✅ | ✅ |
-| Métricas | esenciales | **inteligencia comercial** |
+| Métricas | esenciales (§4.3, 1 a 4) | **inteligencia comercial** (§4.3, 5 a 15: conversión, mapa de calor, rendimiento por beneficio, tiempo hasta el canje, clientes que volvieron, proyección del cupo, retorno estimado, comparativa por sede, reseñas en el tiempo, récords y una alerta) |
 | Soporte | estándar | prioritario |
 | Visibilidad destacada (prioridad en el inicio, búsquedas y pin destacado en el mapa) | — | ✅ |
 
@@ -243,6 +243,7 @@ Reglas de implementación:
   - **Mapa:** marcador distintivo para el pin destacado.
 - **Perfil verificado (MVP):** lo marca el super admin a mano (`verified_at`, `verified_by`) después de comprobar la identidad por su cuenta (en persona o videollamada). La subida del DNI es post-MVP. El sello se puede revocar.
 - **Botón de WhatsApp:** el dueño carga su número al registrarse. El botón pasa por `GET /r/wa/{branch_id}?service=`, que incrementa el contador `whatsapp_click` y redirige a `https://wa.me/<número>?text=<mensaje prearmado>` (ej. "Hola, vi tu perfil en MOVO y quiero reservar Yoga"). El número no se expone en la API pública. En la API la ruta es `/api/v1/r/wa/{branch_id}` y responde `302` con `Cache-Control: no-store`. Solo redirige sedes visibles (si no, `404`); un `service` que no es del local, está inactivo o es de otra sede no es un error: se usa el mensaje genérico ("…quiero hacer una consulta") y el clic se cuenta sin servicio. Los bots se redirigen pero no se cuentan, y un fallo del contador nunca impide la redirección. `HEAD` devuelve el mismo `302` sin contar (los previsualizadores de enlaces lo usan) y la respuesta lleva `Referrer-Policy: no-referrer`.
+- **Métricas Pro:** son una capacidad de `Entitlements` (`advanced_metrics`), nunca un `if plan == "pro"`. Un negocio piloto usa las capacidades del plan del piloto. El permiso se comprueba una sola vez, antes de cualquier consulta, y el detalle de las métricas está en §4.3.
 - **Soporte prioritario:** es principalmente un proceso (canal y tiempos de respuesta definidos); en el sistema se refleja con una marca de prioridad en la bandeja del admin.
 
 ### 4.3 Métricas
@@ -255,7 +256,25 @@ Principio: **contar, no seguir**. No se guardan IP, user-agent ni identificadore
   4. Actividades más demandadas (vistas del servicio + clics a WhatsApp por servicio).
 - **Pro, "Inteligencia comercial" (incluye todo Starter):**
   5. **Tasas de conversión** (vistas → cupones, cupones → canjes) con tendencia contra el período anterior y desglose por sede y actividad. No hay "embudo" como función aparte.
-  6. **Una alerta: "Cupones sin canjear"** (la tasa de canje de los últimos 30 días queda bajo un umbral, con una cantidad mínima de cupones generados). Se muestra en el panel, como máximo una por semana.
+  6. **Mapa de calor de canjes:** cantidad de canjes por día de la semana × franja horaria, desde `redeemed_at`.
+  7. **Rendimiento por beneficio:** por cada beneficio, cupones generados, canjeados, vencidos y tasa de canje.
+  8. **Tiempo hasta el canje:** cuántos canjes ocurrieron el mismo día de generarse el cupón, hasta 24 h después y hasta 48 h después.
+  9. **Clientes que volvieron:** cuántos clientes canjearon una vez y cuántos dos o más en el negocio. Solo conteos, calculados en SQL; nunca se devuelve un cliente.
+  10. **Proyección del cupo mensual:** estimación lineal del día en que se agota el cupo (`monthly_coupon_limit`). Solo si el negocio tiene cupo.
+  11. **Retorno estimado:** canjes del período × `average_ticket_ars`. Siempre rotulado "estimado", junto al precio del plan y con el texto de cómo se calcula. Si el negocio no cargó el ticket promedio, no se muestra.
+  12. **Comparativa por sede:** vistas de servicio, clics a WhatsApp y canjes (`redeemed_branch_id`) de cada sede.
+  13. **Reseñas en el tiempo:** promedio de puntuación del período contra el anterior y porcentaje de canjes que dejan reseña.
+  14. **Tus récords:** mejor mes calendario por canjes de los últimos 12 (el mes en curso no entra en el ranking), avance del mes actual contra el mejor ("vas al 65 %", o "récord en curso" si lo supera), día y franja fuertes (del mapa de calor) y beneficio estrella del período. Solo con al menos 2 meses completos de historia y 20 canjes en el mejor mes; si no, `insufficient_data`. Desempate: gana el mes más reciente.
+  15. **Una alerta: "Cupones sin canjear"** (la tasa de canje de los últimos 30 días queda bajo un umbral, con una cantidad mínima de cupones generados). Se muestra en el panel, como máximo una por semana.
+- **Reglas comunes de las métricas Pro:**
+  - **Contar, no seguir.** Todo es agregado: ninguna respuesta lleva nombres, teléfonos ni datos individuales.
+  - **Período.** `period` es 7, 30 o 90 (días terminados hoy, hoy incluido); cualquier otro valor es `422 validation_failed` con `details.field` `period`. La comparación es contra el período anterior de la misma duración, inmediatamente antes. Los días, meses y franjas se cuentan en `America/Argentina/Cordoba`. "Tus récords" no usa `period`.
+  - **Muestra mínima.** Con menos de 20 cupones generados en el período, la métrica responde `{"status": "insufficient_data"}` en lugar de porcentajes.
+  - **Tasa de canje.** Es por cohorte: de los cupones generados en el período, cuántos ya fueron canjeados.
+  - **Vencido.** Un cupón es vencido si su estado es `expired` o si sigue `pending` con `expires_at` pasada; se calcula en la consulta, sin depender de ninguna tarea.
+  - **Franjas del mapa de calor** *(supuesto a confirmar)*: madrugada 00:00–05:59, mañana 06:00–11:59, tarde 12:00–17:59 y noche 18:00–23:59.
+  - **Permiso.** Todo lo de Pro se verifica en el servidor con la capacidad `advanced_metrics` de `Entitlements` (los pilotos usan el plan del piloto). Starter recibe `403` con el código estable `plan_upgrade_required` y un mensaje para mejorar el plan, sin datos.
+  - **Fuera de alcance:** exportar a CSV, benchmarking de zona, ocupación o capacidad, y las alertas "Alta demanda" y "Franjas con poca demanda".
 - **Cómo se cuenta una vista de perfil.** `GET /businesses/{slug}` no cuenta nada: lo llama también el render del servidor (rastreadores y vistas previas de enlaces). La ficha, ya cargada en el navegador, avisa con `POST /businesses/{slug}/view` desde un componente de cliente, una sola vez por carga (`navigator.sendBeacon` o `fetch` con `keepalive`). El endpoint responde siempre `204` sin cuerpo y sin cookies, también cuando el negocio no existe o no es visible (así no revela qué locales existen), suma `profile_view` con `branch_id` nulo e ignora los bots por user-agent.
 - **Las vistas de perfil son por negocio.** La ficha `/businesses/[slug]` es del negocio, así que `profile_view` se guarda sin sede. El desglose por sede de Pro aplica a los clics a WhatsApp, las vistas de servicio y los canjes (`redeemed_branch_id`). La tasa "vistas → cupones" se calcula solo a nivel negocio; "cupones → canjes" sí admite desglose por sede.
 - **Post-MVP:** benchmarking anónimo de zona (solo con ≥ 5 locales activos por categoría y zona; solo medianas y percentiles) y las alertas "Alta demanda" y "Franjas con poca demanda". La demanda por actividad se mide con los contadores de servicio; MOVO no conoce ocupación ni capacidad.
@@ -367,7 +386,11 @@ El vencimiento se evalúa por `expires_at` al leer; una tarea diaria marca como 
 | GET | `/me/business/overview` | business_admin | Panel de inicio: cupones activos, canjes de hoy, vistas de perfil y clics a WhatsApp de los últimos 7 días |
 | PUT | `/admin/benefits/{id}/paused` | super_admin | Pausar o reanudar un beneficio |
 | GET | `/me/business/activity` | business_admin | Actividad reciente |
-| GET | `/me/business/metrics` | business_admin | Métricas según plan |
+| GET | `/me/business/metrics?period=7\|30\|90` | business_admin | Métricas esenciales (vistas al perfil y cupones generados y canjeados); todos los planes |
+| GET | `/me/business/metrics/activities?period=` | business_admin | Las 5 actividades más demandadas; todos los planes |
+| GET | `/me/business/metrics/{conversion,heatmap,benefits,time-to-redeem,returning-customers,quota-projection,estimated-return,branches,reviews}?period=` | business_admin (Pro) | Métricas de inteligencia comercial (§4.3, 5 a 13). Starter: `403` `plan_upgrade_required`; muestra insuficiente: `{"status": "insufficient_data"}` |
+| GET | `/me/business/metrics/records` | business_admin (Pro) | Tus récords (§4.3, 14); no usa `period` |
+| POST | `/branches/{branch_id}/services/{service_id}/view` | público | Beacon de vista de servicio; siempre `204` |
 | POST | `/benefits/{id}/codes` | público (rate limit) | Generar cupón con nombre y WhatsApp |
 | GET | `/access/{token}` | token del cliente | Ver mis cupones |
 | POST | `/access/{token}/reviews` | token del cliente | Dejar reseña |
@@ -615,15 +638,26 @@ Convenciones de trabajo:
 **Objetivo:** que el admin opere sin tocar la base y que el dueño vea resultados.
 
 - [x] 6.1 Super admin: listados y filtros de locales y suscripciones (M) — `GET /admin/subscriptions` suma `plan`, `q` (nombre del local), `limit`/`offset` y `total`; sin `limit` devuelve todo, para no recortar la vista actual (la de locales ya filtraba y paginaba)
-- [x] 6.2 Reseteo de contraseña asistido (enlace temporal para enviar por WhatsApp) (M) — `POST /admin/password-resets` (super admin, solo dueños) devuelve un token de un solo uso y 24 h; `POST /auth/reset-password` lo canjea, cambia la clave y cierra todas las sesiones; solo se guarda el hash del token y cada paso queda en `audit_log`. Las pantallas van en 6.9
+- [x] 6.2 Reseteo de contraseña asistido (enlace temporal para enviar por WhatsApp) (M) — `POST /admin/password-resets` (super admin, solo dueños) devuelve un token de un solo uso y 24 h; `POST /auth/reset-password` lo canjea, cambia la clave y cierra todas las sesiones; solo se guarda el hash del token y cada paso queda en `audit_log`. Las pantallas van en 6.20
 - [x] 6.3 Métricas del super admin: locales activos, cupones generados y canjeados (S) — `GET /admin/metrics`: locales activos y cupones generados/canjeados, acumulado y del mes en curso (el mes cambia en hora de Argentina)
 - [x] 6.3b Anti-inflado de métricas: descartar el mismo clic o vista repetido desde la misma IP en una ventana corta, en memoria (interfaz lista para Redis) y sin persistir la IP; se aplica a `profile_view`, `service_view` y `whatsapp_click` antes de mostrar métricas en el panel (S) — ventana de 30 min, hasheada con sal por proceso y acotada a 100 000 claves (llena, deja pasar sin recordar); la IP viaja por el contexto (`search.WithClient`) y nunca se guarda
 - [x] 6.4 Métricas esenciales del local (Starter) sobre `metric_daily` y las tablas de cupones (M) — `GET /me/business/metrics?period=7|30|90` (30 por defecto): vistas al perfil y cupones generados/canjeados de los últimos N días, hoy incluido, en calendario de Argentina; disponible en todos los planes
-- [x] 6.5 Actividades más demandadas (vistas del servicio + clics a WhatsApp por servicio) (S) — `POST /branches/{branch_id}/services/{service_id}/view` (beacon, siempre 204) y `GET /me/business/metrics/activities?period=7|30|90`: las 5 con más vistas más clics, sin servicios borrados; todos los planes. La ficha pública debe enviar el beacon al mostrar un servicio (va en 6.9)
-- [ ] 6.6 Tasas de conversión con tendencia y desglose por sede y actividad (Pro). Las vistas de perfil son por negocio (§4.3): "vistas → cupones" se calcula solo a nivel negocio; el desglose por sede aplica a clics a WhatsApp, vistas de servicio y canjes (`redeemed_branch_id`) (M)
-- [ ] 6.7 Alerta "Cupones sin canjear" (tarea diaria, umbral y muestra mínima por env, máximo una por semana) + bandeja en el panel (M)
-- [ ] 6.8 Marca de prioridad en la bandeja del admin para locales con soporte prioritario (S)
-- [ ] 6.9 Frontend: Métricas (Starter y Pro con candado), alertas, admin completo (L)
+- [x] 6.5 Actividades más demandadas (vistas del servicio + clics a WhatsApp por servicio) (S) — `POST /branches/{branch_id}/services/{service_id}/view` (beacon, siempre 204) y `GET /me/business/metrics/activities?period=7|30|90`: las 5 con más vistas más clics, sin servicios borrados; todos los planes. La ficha pública debe enviar el beacon al mostrar un servicio (va en 6.20)
+- [ ] 6.6 Base de las métricas Pro: capacidad `advanced_metrics` en `Entitlements` (los pilotos usan el plan del piloto), un único chequeo de permiso en el servidor que responde 403 `plan_upgrade_required` sin datos, y migración con down de los índices de `benefit_codes` que hagan falta (comprobados con `EXPLAIN` en 90 días y agregación mensual) (M)
+- [ ] 6.7 `average_ticket_ars` en `businesses`: migración con down, validación (entero > 0, opcional), edición en "Datos del negocio" solo para negocios con permiso Pro y registro del cambio en `audit_log` (S)
+- [ ] 6.8 Tasas de conversión con tendencia y desglose por sede y actividad (Pro). Las vistas de perfil son por negocio (§4.3): "vistas → cupones" se calcula solo a nivel negocio; el desglose por sede aplica a clics a WhatsApp, vistas de servicio y canjes (`redeemed_branch_id`) (M)
+- [ ] 6.9 Mapa de calor de canjes: día de la semana × franja horaria, desde `redeemed_at` (S)
+- [ ] 6.10 Rendimiento por beneficio: generados, canjeados, vencidos y tasa de canje (S)
+- [ ] 6.11 Tiempo hasta el canje: mismo día, hasta 24 h, hasta 48 h (S)
+- [ ] 6.12 Clientes que volvieron: clientes con 1 canje vs 2 o más en el negocio, solo conteos calculados en SQL (S)
+- [ ] 6.13 Proyección del cupo mensual: día estimado en que se agota, solo si el negocio tiene cupo (S)
+- [ ] 6.14 Retorno estimado: canjes del período × `average_ticket_ars`, rotulado "estimado" y junto al precio del plan; sin ticket cargado no se muestra (S)
+- [ ] 6.15 Comparativa por sede: vistas de servicio, clics a WhatsApp y canjes por `redeemed_branch_id` (M)
+- [ ] 6.16 Reseñas en el tiempo: promedio del período contra el anterior y porcentaje de canjes que dejan reseña (la 4C ya está implementada) (S)
+- [ ] 6.17 Tus récords: mejor mes calendario de los últimos 12 por canjes (el mes en curso no entra), avance del mes actual contra el mejor, día y franja fuertes y beneficio estrella (M)
+- [ ] 6.18 Alerta "Cupones sin canjear" (tarea diaria, umbral y muestra mínima por env, máximo una por semana) + bandeja en el panel (M)
+- [ ] 6.19 Marca de prioridad en la bandeja del admin para locales con soporte prioritario (S)
+- [ ] 6.20 Frontend: Métricas (Starter y Pro con candado, incluidas las vistas de 6.8 a 6.17), alertas, admin completo, reseteo de contraseña y el beacon de vista de servicio en la ficha pública (L)
 
 **Vistas:** Métricas, Super admin completo.
 **DoD:** el admin puede resolver un problema de cobro o de cuenta sin tocar la base de datos; las métricas coinciden con los datos reales.

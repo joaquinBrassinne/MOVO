@@ -58,7 +58,7 @@ Equivalente de `make ci` (el target no existe): `make fmt-check lint build`, `go
 ### Para planear la Fase 4
 - **Vistas** (pedir la imagen con su nombre exacto al llegar a cada tarea): Beneficios y cupo mensual, Panel de inicio, Canjear cupón (4.10); Obtener cupón, Cupón generado, Mis cupones (4.11). La captura "cupón" de la ficha ya existe y corresponde a "Obtener cupón" (banner con el código y botón "Obtener cupón"); la ficha de hoy es su variante sin cupones.
 - **Dependencias nuevas** (QR): generador y lector, con versión exacta y aprobación antes de instalar (nota en la Fase 4 del SDD).
-- **Worker:** 4.8 (marcado diario de vencidos) es la primera tarea que necesita `cmd/worker`. Ahí también va a correr `PurgeObjects` (reintento de borrado de fotos, 2.12) y, más adelante, la 6.7.
+- **Worker:** 4.8 (marcado diario de vencidos) es la primera tarea que necesita `cmd/worker`. Ahí también va a correr `PurgeObjects` (reintento de borrado de fotos, 2.12) y, más adelante, la 6.18.
 - **Proxy del frontend:** hoy deja pasar `me/`, `admin/`, `plans`, `categories`, `search`, `home/featured`, el aviso de vista y `r/wa`. Fase 4 suma `access/{token}` y la generación de cupones (públicos, sin token de dueño).
 - **Anti-abuso de cupones (4.5)** y **anti-inflado de métricas (6.3b)** comparten la necesidad de un limitador en memoria por IP: conviene una sola interfaz (lista para Redis).
 - **Pendientes que tocan la fase:** sede principal (§13, punto 9) para la ficha y la tarjeta; repetir `make perf-search` cuando la 5.4 reemplace la vista; galería de fotos del panel (2.12, falta la pantalla "Fotos").
