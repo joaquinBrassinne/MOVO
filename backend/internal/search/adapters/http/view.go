@@ -5,7 +5,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/joaquinBrassinne/MOVO/internal/platform/clientip"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
+	"github.com/joaquinBrassinne/MOVO/internal/search"
 	"github.com/joaquinBrassinne/MOVO/internal/search/app/commands"
 )
 
@@ -19,7 +21,8 @@ func (h *Handlers) WithProfileView(view *commands.RecordProfileView) *Handlers {
 // handleProfileView counts a view and answers 204 with no body and no cookies, whether
 // or not it counted: that answer must not reveal which businesses exist or are public.
 func (h *Handlers) handleProfileView(w http.ResponseWriter, r *http.Request) {
-	if err := h.view.Handle(r.Context(), chi.URLParam(r, "slug"), r.UserAgent()); err != nil {
+	ctx := search.WithClient(r.Context(), clientip.From(r))
+	if err := h.view.Handle(ctx, chi.URLParam(r, "slug"), r.UserAgent()); err != nil {
 		h.log.Error("profile view failed", "request_id", httpx.RequestID(r.Context()), "error", err)
 		httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, "something went wrong", nil)
 		return

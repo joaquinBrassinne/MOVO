@@ -55,6 +55,30 @@ func (e Event) Validate() error {
 	return nil
 }
 
+// Deduper tells whether the same visitor already caused the same event a moment ago. The
+// key names the visitor and the event; the implementation decides the window and must not
+// keep the key in clear or write it anywhere durable (SDD 6.3b). The in-memory one serves
+// the MVP; a Redis one can take its place in phase 7 without touching the callers.
+type Deduper interface {
+	// Seen records the key and reports whether it was already recorded within the window.
+	Seen(ctx context.Context, key string) (duplicate bool, err error)
+}
+
+type clientKey struct{}
+
+// WithClient returns ctx carrying the address the request came from, for the Deduper.
+// It travels in the context so the metric callers keep their signatures; the address is
+// only ever read to build a Deduper key and is never stored.
+func WithClient(ctx context.Context, address string) context.Context {
+	return context.WithValue(ctx, clientKey{}, address)
+}
+
+// ClientFrom is the address set by WithClient, empty when there is none.
+func ClientFrom(ctx context.Context) string {
+	address, _ := ctx.Value(clientKey{}).(string)
+	return address
+}
+
 // MetricCounter adds one to the counter of an event on a day.
 type MetricCounter interface {
 	Increment(ctx context.Context, e Event, day time.Time) error
