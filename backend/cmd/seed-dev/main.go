@@ -32,6 +32,12 @@ var seedCouponsSQL string
 //go:embed seed_reviews.sql
 var seedReviewsSQL string
 
+//go:embed seed_metrics.sql
+var seedMetricsSQL string
+
+// The super admin of the admin views signs in with these.
+const demoAdminEmail = "admin@seed.movo.test"
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -40,7 +46,7 @@ func main() {
 		slog.Error("seed-dev failed", "error", err)
 		os.Exit(1)
 	}
-	slog.Info("seed-dev finished", "owner_email", demoOwnerEmail, "owner_password", demoPassword)
+	slog.Info("seed-dev finished", "owner_email", demoOwnerEmail, "admin_email", demoAdminEmail, "password", demoPassword)
 }
 
 func run(ctx context.Context, databaseURL string) error {
@@ -57,7 +63,7 @@ func run(ctx context.Context, databaseURL string) error {
 	}
 	defer func() { _ = conn.Close(ctx) }()
 
-	for _, script := range []string{seedSQL, seedCouponsSQL, seedReviewsSQL} {
+	for _, script := range []string{seedSQL, seedCouponsSQL, seedReviewsSQL, seedMetricsSQL} {
 		if _, err := conn.Exec(ctx, script); err != nil {
 			return fmt.Errorf("seed: %w", err)
 		}
@@ -68,8 +74,10 @@ func run(ctx context.Context, databaseURL string) error {
 	if err != nil {
 		return fmt.Errorf("hash demo password: %w", err)
 	}
-	if _, err := conn.Exec(ctx, `UPDATE users SET password_hash = $1 WHERE email = $2`, hash, demoOwnerEmail); err != nil {
-		return fmt.Errorf("set demo owner password: %w", err)
+	for _, email := range []string{demoOwnerEmail, demoAdminEmail} {
+		if _, err := conn.Exec(ctx, `UPDATE users SET password_hash = $1 WHERE email = $2`, hash, email); err != nil {
+			return fmt.Errorf("set demo password of %s: %w", email, err)
+		}
 	}
 	return nil
 }
