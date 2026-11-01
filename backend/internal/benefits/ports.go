@@ -418,6 +418,30 @@ type TimeToRedeemReader interface {
 	TimeToRedeem(ctx context.Context, businessID int64, current, previous MetricsPeriod) (TimeToRedeem, error)
 }
 
+// ReviewStats are the reviews a business got in a period and the redemptions that left one. A
+// hidden review is not counted: it is not public. A reported one still is, like everywhere else.
+type ReviewStats struct {
+	// Reviews and Average are the reviews written in the period; Average is nil with none.
+	Reviews int64
+	Average *float64
+	// Redeemed are the coupons redeemed in the period and WithReview how many of them have a review.
+	Redeemed   int64
+	WithReview int64
+	// CouponsGenerated is the sample of the period.
+	CouponsGenerated int64
+}
+
+// ReviewsOverTime is the review stats of a period and of the one before it.
+type ReviewsOverTime struct {
+	Current  ReviewStats
+	Previous ReviewStats
+}
+
+// ReviewsOverTimeReader reads the review stats of a business. It only counts.
+type ReviewsOverTimeReader interface {
+	ReviewsOverTime(ctx context.Context, businessID int64, current, previous MetricsPeriod) (ReviewsOverTime, error)
+}
+
 // BranchCounts is what one branch got in a period: the views of its services, the taps on its
 // WhatsApp button and the coupons redeemed there (redeemed_branch_id).
 type BranchCounts struct {

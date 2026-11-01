@@ -2278,6 +2278,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /me/business/metrics/reviews:
+    get:
+      operationId: benefitsGetReviewsOverTime
+      summary: Reviews over time (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. The average rating of the
+        reviews written in the period against the previous period (hidden reviews are not counted; a
+        reported one still is), and the share of the coupons redeemed in the period that have a review.
+        The averages are null with no reviews; the previous average and the change are null when the
+        previous period had fewer than `minimum_sample` coupons or no reviews. With fewer than
+        `minimum_sample` coupons generated in the period the answer is only `{status:
+        insufficient_data}` with the period and the counts. Numbers only: no review text, name or
+        customer is ever returned. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The reviews over time, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsReviewsOverTime'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /me/business/activity:
     get:
       operationId: benefitsGetActivity
@@ -3616,6 +3664,44 @@ components:
               rate:
                 type: number
                 nullable: true
+    MetricsReviewsOverTime:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        rating:
+          type: object
+          required: [reviews, previous_reviews, average, previous_average, change]
+          properties:
+            reviews:
+              type: integer
+              description: Reviews written in the period.
+            previous_reviews:
+              type: integer
+            average:
+              type: number
+              nullable: true
+              description: Stars, two decimals; null with no reviews.
+            previous_average:
+              type: number
+              nullable: true
+            change:
+              type: number
+              nullable: true
+              description: average minus previous_average, in stars.
+        review_rate:
+          $ref: '#/components/schemas/MetricsRate'
     MetricsCount:
       type: object
       required: [value, previous, change]

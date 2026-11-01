@@ -46,7 +46,12 @@ func seedManyCoupons(t *testing.T, pool *pgxpool.Pool) {
 		        CASE WHEN i % 3 = 0 THEN owner_user_id END,
 		        CASE WHEN i % 3 = 0 THEN branch_id END
 		 FROM rows`,
+		// Half of the redeemed coupons got a review.
+		`INSERT INTO reviews (branch_id, business_id, benefit_code_id, customer_id, rating, display_name, created_at)
+		 SELECT redeemed_branch_id, business_id, id, customer_id, 1 + (id % 5)::int, 'Ana', redeemed_at + interval '1 hour'
+		 FROM benefit_codes WHERE status = 'redeemed' AND id % 2 = 0`,
 		`ANALYZE benefit_codes`,
+		`ANALYZE reviews`,
 	} {
 		if _, err := pool.Exec(t.Context(), sql); err != nil {
 			t.Fatalf("seed: %v\n%s", err, sql)
@@ -111,9 +116,14 @@ func TestMetricsQueriesUseTheIndexesInsteadOfReadingEveryCoupon(t *testing.T) {
 			 GROUP BY 1`,
 			"benefit_codes_business_redeemed_idx",
 		},
+		{
+			"average rating of the reviews of 90 days",
+			`SELECT count(*), avg(rating) FROM reviews WHERE business_id = $1 AND status <> 'hidden' AND created_at >= now() - interval '90 days' AND created_at < now()`,
+			"reviews_business_created_idx",
+		},
 	} {
 		plan := explain(t, pool, tc.sql, business)
-		if strings.Contains(plan, "Seq Scan on benefit_codes") {
+		if strings.Contains(plan, "Seq Scan on benefit_codes") || strings.Contains(plan, "Seq Scan on reviews") {
 			t.Errorf("%s reads the whole table:\n%s", tc.name, plan)
 		}
 		if !strings.Contains(plan, tc.index) {

@@ -90,6 +90,8 @@ type Deps struct {
 	EstimatedReturn *queries.GetEstimatedReturn
 	// BranchComparison serves the Pro comparison of the branches; without it the route is not mounted.
 	BranchComparison *queries.GetBranchComparison
+	// ReviewsOverTime serves the Pro evolution of the reviews; without it the route is not mounted.
+	ReviewsOverTime *queries.GetReviewsOverTime
 	// Quota and SetQuota serve the monthly coupon cap of the business; each route is
 	// mounted only when its use case is set.
 	Quota    *queries.GetCouponQuota
@@ -168,6 +170,9 @@ func (h *Handlers) Mount(r chi.Router) {
 	}
 	if h.BranchComparison != nil {
 		owner.Get("/me/business/metrics/branches", h.handleBranchComparison)
+	}
+	if h.ReviewsOverTime != nil {
+		owner.Get("/me/business/metrics/reviews", h.handleReviewsOverTime)
 	}
 	if h.Quota != nil {
 		owner.Get("/me/business/coupon-quota", h.handleQuota)
