@@ -16,6 +16,7 @@ import {
 import { Gallery } from "./Gallery";
 import { ProfileBenefits } from "./ProfileBenefits";
 import { ProfileViewBeacon } from "./ProfileViewBeacon";
+import { ServiceViewBeacon } from "./ServiceViewBeacon";
 
 /** El botón de WhatsApp pasa por la API, que cuenta el clic y redirige a la conversación. */
 const whatsappHref = (branchId: number, serviceId?: number) =>
@@ -141,8 +142,12 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
               {profile.services.map((service) => (
                 <li
                   key={service.id}
-                  className="flex items-center justify-between gap-3 rounded-3xl bg-white p-4 shadow-sm"
+                  className="relative flex items-center justify-between gap-3 rounded-3xl bg-white p-4 shadow-sm"
                 >
+                  <ServiceViewBeacon
+                    branchId={service.branch_id ?? main.branch_id}
+                    serviceId={service.id}
+                  />
                   <div className="min-w-0">
                     <h3 className="font-display text-lg font-bold">{service.name}</h3>
                     {service.description ? (
