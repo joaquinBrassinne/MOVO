@@ -2230,6 +2230,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /me/business/metrics/branches:
+    get:
+      operationId: benefitsGetBranchComparison
+      summary: Comparison of the branches (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. For every branch: the views of
+        its services, the taps on its WhatsApp button and the coupons redeemed there
+        (`redeemed_branch_id`), each with the same number in the previous period and the growth as a
+        fraction (null with no baseline: the previous period had fewer than `minimum_sample` coupons, or
+        the number was zero). Active branches are listed even with no activity; a retired branch only if
+        it had some. Ordered by redemptions. With fewer than `minimum_sample` coupons generated in the
+        period the answer is only `{status: insufficient_data}` with the period and the counts. Counts
+        only, no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The branches compared, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsBranchComparison'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /me/business/activity:
     get:
       operationId: benefitsGetActivity
@@ -3568,6 +3616,54 @@ components:
               rate:
                 type: number
                 nullable: true
+    MetricsCount:
+      type: object
+      required: [value, previous, change]
+      properties:
+        value:
+          type: integer
+        previous:
+          type: integer
+        change:
+          type: number
+          nullable: true
+          description: Growth as a fraction, (value - previous) / previous.
+    MetricsBranchComparison:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        branches:
+          type: array
+          items:
+            type: object
+            required: [branch_id, name, active, service_views, whatsapp_clicks, redemptions]
+            properties:
+              branch_id:
+                type: integer
+                format: int64
+              name:
+                type: string
+              active:
+                type: boolean
+                description: False for a retired branch, whose history stays.
+              service_views:
+                $ref: '#/components/schemas/MetricsCount'
+              whatsapp_clicks:
+                $ref: '#/components/schemas/MetricsCount'
+              redemptions:
+                $ref: '#/components/schemas/MetricsCount'
     MetricsEstimatedReturn:
       type: object
       required: [status, period, previous_period, coupons_generated, minimum_sample]

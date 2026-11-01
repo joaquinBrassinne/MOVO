@@ -418,6 +418,37 @@ type TimeToRedeemReader interface {
 	TimeToRedeem(ctx context.Context, businessID int64, current, previous MetricsPeriod) (TimeToRedeem, error)
 }
 
+// BranchCounts is what one branch got in a period: the views of its services, the taps on its
+// WhatsApp button and the coupons redeemed there (redeemed_branch_id).
+type BranchCounts struct {
+	ServiceViews   int64
+	WhatsAppClicks int64
+	Redemptions    int64
+}
+
+// BranchActivity is one branch with its counts in the period and in the one before it. Active
+// is false for a retired branch, whose history stays.
+type BranchActivity struct {
+	BranchID int64
+	Name     string
+	Active   bool
+	Current  BranchCounts
+	Previous BranchCounts
+}
+
+// BranchComparison is the activity of every branch of a business in two periods, with the
+// coupons generated in each (the sample).
+type BranchComparison struct {
+	CouponsGenerated         int64
+	PreviousCouponsGenerated int64
+	Branches                 []BranchActivity
+}
+
+// BranchComparisonReader reads the activity per branch. It only counts.
+type BranchComparisonReader interface {
+	BranchComparison(ctx context.Context, businessID int64, current, previous MetricsPeriod) (BranchComparison, error)
+}
+
 // Economics is what the estimated return needs to know about a business besides its coupons:
 // the average ticket its owner loaded (nil when none) and the monthly price of the plan it is on.
 type Economics struct {

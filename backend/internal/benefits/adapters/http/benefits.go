@@ -88,6 +88,8 @@ type Deps struct {
 	QuotaProjection *queries.GetQuotaProjection
 	// EstimatedReturn serves the Pro estimated return; without it the route is not mounted.
 	EstimatedReturn *queries.GetEstimatedReturn
+	// BranchComparison serves the Pro comparison of the branches; without it the route is not mounted.
+	BranchComparison *queries.GetBranchComparison
 	// Quota and SetQuota serve the monthly coupon cap of the business; each route is
 	// mounted only when its use case is set.
 	Quota    *queries.GetCouponQuota
@@ -163,6 +165,9 @@ func (h *Handlers) Mount(r chi.Router) {
 	}
 	if h.EstimatedReturn != nil {
 		owner.Get("/me/business/metrics/estimated-return", h.handleEstimatedReturn)
+	}
+	if h.BranchComparison != nil {
+		owner.Get("/me/business/metrics/branches", h.handleBranchComparison)
 	}
 	if h.Quota != nil {
 		owner.Get("/me/business/coupon-quota", h.handleQuota)
