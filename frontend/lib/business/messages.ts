@@ -32,6 +32,7 @@ export const FIELD_MESSAGES: Record<string, string> = {
   content_type: "Usá una foto JPG, PNG o WebP",
   size: "La foto debe pesar hasta 5 MB",
   price: "Ingresá un precio válido en pesos",
+  average_ticket_ars: "Ingresá un ticket promedio válido en pesos enteros, mayor que cero",
   reference: "La referencia puede tener hasta 100 caracteres",
   type: "Elegí un tipo de beneficio",
   percent: "Ingresá un porcentaje entero de 1 a 100",
@@ -80,6 +81,11 @@ export function describeFailure({ error }: Failure): Feedback {
 
     case "plan_limit_reached":
       return form("Llegaste al límite de tu plan", limitBody(error.details));
+
+    case "plan_upgrade_required":
+      return {
+        fields: { average_ticket_ars: "El ticket promedio está disponible en el Plan Pro." },
+      };
 
     case "address_not_found":
       return {

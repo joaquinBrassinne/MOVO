@@ -34,7 +34,9 @@ export function useSubscription(): Resource<SubscriptionView> {
   return { state, reload: () => setVersion((current) => current + 1) };
 }
 
-/** Unread plan-downgrade alerts. A failed load shows none: the plan view still works. */
+const KNOWN_TYPES: ReadonlySet<string> = new Set(Object.values(ALERT_TYPE));
+
+/** Unread alerts of a known type. A failed load shows none: the plan view still works. */
 export function useDowngradeAlerts() {
   const [alerts, setAlerts] = useState<PlanAlert[]>([]);
 
@@ -43,7 +45,7 @@ export function useDowngradeAlerts() {
 
     void listMyAlerts().then((result) => {
       if (ignore || !result.ok) return;
-      setAlerts(result.data.alerts.filter((alert) => alert.type === ALERT_TYPE.PLAN_DOWNGRADE));
+      setAlerts(result.data.alerts.filter((alert) => KNOWN_TYPES.has(alert.type)));
     });
 
     return () => {

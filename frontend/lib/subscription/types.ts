@@ -33,11 +33,24 @@ export interface PlanDowngradePayload {
   services: NamedItem[];
 }
 
+/** Counts and rates only; `redeem_rate` and `threshold` are fractions (0.1 is 10 %). */
+export interface UnredeemedCouponsPayload {
+  period_days: number;
+  coupons_generated: number;
+  coupons_redeemed: number;
+  redeem_rate: number;
+  threshold: number;
+}
+
+/** The payload depends on `type`; it is validated by `alertView`, never trusted. */
 export interface PlanAlert {
   id: number;
   type: string;
-  payload: PlanDowngradePayload;
+  payload: unknown;
   created_at: string;
 }
 
-export const ALERT_TYPE = { PLAN_DOWNGRADE: "plan_downgrade" } as const;
+export const ALERT_TYPE = {
+  PLAN_DOWNGRADE: "plan_downgrade",
+  UNREDEEMED_COUPONS: "unredeemed_coupons",
+} as const;

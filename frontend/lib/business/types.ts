@@ -45,6 +45,8 @@ export interface Business {
   mp_payer_name: string;
   /** Plan que sugería la URL de retorno; solo una pista, el admin fija el plan. */
   mp_plan_hint: string;
+  /** Gasto típico de un cliente en pesos enteros; `null` si nunca se cargó. Solo lo ve el dueño. */
+  average_ticket_ars: number | null;
   created_at: string;
 }
 
@@ -106,6 +108,8 @@ export interface BusinessInput {
   name: string;
   description: string;
   whatsapp: string;
+  /** Solo al actualizar y solo con un plan con métricas avanzadas. Ausente conserva; `null` borra. */
+  average_ticket_ars?: number | null;
 }
 
 export interface BranchInput {
@@ -161,6 +165,8 @@ export interface PlanSummary {
   price: number;
   max_branches: number | null;
   max_active_services: number | null;
+  /** Si el plan incluye las métricas Pro; es lo que se consulta, nunca el nombre del plan. */
+  advanced_metrics: boolean;
 }
 
 export interface BranchActivation {

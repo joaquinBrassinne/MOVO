@@ -17,6 +17,16 @@ test("a validation error points at the field it is about", () => {
   assert.equal(feedback.form, undefined);
 });
 
+test("the average ticket errors show next to the ticket field", () => {
+  const invalid = describeFailure(
+    failure("validation_failed", { field: "average_ticket_ars", reason: "invalid" }),
+  );
+  assert.match(invalid.fields.average_ticket_ars ?? "", /ticket promedio válido/);
+
+  const locked = describeFailure(failure("plan_upgrade_required", undefined, 403));
+  assert.match(locked.fields.average_ticket_ars ?? "", /Plan Pro/);
+});
+
 test("the description limit is named in its message", () => {
   const feedback = describeFailure(
     failure("validation_failed", { field: "description", reason: "too_long" }),

@@ -39,6 +39,11 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   return <Context value={{ business: state, reload, plan }}>{children}</Context>;
 }
 
+/** Like `useBusiness`, but `null` outside the provider (the onboarding form may live there). */
+export function useOptionalBusiness(): BusinessContext | null {
+  return useContext(Context);
+}
+
 export function useBusiness(): BusinessContext {
   const context = useContext(Context);
   if (!context) throw new Error("useBusiness must be used inside <BusinessProvider>");

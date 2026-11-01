@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { formatPrice, MAX_PRICE, parsePrice } from "./price.ts";
+import { formatPrice, MAX_PRICE, parsePrice, parseTicket } from "./price.ts";
+
+test("parseTicket reads pesos, clears when empty and rejects zero", () => {
+  assert.equal(parseTicket("$ 15.000"), 15000);
+  assert.equal(parseTicket(""), null);
+  assert.equal(parseTicket("0"), undefined);
+  assert.equal(parseTicket("abc"), undefined);
+  assert.equal(parseTicket(String(MAX_PRICE + 1)), undefined);
+});
 
 test("parsePrice reads whole pesos however the owner writes them", () => {
   assert.equal(parsePrice("5500"), 5500);

@@ -1,7 +1,14 @@
 // What the owner reads about their subscription. Pure functions, tested without React.
 
 import { formatLongDate, joinNames, planLabel } from "./format.ts";
-import { SUBSCRIPTION_STATUS, type PlanDowngradePayload, type SubscriptionView } from "./types.ts";
+import {
+  ALERT_TYPE,
+  SUBSCRIPTION_STATUS,
+  type PlanAlert,
+  type PlanDowngradePayload,
+  type SubscriptionView,
+  type UnredeemedCouponsPayload,
+} from "./types.ts";
 
 export type StatusTone = "calm" | "warning" | "danger";
 
@@ -59,4 +66,56 @@ export function downgradeMessage(payload: PlanDowngradePayload): string {
   const from = planLabel(payload.plan_from);
   const to = planLabel(payload.plan_to);
   return `Tu plan cambió de ${from} a ${to}. Se desactivaron ${joinNames(items)} porque superan los límites del nuevo plan. No se borró nada: podés reactivarlos mejorando de plan o desactivando otros.`;
+}
+
+/** The notice for coupons that were generated but rarely redeemed. Counts and a rate only. */
+export function unredeemedMessage(payload: UnredeemedCouponsPayload): string {
+  const percent = Math.round(payload.redeem_rate * 100);
+  return `Solo ${payload.coupons_redeemed} de cada ${payload.coupons_generated} cupones de los últimos ${payload.period_days} días se canjearon (${percent} %). Revisá tus beneficios y si el personal sabe cómo canjearlos.`;
+}
+
+export interface AlertView {
+  title: string;
+  body: string;
+  /** Where the owner can act on it, when there is such a place. */
+  href?: string;
+  linkLabel?: string;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isCount = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0;
+
+/** What to show for an alert, or `null` when its type is unknown or its payload malformed. */
+export function alertView(alert: PlanAlert): AlertView | null {
+  const payload = alert.payload;
+  if (!isRecord(payload)) return null;
+
+  switch (alert.type) {
+    case ALERT_TYPE.PLAN_DOWNGRADE:
+      if (!Array.isArray(payload.branches) || !Array.isArray(payload.services)) return null;
+      return {
+        title: "Cambió tu plan",
+        body: downgradeMessage(payload as unknown as PlanDowngradePayload),
+      };
+    case ALERT_TYPE.UNREDEEMED_COUPONS:
+      if (
+        !isCount(payload.period_days) ||
+        !isCount(payload.coupons_generated) ||
+        !isCount(payload.coupons_redeemed) ||
+        !isCount(payload.redeem_rate)
+      ) {
+        return null;
+      }
+      return {
+        title: "Cupones sin canjear",
+        body: unredeemedMessage(payload as unknown as UnredeemedCouponsPayload),
+        href: "/owners/metrics",
+        linkLabel: "Ver métricas",
+      };
+    default:
+      return null;
+  }
 }
