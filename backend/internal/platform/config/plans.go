@@ -23,6 +23,10 @@ const (
 	// and on for Pro, so an existing environment keeps working.
 	envStarterAdvancedMetrics = "PLAN_STARTER_ADVANCED_METRICS"
 	envProAdvancedMetrics     = "PLAN_PRO_ADVANCED_METRICS"
+
+	// Optional: whether the plan includes the priority support. Off for Starter, on for Pro.
+	envStarterPrioritySupport = "PLAN_STARTER_PRIORITY_SUPPORT"
+	envProPrioritySupport     = "PLAN_PRO_PRIORITY_SUPPORT"
 )
 
 // PlanSettings are the limits and the display price of one plan.
@@ -37,6 +41,8 @@ type PlanSettings struct {
 	CheckoutURL string
 	// AdvancedMetrics is whether the plan includes the Pro metrics (SDD 4.3).
 	AdvancedMetrics bool
+	// PrioritySupport is whether the plan includes the priority support (SDD 4.2).
+	PrioritySupport bool
 }
 
 // Plans holds the settings of both plans. Every API instance must run with the
@@ -88,6 +94,17 @@ func LoadPlans(get func(string) string) (Plans, error) {
 	}
 	if plans.Pro.AdvancedMetrics, err = planFlag(get, envProAdvancedMetrics, true); err != nil {
 		return Plans{}, err
+	}
+
+	if plans.Starter.PrioritySupport, err = planFlag(get, envStarterPrioritySupport, false); err != nil {
+		return Plans{}, err
+	}
+	if plans.Pro.PrioritySupport, err = planFlag(get, envProPrioritySupport, true); err != nil {
+		return Plans{}, err
+	}
+	if plans.Starter.PrioritySupport && !plans.Pro.PrioritySupport {
+		return Plans{}, fmt.Errorf("config: %s is off but %s is on: Pro cannot offer less than Starter",
+			envProPrioritySupport, envStarterPrioritySupport)
 	}
 
 	// Pro includes everything Starter has, so it can never offer less.

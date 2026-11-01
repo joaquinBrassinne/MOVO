@@ -113,6 +113,8 @@ type listEntryJSON struct {
 	ExpiringSoon   bool   `json:"expiring_soon"`
 	DaysLeft       int    `json:"days_left"`
 	ReminderURL    string `json:"reminder_url"`
+	// PrioritySupport marks the businesses whose plan includes the priority support.
+	PrioritySupport bool `json:"priority_support"`
 }
 
 // handleList answers GET /admin/subscriptions?status=active|grace|expired|expiring, narrowed
@@ -141,6 +143,7 @@ func (a *Admin) handleList(w http.ResponseWriter, r *http.Request) {
 		out = append(out, listEntryJSON{
 			subscriptionJSON: item, BusinessName: e.BusinessName, BusinessStatus: e.BusinessStatus,
 			Pilot: e.Pilot, ExpiringSoon: e.ExpiringSoon, DaysLeft: e.DaysLeft, ReminderURL: e.ReminderURL,
+			PrioritySupport: e.PrioritySupport,
 		})
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"subscriptions": out, "total": page.Total})

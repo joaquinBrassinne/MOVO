@@ -178,6 +178,8 @@ VALUES ($1, $2, 'Calle 2', 'Cordoba', ST_SetSRID(ST_MakePoint(-64.19, -31.43), 4
 		t.Errorf("expiring list = %d %v, want 200", status, body)
 	} else if list, _ := body["subscriptions"].([]any); len(list) != 1 || list[0].(map[string]any)["reminder_url"] == "" {
 		t.Errorf("expiring list = %v, want the business with a reminder link", body)
+	} else if list[0].(map[string]any)["priority_support"] != false {
+		t.Errorf("a Starter business = %v, want no priority support mark", list[0])
 	}
 	if status, _ := h.do(http.MethodGet, "/admin/subscriptions", ownerToken, nil); status != http.StatusForbidden {
 		t.Errorf("an owner reading the list = %d, want 403", status)
@@ -190,6 +192,15 @@ VALUES ($1, $2, 'Calle 2', 'Cordoba', ST_SetSRID(ST_MakePoint(-64.19, -31.43), 4
 	}
 	if status, body := h.do(http.MethodGet, "/admin/subscriptions?plan=pro", adminToken, nil); status != http.StatusOK || body["total"] != float64(0) {
 		t.Errorf("plan pro = %d %v, want 200 with total 0", status, body)
+	}
+	// On Pro the same business carries the priority support mark.
+	if status, body := h.do(http.MethodPut, base+"/plan", adminToken, map[string]any{"plan": "pro"}); status != http.StatusOK {
+		t.Fatalf("back to pro = %d %v, want 200", status, body)
+	}
+	if status, body := h.do(http.MethodGet, "/admin/subscriptions?plan=pro", adminToken, nil); status != http.StatusOK {
+		t.Errorf("pro list = %d %v, want 200", status, body)
+	} else if list, _ := body["subscriptions"].([]any); len(list) != 1 || list[0].(map[string]any)["priority_support"] != true {
+		t.Errorf("pro list = %v, want the business with the priority support mark", body)
 	}
 	for _, bad := range []string{"plan=gold", "limit=101", "limit=abc", "offset=-1"} {
 		if status, body := h.do(http.MethodGet, "/admin/subscriptions?"+bad, adminToken, nil); status != http.StatusUnprocessableEntity || errorCode(body) != "validation_failed" {
@@ -207,7 +218,7 @@ VALUES ($1, $2, 'Calle 2', 'Cordoba', ST_SetSRID(ST_MakePoint(-64.19, -31.43), 4
 		must(rows.Scan(&action))
 		actions = append(actions, action)
 	}
-	want := []string{"billing.confirm_payment", "billing.register_payment", "billing.change_plan"}
+	want := []string{"billing.confirm_payment", "billing.register_payment", "billing.change_plan", "billing.change_plan"}
 	if len(actions) != len(want) {
 		t.Fatalf("audit actions = %v, want %v", actions, want)
 	}

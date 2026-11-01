@@ -39,7 +39,7 @@ func newAPIHarness(t *testing.T) *apiHarness {
 	}
 	plans := config.Plans{
 		Starter: config.PlanSettings{MaxBranches: 2, MaxActiveServices: 3, Price: 19800},
-		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800, AdvancedMetrics: true},
+		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800, AdvancedMetrics: true, PrioritySupport: true},
 	}
 
 	businessMount, billingMount, err := newBusinessRoutes(nil, pool, signer, plans, storage.NewMemory(), 6, unusedGeocoder{})

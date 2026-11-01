@@ -5525,7 +5525,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/BillingSubscription'
         - type: object
-          required: [business_name, business_status, pilot, expiring_soon, days_left, reminder_url]
+          required: [business_name, business_status, pilot, expiring_soon, days_left, reminder_url, priority_support]
           properties:
             business_name:
               type: string
@@ -5543,6 +5543,11 @@ components:
             reminder_url:
               type: string
               description: '`wa.me` link with a prefilled reminder. Empty when the owner has no WhatsApp.'
+            priority_support:
+              type: boolean
+              description: >-
+                The plan of the business includes the priority support (a pilot gets Pro's), so
+                the admin answers it first. Only a mark: the support itself is a process.
     BillingConfirmRequest:
       type: object
       required: [plan, paid_until]

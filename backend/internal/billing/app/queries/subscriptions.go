@@ -57,11 +57,36 @@ type SubscriptionEntry struct {
 	// ReminderURL is the wa.me link with the reminder for the owner, empty when the
 	// number is unknown.
 	ReminderURL string
+	// PrioritySupport marks the businesses whose plan includes the priority support, so the
+	// admin answers them first (SDD 4.2). A pilot gets the support of the Pro plan.
+	PrioritySupport bool
 }
 
 // ListSubscriptions answers the "Suscripciones" list and the "por vencer" view.
 type ListSubscriptions struct {
 	directory billing.SubscriptionDirectory
+	plans     billing.PlanCatalog
+}
+
+// WithPlans tells the query which plans include the priority support. Without it nobody is
+// marked.
+func (q *ListSubscriptions) WithPlans(plans billing.PlanCatalog) *ListSubscriptions {
+	q.plans = plans
+	return q
+}
+
+// prioritySupport tells whether the row's business has the priority support. Pilot businesses
+// are on Pro while the pilot lasts (see pilotplan), whatever their subscription says.
+func (q *ListSubscriptions) prioritySupport(row billing.SubscriptionRow) bool {
+	if q.plans == nil {
+		return false
+	}
+	plan := row.Subscription.Plan
+	if row.Pilot {
+		plan = domain.PlanPro
+	}
+	entitlements, err := q.plans.Entitlements(plan)
+	return err == nil && entitlements.PrioritySupport()
 }
 
 // NewListSubscriptions wires the query.
@@ -103,6 +128,7 @@ func (q *ListSubscriptions) Handle(ctx context.Context, filter SubscriptionFilte
 			ExpiringSoon:    sub.ExpiringSoon(today),
 			DaysLeft:        today.DaysUntil(sub.PaidUntil),
 			ReminderURL:     ReminderURL(row.OwnerWhatsApp, row.BusinessName, sub.PaidUntil),
+			PrioritySupport: q.prioritySupport(row),
 		}
 		if matches(filter.Status, entry) && (plan == "" || sub.Plan == plan) &&
 			strings.Contains(strings.ToLower(row.BusinessName), needle) {

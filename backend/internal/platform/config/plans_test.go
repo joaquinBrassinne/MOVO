@@ -33,7 +33,7 @@ func TestLoadPlans(t *testing.T) {
 	}
 	want := config.Plans{
 		Starter: config.PlanSettings{MaxBranches: 2, MaxActiveServices: 3, Price: 19800, CheckoutURL: "https://mp.example/starter"},
-		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800, CheckoutURL: "https://mp.example/pro", AdvancedMetrics: true},
+		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800, CheckoutURL: "https://mp.example/pro", AdvancedMetrics: true, PrioritySupport: true},
 	}
 	if got != want {
 		t.Errorf("plans = %+v, want %+v", got, want)
