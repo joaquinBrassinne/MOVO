@@ -26,4 +26,13 @@
 
 ## Pendiente
 - 6.18 (alerta "Cupones sin canjear") y 6.19 (marca de prioridad en la bandeja del admin): backend de la fase fuera de este pedido.
-- 6.20: las vistas esperan las capturas en `docs/design/fase-6/`.
+- 6.20: en curso (ver abajo). Backend 6.18 y 6.19 hecho (commits ba65960, ba49a53, cefd6f2).
+
+## 6.20 Frontend (especificación)
+Capturas en `C:\Users\joaqu\dev\MOVO\docs\design\fase-6\` (checkout principal): `metricas_plan_starter.png`, `inteligencia_comercial_metricas_pro.png`, `datos_del_negocio_plan_pro.png`, `datos_del_negocio_plan_starter.png`, `super_admin_metricas.png`, `super_admin_suscripciones.png`, `super_admin_reseteo_de_clave.png`, `nueva_contraseña.png`.
+
+Reglas: el SDD gana sobre la imagen; todo dato sale de la API real (`backend/api/openapi.yaml`), nunca inventado; se rotula "vistas", nunca "personas"; textos de interfaz en español, identificadores y comentarios en inglés; paths en inglés.
+
+No se implementa (el SDD o la API no lo respaldan; se informa al cerrar): exportar CSV, «Conciliar MP», gráfico «Cupones por día», top de locales, distribución por categoría y «Crecimiento acumulado» más allá de lo que devuelve `GET /admin/metrics`, 2FA, historial de auditoría de la ficha, las barras de maqueta («Modo de vista», «Simulador», pestañas «1. Válido / 2. Éxito…»), sparklines (la API no manda series), «Sincronizado hoy», número de teléfono con bandera.
+
+Unidades (superficies disjuntas): A métricas del dueño; B ticket promedio y alerta en el panel; C1 admin métricas y suscripciones; C2 reseteo asistido (admin) y página `/owners/reset-password`; D beacon de vista de servicio (inline).
