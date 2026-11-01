@@ -98,6 +98,20 @@ func scanBusiness(row pgx.Row) (domain.Business, error) {
 	return b, nil
 }
 
+// AverageTicket returns the average ticket of the business in whole pesos, nil when its owner
+// never loaded one, or business.ErrBusinessNotFound.
+func (r *Businesses) AverageTicket(ctx context.Context, businessID int64) (*int, error) {
+	var ticket *int
+	err := r.pool.QueryRow(ctx, `SELECT average_ticket_ars FROM businesses WHERE id = $1`, businessID).Scan(&ticket)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, business.ErrBusinessNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("postgres: select average ticket: %w", err)
+	}
+	return ticket, nil
+}
+
 // Save persists the profile, status and declared payer of b. The slug and
 // the owner are deliberately not part of the UPDATE.
 func (r *Businesses) Save(ctx context.Context, b domain.Business) error {

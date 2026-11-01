@@ -46,9 +46,9 @@ func newAPIHarness(t *testing.T) *apiHarness {
 	if err != nil {
 		t.Fatalf("newBusinessRoutes: %v", err)
 	}
-	metricsAccess, err := newMetricsPermission(pool, plans)
+	metricsAccess, err := newMetricsPlan(pool, plans)
 	if err != nil {
-		t.Fatalf("newMetricsPermission: %v", err)
+		t.Fatalf("newMetricsPlan: %v", err)
 	}
 	// The reviews routes share /me/business and /admin with the business ones, as in main.
 	ts := httptest.NewServer(httpx.NewRouter(nil, pool, newIdentityRoutes(nil, pool, config.Auth{RefreshTokenTTL: time.Hour}, signer),

@@ -418,6 +418,33 @@ type TimeToRedeemReader interface {
 	TimeToRedeem(ctx context.Context, businessID int64, current, previous MetricsPeriod) (TimeToRedeem, error)
 }
 
+// Economics is what the estimated return needs to know about a business besides its coupons:
+// the average ticket its owner loaded (nil when none) and the monthly price of the plan it is on.
+type Economics struct {
+	AverageTicketARS *int
+	PlanPriceARS     int
+}
+
+// BusinessEconomics answers Economics. The composition root joins the business and billing
+// modules to do it, so benefits never reads either.
+type BusinessEconomics interface {
+	Economics(ctx context.Context, businessID int64) (Economics, error)
+}
+
+// RedemptionTotals are the counts the estimated return multiplies and samples by.
+type RedemptionTotals struct {
+	Redemptions         int64
+	PreviousRedemptions int64
+	// CouponsGenerated is the sample of each period.
+	CouponsGenerated         int64
+	PreviousCouponsGenerated int64
+}
+
+// RedemptionTotalsReader counts the redemptions and the coupons generated of two periods.
+type RedemptionTotalsReader interface {
+	RedemptionTotals(ctx context.Context, businessID int64, current, previous MetricsPeriod) (RedemptionTotals, error)
+}
+
 // CustomerCounts is how many different customers redeemed once and how many redeemed two or
 // more times at the business in a period. They are numbers only: no customer is ever returned.
 type CustomerCounts struct {

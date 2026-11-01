@@ -129,7 +129,7 @@ func run() error {
 		return err
 	}
 
-	metricsAccess, err := newMetricsPermission(pool, plans)
+	metricsAccess, err := newMetricsPlan(pool, plans)
 	if err != nil {
 		pool.Close()
 		return err

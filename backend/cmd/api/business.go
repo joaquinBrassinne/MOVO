@@ -36,13 +36,17 @@ func (e entitlementsOf) For(ctx context.Context, businessID int64) (business.Ent
 	return e.query.Handle(ctx, businessID)
 }
 
-// metricsPermission adapts the billing query to the port the benefits module declares: a
-// business may read the Pro metrics when its entitlements (a pilot gets the Pro ones) say so.
-type metricsPermission struct {
-	query *billingqueries.EntitlementsFor
+// metricsPlan adapts billing and business to the ports the benefits module declares for the Pro
+// metrics: a business may read them when its entitlements say so (a pilot gets the Pro ones),
+// and its economics are the average ticket its owner loaded and the price of the plan it is on.
+type metricsPlan struct {
+	query      *billingqueries.EntitlementsFor
+	businesses *businesspostgres.Businesses
+	resolver   billing.PlanResolver
+	catalog    billing.PlanCatalog
 }
 
-func (m metricsPermission) AdvancedMetrics(ctx context.Context, businessID int64) (bool, error) {
+func (m metricsPlan) AdvancedMetrics(ctx context.Context, businessID int64) (bool, error) {
 	granted, err := m.query.Handle(ctx, businessID)
 	if err != nil {
 		return false, err
@@ -50,15 +54,37 @@ func (m metricsPermission) AdvancedMetrics(ctx context.Context, businessID int64
 	return granted.AdvancedMetrics(), nil
 }
 
-// newMetricsPermission builds the Pro metrics permission from the plan settings and the same
-// resolver the business routes use, so both answer alike.
-func newMetricsPermission(pool *pgxpool.Pool, plans config.Plans) (benefits.MetricsPermission, error) {
+func (m metricsPlan) Economics(ctx context.Context, businessID int64) (benefits.Economics, error) {
+	ticket, err := m.businesses.AverageTicket(ctx, businessID)
+	if err != nil {
+		return benefits.Economics{}, err
+	}
+	plan, err := m.resolver.PlanOf(ctx, businessID)
+	if err != nil {
+		return benefits.Economics{}, err
+	}
+	for _, info := range m.catalog.Plans() {
+		if info.Plan == plan {
+			return benefits.Economics{AverageTicketARS: ticket, PlanPriceARS: info.Price}, nil
+		}
+	}
+	return benefits.Economics{}, billing.ErrUnknownPlan
+}
+
+// newMetricsPlan builds the Pro metrics plan from the plan settings and the same resolver the
+// business routes use, so both answer alike.
+func newMetricsPlan(pool *pgxpool.Pool, plans config.Plans) (metricsPlan, error) {
 	catalog, err := configcatalog.New(plans)
 	if err != nil {
-		return nil, err
+		return metricsPlan{}, err
 	}
 	resolver, _ := newPlanResolver(pool)
-	return metricsPermission{query: billingqueries.NewEntitlementsFor(catalog, resolver)}, nil
+	return metricsPlan{
+		query:      billingqueries.NewEntitlementsFor(catalog, resolver),
+		businesses: businesspostgres.NewBusinesses(pool),
+		resolver:   resolver,
+		catalog:    catalog,
+	}, nil
 }
 
 // newPlanResolver tells which plan a business is on: pilot businesses get the Pro limits for

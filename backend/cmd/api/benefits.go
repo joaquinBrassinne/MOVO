@@ -50,11 +50,18 @@ const (
 	couponMaxKeys = 100_000
 )
 
+// metricsPlanPort is what the Pro metrics ask of the plan of a business: whether it includes
+// them, and the figures the estimated return multiplies.
+type metricsPlanPort interface {
+	benefits.MetricsPermission
+	benefits.BusinessEconomics
+}
+
 // newBenefitsRoutes composes the benefits module: adapters, use cases and HTTP.
-func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.TokenVerifier, couponAttempts int, permission benefits.MetricsPermission) func(chi.Router) {
+func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.TokenVerifier, couponAttempts int, plan metricsPlanPort) func(chi.Router) {
 	owners := ownerBusinesses{businesses: businesspostgres.NewBusinesses(pool)}
 	// Every Pro metric goes through this one gate.
-	gate := queries.NewProGate(owners, permission)
+	gate := queries.NewProGate(owners, plan)
 	repo := benefitspostgres.NewBenefits(pool)
 	coupons := benefitspostgres.NewCoupons(pool)
 	limiter := ratelimit.New(ratelimit.Config{MaxAttempts: couponAttempts, Window: couponWindow, MaxKeys: couponMaxKeys}, nil)
@@ -75,6 +82,7 @@ func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.Toke
 		TimeToRedeem:    queries.NewGetTimeToRedeem(gate, coupons, nil),
 		Returning:       queries.NewGetRepeatCustomers(gate, coupons, nil),
 		QuotaProjection: queries.NewGetQuotaProjection(gate, coupons, nil),
+		EstimatedReturn: queries.NewGetEstimatedReturn(gate, plan, coupons, nil),
 		Quota:           queries.NewGetCouponQuota(owners, coupons, nil),
 		SetQuota:        commands.NewSetCouponQuota(owners, coupons, nil),
 		Generate:        commands.NewGenerateCode(coupons, limiter, nil, nil),

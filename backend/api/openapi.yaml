@@ -2183,6 +2183,53 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /me/business/metrics/estimated-return:
+    get:
+      operationId: benefitsGetEstimatedReturn
+      summary: Estimated return of the coupons (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. An estimate, never a
+        measurement: the coupons redeemed in the period times the average ticket the owner loaded, as if
+        each redemption had spent that much, next to the monthly price of the plan the business is on.
+        Without an average ticket the answer is only `{status: no_ticket}` and nothing is shown. With
+        fewer than `minimum_sample` coupons generated in the period it is only `{status:
+        insufficient_data}`. The estimate for the previous period uses the same ticket and is null when
+        that period had too few coupons. Counts and pesos only, no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The estimate, no_ticket or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsEstimatedReturn'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /me/business/activity:
     get:
       operationId: benefitsGetActivity
@@ -3521,6 +3568,43 @@ components:
               rate:
                 type: number
                 nullable: true
+    MetricsEstimatedReturn:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, no_ticket, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        estimated:
+          type: boolean
+          description: Always true. The screen must present the figure as an estimate.
+        redemptions:
+          type: integer
+        previous_redemptions:
+          type: integer
+        average_ticket_ars:
+          type: integer
+          description: The ticket the owner loaded, the multiplier of the estimate.
+        estimated_return_ars:
+          type: integer
+          format: int64
+          description: redemptions times average_ticket_ars.
+        previous_estimated_return_ars:
+          type: integer
+          format: int64
+          nullable: true
+        plan_price_ars:
+          type: integer
+          description: Monthly price of the plan the business is on.
     MetricsQuotaProjection:
       type: object
       required: [status]
