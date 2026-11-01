@@ -38,9 +38,11 @@ const (
 	CodePendingCoupon    = "pending_coupon"
 	CodeQuotaReached     = "quota_reached"
 	CodeRateLimited      = "rate_limited"
-	CodeCouponNotFound   = "coupon_not_found"
-	CodeCouponRedeemed   = "coupon_redeemed"
-	CodeCouponExpired    = "coupon_expired"
+	// CodePlanUpgradeRequired is the 403 of a Starter business asking for a Pro metric.
+	CodePlanUpgradeRequired = "plan_upgrade_required"
+	CodeCouponNotFound      = "coupon_not_found"
+	CodeCouponRedeemed      = "coupon_redeemed"
+	CodeCouponExpired       = "coupon_expired"
 )
 
 // Deps are the use cases and the token verifier the handlers need.
@@ -527,6 +529,9 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, benefits.ErrBusinessNotEditable):
 		httpx.WriteError(w, http.StatusConflict, CodeBusinessDeleted, "this business was deleted and can no longer change", nil)
 		return
+	case errors.Is(err, benefits.ErrPlanUpgradeRequired):
+		httpx.WriteError(w, http.StatusForbidden, CodePlanUpgradeRequired, "your plan does not include the advanced metrics: upgrade to Pro to see them", nil)
+		return
 	case errors.Is(err, benefits.ErrMetricsPeriodInvalid):
 		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the period is not valid",
 			map[string]string{"field": "period", "reason": "invalid"})
@@ -696,7 +701,7 @@ type demandJSON struct {
 }
 
 type activitiesJSON struct {
-	Period     periodJSON     `json:"period"`
+	Period     periodJSON   `json:"period"`
 	Activities []demandJSON `json:"activities"`
 }
 

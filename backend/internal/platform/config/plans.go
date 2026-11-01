@@ -18,6 +18,11 @@ const (
 	envProPrice           = "PLAN_PRO_PRICE"
 	envStarterURL         = "MP_STARTER_URL"
 	envProURL             = "MP_PRO_URL"
+
+	// Optional: whether the plan includes the Pro metrics. They default to off for Starter
+	// and on for Pro, so an existing environment keeps working.
+	envStarterAdvancedMetrics = "PLAN_STARTER_ADVANCED_METRICS"
+	envProAdvancedMetrics     = "PLAN_PRO_ADVANCED_METRICS"
 )
 
 // PlanSettings are the limits and the display price of one plan.
@@ -30,6 +35,8 @@ type PlanSettings struct {
 	Price int
 	// CheckoutURL is the Mercado Pago subscription link of the plan (https).
 	CheckoutURL string
+	// AdvancedMetrics is whether the plan includes the Pro metrics (SDD 4.3).
+	AdvancedMetrics bool
 }
 
 // Plans holds the settings of both plans. Every API instance must run with the
@@ -76,7 +83,18 @@ func LoadPlans(get func(string) string) (Plans, error) {
 		return Plans{}, err
 	}
 
+	if plans.Starter.AdvancedMetrics, err = planFlag(get, envStarterAdvancedMetrics, false); err != nil {
+		return Plans{}, err
+	}
+	if plans.Pro.AdvancedMetrics, err = planFlag(get, envProAdvancedMetrics, true); err != nil {
+		return Plans{}, err
+	}
+
 	// Pro includes everything Starter has, so it can never offer less.
+	if plans.Starter.AdvancedMetrics && !plans.Pro.AdvancedMetrics {
+		return Plans{}, fmt.Errorf("config: %s is off but %s is on: Pro cannot offer less than Starter",
+			envProAdvancedMetrics, envStarterAdvancedMetrics)
+	}
 	if plans.Pro.MaxBranches < plans.Starter.MaxBranches {
 		return Plans{}, fmt.Errorf("config: %s %d must not be lower than %s %d",
 			envProMaxBranches, plans.Pro.MaxBranches, envStarterMaxBranches, plans.Starter.MaxBranches)
@@ -87,6 +105,20 @@ func LoadPlans(get func(string) string) (Plans, error) {
 	}
 
 	return plans, nil
+}
+
+// planFlag reads true or false; an absent variable is fallback and anything else is an
+// error, so a typo never silently switches a plan feature.
+func planFlag(get func(string) string, name string, fallback bool) (bool, error) {
+	raw := strings.TrimSpace(get(name))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("config: %s %q must be true or false: %w", name, raw, err)
+	}
+	return value, nil
 }
 
 // lowerLimit reports whether limit a offers less than b, where 0 means unlimited.

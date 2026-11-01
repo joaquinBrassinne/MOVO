@@ -339,6 +339,16 @@ type DemandReader interface {
 	TopActivities(ctx context.Context, businessID int64, period MetricsPeriod, limit int) ([]ActivityDemand, error)
 }
 
+// ErrPlanUpgradeRequired means the business's plan does not include the Pro metrics.
+var ErrPlanUpgradeRequired = errors.New("benefits: the plan does not include the advanced metrics")
+
+// MetricsPermission tells whether a business may read the Pro metrics ("inteligencia
+// comercial", SDD 4.3). The composition root answers it from the business's entitlements,
+// so a pilot gets what its pilot plan gives and nothing here ever asks which plan it is.
+type MetricsPermission interface {
+	AdvancedMetrics(ctx context.Context, businessID int64) (bool, error)
+}
+
 // MetricsReader reads the metrics of a business over a period. It only counts.
 type MetricsReader interface {
 	Essential(ctx context.Context, businessID int64, period MetricsPeriod) (EssentialMetrics, error)

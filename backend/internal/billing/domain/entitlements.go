@@ -34,6 +34,7 @@ func ParsePlan(raw string) (Plan, error) {
 type Entitlements struct {
 	maxBranches       int
 	maxActiveServices int
+	advancedMetrics   bool
 }
 
 // NewEntitlements builds the limits of a plan. A limit of 0 means unlimited.
@@ -43,6 +44,16 @@ func NewEntitlements(maxBranches, maxActiveServices int) (Entitlements, error) {
 	}
 	return Entitlements{maxBranches: maxBranches, maxActiveServices: maxActiveServices}, nil
 }
+
+// WithAdvancedMetrics returns the entitlements with the Pro metrics ("inteligencia
+// comercial", SDD 4.3) switched on or off. Plans start without them.
+func (e Entitlements) WithAdvancedMetrics(on bool) Entitlements {
+	e.advancedMetrics = on
+	return e
+}
+
+// AdvancedMetrics reports whether the business may read the Pro metrics.
+func (e Entitlements) AdvancedMetrics() bool { return e.advancedMetrics }
 
 // MaxBranches is the branch limit, 0 for unlimited.
 func (e Entitlements) MaxBranches() int { return e.maxBranches }

@@ -73,7 +73,7 @@ func servedRoutes(t *testing.T) []string {
 	}
 	plans := config.Plans{
 		Starter: config.PlanSettings{MaxBranches: 2, MaxActiveServices: 3, Price: 19800},
-		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800},
+		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800, AdvancedMetrics: true},
 	}
 	images := storage.NewMemory()
 

@@ -444,6 +444,8 @@ PLAN_PRO_MAX_BRANCHES=4
 PLAN_PRO_MAX_ACTIVE_SERVICES=0        # 0 = ilimitado
 PLAN_STARTER_PRICE=19800
 PLAN_PRO_PRICE=29800
+PLAN_STARTER_ADVANCED_METRICS=false   # opcional: el plan incluye las métricas Pro (§4.3); por defecto false
+PLAN_PRO_ADVANCED_METRICS=true        # opcional: por defecto true; Pro no puede ofrecer menos que Starter
 MP_STARTER_URL=                       # link https del plan de suscripción de Mercado Pago (obligatorio)
 MP_PRO_URL=
 # La gracia (7 días) no es variable: vive fija en la vista visible_branches y en
@@ -643,7 +645,7 @@ Convenciones de trabajo:
 - [x] 6.3b Anti-inflado de métricas: descartar el mismo clic o vista repetido desde la misma IP en una ventana corta, en memoria (interfaz lista para Redis) y sin persistir la IP; se aplica a `profile_view`, `service_view` y `whatsapp_click` antes de mostrar métricas en el panel (S) — ventana de 30 min, hasheada con sal por proceso y acotada a 100 000 claves (llena, deja pasar sin recordar); la IP viaja por el contexto (`search.WithClient`) y nunca se guarda
 - [x] 6.4 Métricas esenciales del local (Starter) sobre `metric_daily` y las tablas de cupones (M) — `GET /me/business/metrics?period=7|30|90` (30 por defecto): vistas al perfil y cupones generados/canjeados de los últimos N días, hoy incluido, en calendario de Argentina; disponible en todos los planes
 - [x] 6.5 Actividades más demandadas (vistas del servicio + clics a WhatsApp por servicio) (S) — `POST /branches/{branch_id}/services/{service_id}/view` (beacon, siempre 204) y `GET /me/business/metrics/activities?period=7|30|90`: las 5 con más vistas más clics, sin servicios borrados; todos los planes. La ficha pública debe enviar el beacon al mostrar un servicio (va en 6.20)
-- [ ] 6.6 Base de las métricas Pro: capacidad `advanced_metrics` en `Entitlements` (los pilotos usan el plan del piloto), un único chequeo de permiso en el servidor que responde 403 `plan_upgrade_required` sin datos, y migración con down de los índices de `benefit_codes` que hagan falta (comprobados con `EXPLAIN` en 90 días y agregación mensual) (M)
+- [x] 6.6 Base de las métricas Pro: capacidad `advanced_metrics` en `Entitlements` (los pilotos usan el plan del piloto), un único chequeo de permiso en el servidor que responde 403 `plan_upgrade_required` sin datos, y migración con down de los índices de `benefit_codes` que hagan falta (comprobados con `EXPLAIN` en 90 días y agregación mensual) (M) — capacidad en `Entitlements` desde `PLAN_*_ADVANCED_METRICS` (Starter false, Pro true por defecto), `ProGate` en `benefits` como único chequeo, 403 `plan_upgrade_required`, y migración `00026` con dos índices (el test con `EXPLAIN` sobre 40 000 cupones exige que se usen); el cableado con el plan real llega con la primera métrica Pro (6.8)
 - [ ] 6.7 `average_ticket_ars` en `businesses`: migración con down, validación (entero > 0, opcional), edición en "Datos del negocio" solo para negocios con permiso Pro y registro del cambio en `audit_log` (S)
 - [ ] 6.8 Tasas de conversión con tendencia y desglose por sede y actividad (Pro). Las vistas de perfil son por negocio (§4.3): "vistas → cupones" se calcula solo a nivel negocio; el desglose por sede aplica a clics a WhatsApp, vistas de servicio y canjes (`redeemed_branch_id`) (M)
 - [ ] 6.9 Mapa de calor de canjes: día de la semana × franja horaria, desde `redeemed_at` (S)

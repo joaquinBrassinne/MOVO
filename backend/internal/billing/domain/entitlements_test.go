@@ -34,6 +34,25 @@ func TestParsePlan(t *testing.T) {
 	}
 }
 
+func TestAdvancedMetricsAreOffUntilTheyAreSwitchedOnAndKeepTheLimits(t *testing.T) {
+	t.Parallel()
+
+	base := mustEntitlements(t, 4, 0)
+	if base.AdvancedMetrics() {
+		t.Error("a new entitlement must not include the advanced metrics")
+	}
+	pro := base.WithAdvancedMetrics(true)
+	if !pro.AdvancedMetrics() || pro.MaxBranches() != 4 || pro.MaxActiveServices() != 0 {
+		t.Errorf("with the metrics on = %+v, want them on and the limits untouched", pro)
+	}
+	if base.AdvancedMetrics() {
+		t.Error("switching them on for a copy must not change the original")
+	}
+	if pro.WithAdvancedMetrics(false).AdvancedMetrics() {
+		t.Error("switching them off must turn them off")
+	}
+}
+
 func TestNewEntitlementsRejectsNegativeLimits(t *testing.T) {
 	t.Parallel()
 
