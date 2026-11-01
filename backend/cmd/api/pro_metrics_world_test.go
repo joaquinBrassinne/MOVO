@@ -136,7 +136,7 @@ const day = 24 * time.Hour
 func assertNoPersonalData(t *testing.T, name string, body map[string]any) {
 	t.Helper()
 	raw := strings.ToLower(flatten(body))
-	for _, leak := range []string{strings.ToLower(customerName), customerPhone, "phone", "whatsapp_number", "customer"} {
+	for _, leak := range []string{strings.ToLower(customerName), customerPhone, "phone", "whatsapp_number", "customer_id", "customer_name", "email"} {
 		if strings.Contains(raw, leak) {
 			t.Errorf("%s leaks %q: %v", name, leak, body)
 		}

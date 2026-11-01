@@ -418,6 +418,30 @@ type TimeToRedeemReader interface {
 	TimeToRedeem(ctx context.Context, businessID int64, current, previous MetricsPeriod) (TimeToRedeem, error)
 }
 
+// CustomerCounts is how many different customers redeemed once and how many redeemed two or
+// more times at the business in a period. They are numbers only: no customer is ever returned.
+type CustomerCounts struct {
+	OneRedemption int64
+	Repeat        int64
+}
+
+// Total is every customer who redeemed in the period.
+func (c CustomerCounts) Total() int64 { return c.OneRedemption + c.Repeat }
+
+// RepeatCustomers is the customer counts of a period and of the one before it, with the
+// coupons generated in each (the sample).
+type RepeatCustomers struct {
+	Current                  CustomerCounts
+	Previous                 CustomerCounts
+	CouponsGenerated         int64
+	PreviousCouponsGenerated int64
+}
+
+// RepeatCustomersReader counts how many customers came back. It only counts, in SQL.
+type RepeatCustomersReader interface {
+	RepeatCustomers(ctx context.Context, businessID int64, current, previous MetricsPeriod) (RepeatCustomers, error)
+}
+
 // HeatCell is how many coupons were redeemed on one weekday (ISO: Monday 1 to Sunday 7) in
 // one time slot (0 to 3, see queries.HeatSlots), on Argentina's clock.
 type HeatCell struct {

@@ -2105,6 +2105,52 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /me/business/metrics/returning-customers:
+    get:
+      operationId: benefitsGetReturningCustomers
+      summary: Customers who came back (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. Of the customers who redeemed
+        a coupon at the business in the period, how many redeemed once (`one_redemption`) and how many
+        two or more times (`two_or_more`), and the share of the second group against the previous period.
+        Only numbers: the count is made in the database and no customer, name or phone is ever returned.
+        With fewer than `minimum_sample` coupons generated in the period the answer is only
+        `{status: insufficient_data}` with the period and the counts. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The counts, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsReturningCustomers'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /me/business/activity:
     get:
       operationId: benefitsGetActivity
@@ -3443,6 +3489,33 @@ components:
               rate:
                 type: number
                 nullable: true
+    MetricsReturningCustomers:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        customers:
+          type: integer
+          description: Different customers who redeemed in the period.
+        previous_customers:
+          type: integer
+        one_redemption:
+          type: integer
+        two_or_more:
+          type: integer
+        repeat_rate:
+          $ref: '#/components/schemas/MetricsRate'
     MetricsTimeToRedeem:
       type: object
       required: [status, period, previous_period, coupons_generated, minimum_sample]
