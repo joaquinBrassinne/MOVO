@@ -88,6 +88,7 @@ func servedRoutes(t *testing.T) []string {
 		newSearchRoutes(log, pool, images),
 		newBenefitsRoutes(log, pool, signer, 5),
 		newReviewsRoutes(log, pool, signer),
+		newAdminRoutes(log, pool, signer),
 	)
 
 	routes, ok := router.(chi.Routes)

@@ -330,6 +330,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /admin/metrics:
+    get:
+      operationId: adminMetrics
+      summary: Platform figures for the super admin
+      description: >-
+        Requires role `super_admin`. Active businesses and coupon totals, all-time and since
+        the first day of the current month on Argentina's clock. Counts only, no personal data.
+        Not cached.
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The figures.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [active_businesses, coupons, coupons_this_month, month_start]
+                properties:
+                  active_businesses:
+                    type: integer
+                  coupons:
+                    $ref: '#/components/schemas/AdminCouponCounts'
+                  coupons_this_month:
+                    $ref: '#/components/schemas/AdminCouponCounts'
+                  month_start:
+                    type: string
+                    format: date
+                    description: First day of the month that `coupons_this_month` counts from.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /search:
     get:
       operationId: searchNearby
@@ -2958,6 +2992,14 @@ components:
           maxLength: 128
           description: Password, 10 to 128 characters.
           example: correct-horse-battery
+    AdminCouponCounts:
+      type: object
+      required: [generated, redeemed]
+      properties:
+        generated:
+          type: integer
+        redeemed:
+          type: integer
     IdentityRefreshRequest:
       type: object
       additionalProperties: false
