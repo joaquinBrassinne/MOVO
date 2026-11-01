@@ -70,6 +70,7 @@ func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.Toke
 		Metrics:    queries.NewGetMetrics(owners, coupons, nil),
 		Activities: queries.NewGetTopActivities(owners, coupons, nil),
 		Conversion: queries.NewGetConversion(gate, coupons, nil),
+		Heatmap:    queries.NewGetHeatmap(gate, coupons, nil),
 		Quota:      queries.NewGetCouponQuota(owners, coupons, nil),
 		SetQuota:   commands.NewSetCouponQuota(owners, coupons, nil),
 		Generate:   commands.NewGenerateCode(coupons, limiter, nil, nil),

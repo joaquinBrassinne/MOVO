@@ -160,32 +160,6 @@ func TestNoProMetricShowsAnyNameOrPhoneOfACustomer(t *testing.T) {
 		if status != http.StatusOK {
 			t.Fatalf("%s = %d %v", path, status, body)
 		}
-		raw := strings.ToLower(flatten(body))
-		if strings.Contains(raw, strings.ToLower(customerName)) || strings.Contains(raw, customerPhone) ||
-			strings.Contains(raw, "phone") || strings.Contains(raw, "whatsapp_number") {
-			t.Errorf("%s leaks personal data: %v", path, body)
-		}
-	}
-}
-
-// flatten renders every key and value of a decoded JSON object as one string.
-func flatten(v any) string {
-	switch x := v.(type) {
-	case map[string]any:
-		var b strings.Builder
-		for k, val := range x {
-			b.WriteString(k + " " + flatten(val) + " ")
-		}
-		return b.String()
-	case []any:
-		var b strings.Builder
-		for _, val := range x {
-			b.WriteString(flatten(val) + " ")
-		}
-		return b.String()
-	case string:
-		return x
-	default:
-		return ""
+		assertNoPersonalData(t, path, body)
 	}
 }

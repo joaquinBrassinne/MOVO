@@ -1964,6 +1964,53 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /me/business/metrics/heatmap:
+    get:
+      operationId: benefitsGetHeatmap
+      summary: Redemption heat map (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. How many coupons were redeemed
+        on each weekday (ISO: Monday 1 to Sunday 7) and in each of four six-hour slots, read from
+        `redeemed_at` on Argentina's clock, over the period, with the total of the previous period of the
+        same length. `cells` has one entry for every weekday and slot, zeros included, ordered by weekday
+        and then slot. With fewer than `minimum_sample` coupons generated in the period the answer is
+        only `{status: insufficient_data}` with the period and the counts. Counts only, no personal
+        data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The heat map, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsHeatmap'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /me/business/activity:
     get:
       operationId: benefitsGetActivity
@@ -3302,6 +3349,60 @@ components:
               rate:
                 type: number
                 nullable: true
+    MetricsHeatmap:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        slots:
+          type: array
+          description: The four slots of the day, indexed by the `slot` of each cell.
+          items:
+            type: object
+            required: [key, start, end]
+            properties:
+              key:
+                type: string
+                enum: [overnight, morning, afternoon, evening]
+              start:
+                type: string
+                example: '06:00'
+              end:
+                type: string
+                example: '11:59'
+        redemptions:
+          type: integer
+          description: Coupons redeemed in the period.
+        previous_redemptions:
+          type: integer
+          description: Coupons redeemed in the previous period of the same length.
+        cells:
+          type: array
+          items:
+            type: object
+            required: [weekday, slot, redemptions]
+            properties:
+              weekday:
+                type: integer
+                minimum: 1
+                maximum: 7
+              slot:
+                type: integer
+                minimum: 0
+                maximum: 3
+              redemptions:
+                type: integer
     AdminCouponCounts:
       type: object
       required: [generated, redeemed]

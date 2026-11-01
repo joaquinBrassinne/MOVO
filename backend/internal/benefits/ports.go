@@ -368,6 +368,29 @@ type ConversionReader interface {
 	Conversion(ctx context.Context, businessID int64, current, previous MetricsPeriod) (Conversion, error)
 }
 
+// HeatCell is how many coupons were redeemed on one weekday (ISO: Monday 1 to Sunday 7) in
+// one time slot (0 to 3, see queries.HeatSlots), on Argentina's clock.
+type HeatCell struct {
+	Weekday     int
+	Slot        int
+	Redemptions int64
+}
+
+// Heatmap is the redemptions of a period by weekday and slot, with the totals the metric
+// needs. Cells lists only the ones with redemptions.
+type Heatmap struct {
+	// CouponsGenerated is the sample: the coupons generated in the period.
+	CouponsGenerated    int64
+	Redemptions         int64
+	PreviousRedemptions int64
+	Cells               []HeatCell
+}
+
+// HeatmapReader reads the redemption heat map of a business. It only counts.
+type HeatmapReader interface {
+	Heatmap(ctx context.Context, businessID int64, current, previous MetricsPeriod) (Heatmap, error)
+}
+
 // ActivityDemand is how much one activity (a service) was asked for in a period: the times
 // it was looked at and the times someone tapped WhatsApp from it. Counts only.
 type ActivityDemand struct {

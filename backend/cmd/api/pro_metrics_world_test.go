@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -129,3 +130,37 @@ VALUES ($1, $2, $3, (now() AT TIME ZONE 'America/Argentina/Cordoba')::date - $4:
 }
 
 const day = 24 * time.Hour
+
+// assertNoPersonalData fails if a metric's answer carries the name or the phone of a customer,
+// or any field that names one.
+func assertNoPersonalData(t *testing.T, name string, body map[string]any) {
+	t.Helper()
+	raw := strings.ToLower(flatten(body))
+	for _, leak := range []string{strings.ToLower(customerName), customerPhone, "phone", "whatsapp_number", "customer"} {
+		if strings.Contains(raw, leak) {
+			t.Errorf("%s leaks %q: %v", name, leak, body)
+		}
+	}
+}
+
+// flatten renders every key and value of a decoded JSON object as one string.
+func flatten(v any) string {
+	switch x := v.(type) {
+	case map[string]any:
+		var b strings.Builder
+		for k, val := range x {
+			b.WriteString(k + " " + flatten(val) + " ")
+		}
+		return b.String()
+	case []any:
+		var b strings.Builder
+		for _, val := range x {
+			b.WriteString(flatten(val) + " ")
+		}
+		return b.String()
+	case string:
+		return x
+	default:
+		return ""
+	}
+}
