@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -15,11 +16,15 @@ var (
 	ErrCategoryRequired   = errors.New("business: category is required")
 	ErrInvalidTransition  = errors.New("business: status transition is not allowed")
 	ErrNotEditable        = errors.New("business: business can no longer be edited")
+	// ErrAverageTicketInvalid means the average ticket is not a whole number of pesos above zero.
+	ErrAverageTicketInvalid = errors.New("business: average ticket is not valid")
 )
 
 const (
 	maxNameLen        = 100
 	maxDescriptionLen = 500
+	// maxAverageTicketARS is the largest value the integer column holds.
+	maxAverageTicketARS = math.MaxInt32
 )
 
 // Status is where a business is in its lifecycle.
@@ -51,7 +56,10 @@ type Business struct {
 	MPPayerEmail   string
 	MPPayerName    string
 	MPReturnParams map[string]string
-	CreatedAt      time.Time
+	// AverageTicketARS is the typical spend of a customer in whole pesos, nil when the owner
+	// never loaded one. It feeds the estimated return of the Pro metrics.
+	AverageTicketARS *int
+	CreatedAt        time.Time
 }
 
 // NewBusinessInput is what an owner provides to create a business.
@@ -69,6 +77,9 @@ type ProfileInput struct {
 	Name        string
 	Description string
 	WhatsApp    string
+	// AverageTicketARS is the value to store, nil for none. The caller passes the current
+	// value when the owner did not touch the field.
+	AverageTicketARS *int
 }
 
 // NewBusiness validates the input and builds a draft ready to be stored: text is
@@ -120,8 +131,27 @@ func (b Business) UpdateProfile(in ProfileInput) (Business, error) {
 		return Business{}, err
 	}
 
+	ticket, err := normalizeAverageTicket(in.AverageTicketARS)
+	if err != nil {
+		return Business{}, err
+	}
+
 	b.CategoryID, b.Name, b.Description, b.WhatsApp = in.CategoryID, name, description, whatsapp
+	b.AverageTicketARS = ticket
 	return b, nil
+}
+
+// normalizeAverageTicket accepts nil (no ticket) or a whole number of pesos above zero. It
+// returns a copy, so the caller's pointer is never shared with the stored business.
+func normalizeAverageTicket(v *int) (*int, error) {
+	if v == nil {
+		return nil, nil
+	}
+	if *v <= 0 || *v > maxAverageTicketARS {
+		return nil, ErrAverageTicketInvalid
+	}
+	copied := *v
+	return &copied, nil
 }
 
 func validateProfile(name, description string) (string, string, error) {

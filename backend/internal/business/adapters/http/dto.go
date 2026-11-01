@@ -8,26 +8,28 @@ import (
 )
 
 type businessJSON struct {
-	ID           int64     `json:"id"`
-	CategoryID   int64     `json:"category_id"`
-	Name         string    `json:"name"`
-	Slug         string    `json:"slug"`
-	Description  string    `json:"description"`
-	WhatsApp     string    `json:"whatsapp"`
-	Status       string    `json:"status"`
-	Pilot        bool      `json:"pilot"`
-	Verified     bool      `json:"verified"`
-	MPPayerEmail string    `json:"mp_payer_email"`
-	MPPayerName  string    `json:"mp_payer_name"`
-	MPPlanHint   string    `json:"mp_plan_hint"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID           int64  `json:"id"`
+	CategoryID   int64  `json:"category_id"`
+	Name         string `json:"name"`
+	Slug         string `json:"slug"`
+	Description  string `json:"description"`
+	WhatsApp     string `json:"whatsapp"`
+	Status       string `json:"status"`
+	Pilot        bool   `json:"pilot"`
+	Verified     bool   `json:"verified"`
+	MPPayerEmail string `json:"mp_payer_email"`
+	MPPayerName  string `json:"mp_payer_name"`
+	MPPlanHint   string `json:"mp_plan_hint"`
+	// AverageTicketARS is the typical spend in whole pesos, null when never loaded.
+	AverageTicketARS *int      `json:"average_ticket_ars"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 func toBusinessJSON(b domain.Business) businessJSON {
 	return businessJSON{
 		ID: b.ID, CategoryID: b.CategoryID, Name: b.Name, Slug: b.Slug, Description: b.Description,
 		WhatsApp: b.WhatsApp, Status: string(b.Status), Pilot: b.Pilot, Verified: b.Verified(),
-		MPPayerEmail: b.MPPayerEmail, MPPayerName: b.MPPayerName, MPPlanHint: b.PlanHint(), CreatedAt: b.CreatedAt,
+		MPPayerEmail: b.MPPayerEmail, MPPayerName: b.MPPayerName, MPPlanHint: b.PlanHint(), AverageTicketARS: b.AverageTicketARS, CreatedAt: b.CreatedAt,
 	}
 }
 

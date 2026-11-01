@@ -100,7 +100,7 @@ func TestUpdateBusiness(t *testing.T) {
 	if _, err := commands.NewCreateBusiness(store).Handle(t.Context(), createInput(7, "Old Name")); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	update := commands.NewUpdateBusiness(store)
+	update := commands.NewUpdateBusiness(store, unlimited())
 
 	got, err := update.Handle(t.Context(), commands.UpdateBusinessInput{
 		OwnerID: 7, CategoryID: 2, Name: "New Name", Description: "x", WhatsApp: "5491198765432",

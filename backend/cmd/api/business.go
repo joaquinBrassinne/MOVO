@@ -127,7 +127,7 @@ func newBusinessRoutes(
 
 		MyBusiness:     queries.NewGetMyBusiness(businesses, branches, photos, images),
 		CreateBusiness: commands.NewCreateBusiness(businesses),
-		UpdateBusiness: commands.NewUpdateBusiness(businesses),
+		UpdateBusiness: commands.NewUpdateBusiness(businesses, entitlements),
 		SubmitBusiness: commands.NewSubmitBusiness(businesses),
 		PresignImage:   commands.NewPresignImageUpload(businesses, images, nil),
 		Geocode:        commands.NewGeocodeAddress(businesses, geocoder),

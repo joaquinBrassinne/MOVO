@@ -29,6 +29,8 @@ var (
 
 	ErrServiceNotFound     = errors.New("business: service not found")
 	ErrServiceLimitReached = errors.New("business: active service limit of the plan reached")
+	// ErrPlanUpgradeRequired means the plan of the business does not include what was asked.
+	ErrPlanUpgradeRequired = errors.New("business: the plan does not include this")
 
 	ErrImageNotFound     = errors.New("business: image not found")
 	ErrImageLimitReached = errors.New("business: image limit reached")
@@ -95,6 +97,9 @@ type Entitlements interface {
 	// CanActivateService reports whether a business with currentActive active
 	// services may create or activate one more.
 	CanActivateService(currentActive int) bool
+	// AdvancedMetrics reports whether the plan includes the Pro metrics, which is what
+	// the average ticket is for.
+	AdvancedMetrics() bool
 }
 
 // EntitlementsProvider resolves the entitlements of a business. The plan behind

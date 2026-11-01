@@ -3,6 +3,7 @@
 package businesshttp
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 
@@ -99,6 +100,36 @@ type businessRequest struct {
 	WhatsApp    string `json:"whatsapp"`
 }
 
+// updateRequest is the profile edit: the fields of a new business plus the average ticket,
+// which only an edit can set.
+type updateRequest struct {
+	businessRequest
+	AverageTicket optionalTicket `json:"average_ticket_ars"`
+}
+
+// optionalTicket tells apart a key that is absent (the stored ticket stays), null (remove it)
+// and a number. UnmarshalJSON runs only when the key is present. A value that is not a whole
+// number is marked bad instead of failing the whole body, so it answers as a field error.
+type optionalTicket struct {
+	set   bool
+	value *int
+	bad   bool
+}
+
+func (o *optionalTicket) UnmarshalJSON(raw []byte) error {
+	o.set = true
+	if string(raw) == "null" {
+		return nil
+	}
+	var n int
+	if err := json.Unmarshal(raw, &n); err != nil {
+		o.bad = true
+		return nil
+	}
+	o.value = &n
+	return nil
+}
+
 type submitRequest struct {
 	PayerEmail     string            `json:"mp_payer_email"`
 	PayerName      string            `json:"mp_payer_name"`
@@ -152,13 +183,18 @@ func (h *Handlers) handleCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) handleUpdate(w http.ResponseWriter, r *http.Request) {
-	var req businessRequest
+	var req updateRequest
 	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	if req.AverageTicket.bad {
+		invalid(w, "average_ticket_ars", "invalid")
 		return
 	}
 
 	updated, err := h.UpdateBusiness.Handle(r.Context(), commands.UpdateBusinessInput{
 		OwnerID: callerID(r), CategoryID: req.CategoryID, Name: req.Name, Description: req.Description, WhatsApp: req.WhatsApp,
+		AverageTicket: commands.OptionalTicket{Set: req.AverageTicket.set, Value: req.AverageTicket.value},
 	})
 	if err != nil {
 		h.fail(w, r, err)

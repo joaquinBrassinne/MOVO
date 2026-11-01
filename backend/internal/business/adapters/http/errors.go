@@ -27,10 +27,12 @@ const (
 	CodeBusinessExists   = "business_exists"
 	CodeSlugUnavailable  = "slug_unavailable"
 	CodePlanLimitReached = "plan_limit_reached"
-	CodeBusinessDeleted  = "business_deleted"
-	CodeInvalidState     = "invalid_state"
-	CodeNoChange         = "no_change"
-	CodeConflict         = "conflict"
+	// CodePlanUpgradeRequired is the 403 of a plan that lacks what was asked.
+	CodePlanUpgradeRequired = "plan_upgrade_required"
+	CodeBusinessDeleted     = "business_deleted"
+	CodeInvalidState        = "invalid_state"
+	CodeNoChange            = "no_change"
+	CodeConflict            = "conflict"
 )
 
 // fieldError is a validation failure: which field and why, in stable words.
@@ -46,6 +48,7 @@ var validation = map[error]fieldError{
 	domain.ErrSlugInvalid:               {"name", "no_letters_or_digits"},
 	domain.ErrDescriptionInvalid:        {"description", "too_long"},
 	domain.ErrWhatsAppInvalid:           {"whatsapp", "invalid"},
+	domain.ErrAverageTicketInvalid:      {"average_ticket_ars", "invalid"},
 	domain.ErrCategoryRequired:          {"category_id", "required"},
 	business.ErrCategoryNotFound:        {"category_id", "unknown"},
 	domain.ErrPayerEmailInvalid:         {"mp_payer_email", "invalid"},
@@ -125,6 +128,9 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 		}
 	}
 	switch {
+	case errors.Is(err, business.ErrPlanUpgradeRequired):
+		httpx.WriteError(w, http.StatusForbidden, CodePlanUpgradeRequired, "your plan does not include this: upgrade to Pro to use it", nil)
+		return
 	case errors.Is(err, business.ErrGeocoderBusy):
 		w.Header().Set("Retry-After", "5")
 		httpx.WriteError(w, http.StatusTooManyRequests, CodeGeocoderBusy, "the address search is busy, try again in a few seconds", nil)

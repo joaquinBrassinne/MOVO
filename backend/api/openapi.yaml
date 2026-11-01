@@ -739,7 +739,9 @@ paths:
       summary: Update my business profile
       description: >-
         Replaces category, name, description and WhatsApp. The slug never changes. A deleted business cannot be
-        edited. Requires role business_admin.
+        edited. The average ticket is the exception to "replaces": leave it out to keep the stored one, send
+        null to remove it, or a whole number of pesos above zero to set it. Setting a new one needs a plan with
+        the advanced metrics. Requires role business_admin.
       tags: [Business]
       security:
         - bearerAuth: []
@@ -748,7 +750,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BusinessProfileRequest'
+              $ref: '#/components/schemas/BusinessProfileUpdateRequest'
       responses:
         '200':
           description: The updated business.
@@ -761,7 +763,8 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: 'Not a business_admin (forbidden), or a plan without the advanced metrics tried to set the average ticket (plan_upgrade_required).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
         '404':
           description: 'The caller has no business (business_not_found).'
           content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
@@ -3459,8 +3462,14 @@ components:
     Business:
       type: object
       description: The business of an owner. Each owner has at most one.
-      required: [id, category_id, name, slug, description, whatsapp, status, pilot, verified, mp_payer_email, mp_payer_name, mp_plan_hint, created_at]
+      required: [id, category_id, name, slug, description, whatsapp, status, pilot, verified, mp_payer_email, mp_payer_name, mp_plan_hint, average_ticket_ars, created_at]
       properties:
+        average_ticket_ars:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: Typical spend of a customer in whole pesos, null when never loaded. Feeds the estimated return of the Pro metrics.
+          example: 15000
         id:
           type: integer
           format: int64
@@ -3506,6 +3515,18 @@ components:
         created_at:
           type: string
           format: date-time
+    BusinessProfileUpdateRequest:
+      description: The profile fields of an update, plus the optional average ticket, which only an update accepts.
+      allOf:
+        - $ref: '#/components/schemas/BusinessProfileRequest'
+        - type: object
+          properties:
+            average_ticket_ars:
+              type: integer
+              nullable: true
+              minimum: 1
+              description: Whole pesos. Absent keeps the stored value, null removes it.
+              example: 15000
     BusinessProfileRequest:
       type: object
       description: Profile fields of a business. All are written on both create and update (full replacement).
@@ -4508,8 +4529,11 @@ components:
           enum: [hidden, visible]
     BillingPlan:
       type: object
-      required: [plan, price, max_branches, max_active_services]
+      required: [plan, price, max_branches, max_active_services, advanced_metrics]
       properties:
+        advanced_metrics:
+          type: boolean
+          description: Whether the plan includes the Pro metrics ("inteligencia comercial").
         plan:
           $ref: '#/components/schemas/BillingPlanName'
         price:
