@@ -48,7 +48,7 @@ func newAPIHarness(t *testing.T) *apiHarness {
 	}
 	// The reviews routes share /me/business and /admin with the business ones, as in main.
 	ts := httptest.NewServer(httpx.NewRouter(nil, pool, newIdentityRoutes(nil, pool, config.Auth{RefreshTokenTTL: time.Hour}, signer),
-		businessMount, billingMount, newReviewsRoutes(nil, pool, signer), newAdminRoutes(nil, pool, signer)))
+		businessMount, billingMount, newBenefitsRoutes(nil, pool, signer, 5), newReviewsRoutes(nil, pool, signer), newAdminRoutes(nil, pool, signer)))
 	t.Cleanup(ts.Close)
 
 	return &apiHarness{t: t, pool: pool, signer: signer, url: ts.URL + "/api/v1"}

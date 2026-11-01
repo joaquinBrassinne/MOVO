@@ -300,3 +300,30 @@ type Overview struct {
 type OverviewReader interface {
 	Overview(ctx context.Context, businessID int64, now time.Time) (Overview, error)
 }
+
+// ErrMetricsPeriodInvalid means the requested number of days is not one the panel offers.
+var ErrMetricsPeriodInvalid = errors.New("benefits: metrics period is not valid")
+
+// MetricsPeriod is the window of the metrics: the last Days days, today included, on
+// Argentina's calendar. [From, To) are the instants for the coupon tables; FromDay and ToDay
+// are the same window as inclusive dates (YYYY-MM-DD) for metric_daily.
+type MetricsPeriod struct {
+	Days    int
+	From    time.Time
+	To      time.Time
+	FromDay string
+	ToDay   string
+}
+
+// EssentialMetrics are the numbers every plan sees (SDD 4.3): the views of the profile, and
+// the coupons generated and redeemed in the period. They count events, never people.
+type EssentialMetrics struct {
+	ProfileViews     int64
+	CouponsGenerated int64
+	CouponsRedeemed  int64
+}
+
+// MetricsReader reads the metrics of a business over a period. It only counts.
+type MetricsReader interface {
+	Essential(ctx context.Context, businessID int64, period MetricsPeriod) (EssentialMetrics, error)
+}

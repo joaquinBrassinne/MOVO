@@ -1749,6 +1749,67 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /me/business/metrics:
+    get:
+      operationId: benefitsGetMetrics
+      summary: Essential metrics of my business
+      description: >-
+        Requires role business_admin. The views of the profile and the coupons generated and
+        redeemed over the last `days` days, today included, on Argentina's calendar. Available
+        on every plan. Counts events, never people, and carries no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: days
+          in: query
+          required: false
+          description: Length of the period. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The metrics of the period.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [period, profile_views, coupons]
+                properties:
+                  period:
+                    type: object
+                    required: [days, from, to]
+                    properties:
+                      days:
+                        type: integer
+                      from:
+                        type: string
+                        format: date
+                      to:
+                        type: string
+                        format: date
+                  profile_views:
+                    type: integer
+                  coupons:
+                    $ref: '#/components/schemas/AdminCouponCounts'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `days` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /me/business/activity:
     get:
       operationId: benefitsGetActivity

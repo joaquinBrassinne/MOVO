@@ -67,6 +67,8 @@ type Deps struct {
 	View *queries.ViewMyCoupon
 	// Overview serves the counts of the panel home; without it the route is not mounted.
 	Overview *queries.GetOverview
+	// Metrics serves the owner's metrics over a period; without it the route is not mounted.
+	Metrics *queries.GetMetrics
 	// Quota and SetQuota serve the monthly coupon cap of the business; each route is
 	// mounted only when its use case is set.
 	Quota    *queries.GetCouponQuota
@@ -115,6 +117,9 @@ func (h *Handlers) Mount(r chi.Router) {
 	}
 	if h.Overview != nil {
 		owner.Get("/me/business/overview", h.handleOverview)
+	}
+	if h.Metrics != nil {
+		owner.Get("/me/business/metrics", h.handleMetrics)
 	}
 	if h.Quota != nil {
 		owner.Get("/me/business/coupon-quota", h.handleQuota)
@@ -517,6 +522,10 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, benefits.ErrBusinessNotEditable):
 		httpx.WriteError(w, http.StatusConflict, CodeBusinessDeleted, "this business was deleted and can no longer change", nil)
 		return
+	case errors.Is(err, benefits.ErrMetricsPeriodInvalid):
+		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the days are not valid",
+			map[string]string{"field": "days", "reason": "invalid"})
+		return
 	}
 	var below *domain.QuotaBelowGeneratedError
 	if errors.As(err, &below) {
@@ -644,6 +653,42 @@ type overviewJSON struct {
 	RedeemedToday    int `json:"redeemed_today"`
 	ProfileViews7d   int `json:"profile_views_7d"`
 	WhatsAppClicks7d int `json:"whatsapp_clicks_7d"`
+}
+
+type metricsJSON struct {
+	Period struct {
+		Days int    `json:"days"`
+		From string `json:"from"`
+		To   string `json:"to"`
+	} `json:"period"`
+	ProfileViews int64 `json:"profile_views"`
+	Coupons      struct {
+		Generated int64 `json:"generated"`
+		Redeemed  int64 `json:"redeemed"`
+	} `json:"coupons"`
+}
+
+// handleMetrics answers GET /me/business/metrics?days=7|30|90 (30 by default).
+func (h *Handlers) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	days := 0
+	if raw := r.URL.Query().Get("days"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			h.fail(w, r, benefits.ErrMetricsPeriodInvalid)
+			return
+		}
+		days = n
+	}
+	got, err := h.Metrics.Handle(r.Context(), callerID(r), days)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	var out metricsJSON
+	out.Period.Days, out.Period.From, out.Period.To = got.Period.Days, got.Period.FromDay, got.Period.ToDay
+	out.ProfileViews = got.Metrics.ProfileViews
+	out.Coupons.Generated, out.Coupons.Redeemed = got.Metrics.CouponsGenerated, got.Metrics.CouponsRedeemed
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 func (h *Handlers) handleOverview(w http.ResponseWriter, r *http.Request) {
