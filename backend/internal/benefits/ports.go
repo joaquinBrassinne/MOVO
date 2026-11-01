@@ -368,6 +368,29 @@ type ConversionReader interface {
 	Conversion(ctx context.Context, businessID int64, current, previous MetricsPeriod) (Conversion, error)
 }
 
+// BenefitCounts is what became of the coupons of one benefit generated in a period. Expired
+// counts the coupons marked expired and the pending ones whose time is already over, so it does
+// not wait for any background task; the rest of the generated ones are still pending.
+type BenefitCounts struct {
+	BenefitID int64
+	Generated int64
+	Redeemed  int64
+	Expired   int64
+}
+
+// Performance is the counts per benefit of a period and of the one before it.
+type Performance struct {
+	Current  []BenefitCounts
+	Previous []BenefitCounts
+}
+
+// PerformanceReader reads the counts per benefit. It only counts.
+type PerformanceReader interface {
+	// BenefitPerformance counts the coupons by benefit for each period; now decides which
+	// pending coupons count as expired.
+	BenefitPerformance(ctx context.Context, businessID int64, current, previous MetricsPeriod, now time.Time) (Performance, error)
+}
+
 // HeatCell is how many coupons were redeemed on one weekday (ISO: Monday 1 to Sunday 7) in
 // one time slot (0 to 3, see queries.HeatSlots), on Argentina's clock.
 type HeatCell struct {

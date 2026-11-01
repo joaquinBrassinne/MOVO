@@ -2011,6 +2011,53 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /me/business/metrics/benefits:
+    get:
+      operationId: benefitsGetBenefitPerformance
+      summary: Performance of each benefit (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. For every benefit that
+        generated a coupon in the period: the coupons generated, redeemed, expired and still pending, and
+        the redemption rate (redeemed over generated, by cohort) against the previous period. A coupon
+        counts as expired when it is marked expired or when it is still pending past its time. Benefits
+        are ordered by coupons generated. With fewer than `minimum_sample` coupons generated in all the
+        answer is only `{status: insufficient_data}` with the period and the counts. Counts only, no
+        personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The performance per benefit, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsBenefitPerformance'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /me/business/activity:
     get:
       operationId: benefitsGetActivity
@@ -3347,6 +3394,51 @@ components:
               whatsapp_clicks:
                 type: integer
               rate:
+                type: number
+                nullable: true
+    MetricsBenefitPerformance:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        benefits:
+          type: array
+          items:
+            type: object
+            required: [benefit_id, name, generated, redeemed, expired, pending, rate, previous_rate, change]
+            properties:
+              benefit_id:
+                type: integer
+                format: int64
+              name:
+                type: string
+                description: The title of the benefit, or its short label ("-15%") when it has none.
+              generated:
+                type: integer
+              redeemed:
+                type: integer
+              expired:
+                type: integer
+              pending:
+                type: integer
+              rate:
+                type: number
+                nullable: true
+              previous_rate:
+                type: number
+                nullable: true
+              change:
                 type: number
                 nullable: true
     MetricsHeatmap:

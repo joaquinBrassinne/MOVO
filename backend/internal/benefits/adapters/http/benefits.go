@@ -77,6 +77,8 @@ type Deps struct {
 	Conversion *queries.GetConversion
 	// Heatmap serves the Pro redemption heat map; without it the route is not mounted.
 	Heatmap *queries.GetHeatmap
+	// Performance serves the Pro performance per benefit; without it the route is not mounted.
+	Performance *queries.GetBenefitPerformance
 	// Quota and SetQuota serve the monthly coupon cap of the business; each route is
 	// mounted only when its use case is set.
 	Quota    *queries.GetCouponQuota
@@ -137,6 +139,9 @@ func (h *Handlers) Mount(r chi.Router) {
 	}
 	if h.Heatmap != nil {
 		owner.Get("/me/business/metrics/heatmap", h.handleHeatmap)
+	}
+	if h.Performance != nil {
+		owner.Get("/me/business/metrics/benefits", h.handleBenefitPerformance)
 	}
 	if h.Quota != nil {
 		owner.Get("/me/business/coupon-quota", h.handleQuota)
