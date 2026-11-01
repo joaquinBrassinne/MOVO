@@ -547,6 +547,36 @@ paths:
               schema:
                 type: string
                 example: no-store
+  /branches/{branch_id}/services/{service_id}/view:
+    post:
+      operationId: searchRecordServiceView
+      summary: Count a service view
+      description: Beacon the public page sends when a service is on screen. It increments an aggregate counter; no personal data is stored. A repeat from the same address within 30 minutes is not counted. Always answers 204 whether or not it counted, so it does not reveal which branches or services exist.
+      tags: [Search]
+      security: []
+      parameters:
+        - name: branch_id
+          in: path
+          required: true
+          description: Branch the service is shown under.
+          schema:
+            type: integer
+            format: int64
+        - name: service_id
+          in: path
+          required: true
+          description: The service.
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Accepted. No body.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
   /r/wa/{branch_id}:
     get:
       operationId: searchOpenWhatsApp
