@@ -2058,6 +2058,53 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /me/business/metrics/time-to-redeem:
+    get:
+      operationId: benefitsGetTimeToRedeem
+      summary: Time until redemption (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. Of the coupons redeemed in the
+        period, the share redeemed the same Argentine calendar day they were generated (`same_day`), on a
+        later day but within 24 hours (`within_24h`), and later than that, up to the 48 hours a coupon
+        lasts (`within_48h`). The buckets do not overlap and add up to `redemptions`. Each share comes
+        with the share of the previous period. With fewer than `minimum_sample` coupons generated in the
+        period the answer is only `{status: insufficient_data}` with the period and the counts. Counts
+        only, no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The buckets, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsTimeToRedeem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /me/business/activity:
     get:
       operationId: benefitsGetActivity
@@ -3396,6 +3443,32 @@ components:
               rate:
                 type: number
                 nullable: true
+    MetricsTimeToRedeem:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        redemptions:
+          type: integer
+        previous_redemptions:
+          type: integer
+        same_day:
+          $ref: '#/components/schemas/MetricsRate'
+        within_24h:
+          $ref: '#/components/schemas/MetricsRate'
+        within_48h:
+          $ref: '#/components/schemas/MetricsRate'
     MetricsBenefitPerformance:
       type: object
       required: [status, period, previous_period, coupons_generated, minimum_sample]

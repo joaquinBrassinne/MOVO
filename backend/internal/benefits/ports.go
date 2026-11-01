@@ -391,6 +391,33 @@ type PerformanceReader interface {
 	BenefitPerformance(ctx context.Context, businessID int64, current, previous MetricsPeriod, now time.Time) (Performance, error)
 }
 
+// RedeemTimes sorts the coupons redeemed in a period by how long they took to be redeemed.
+// The buckets do not overlap: SameDay is redeemed on the Argentine calendar day it was
+// generated; Within24h on a later day but no more than 24 hours after; Within48h later than
+// that (a coupon lasts 48 hours, so nothing takes longer).
+type RedeemTimes struct {
+	SameDay  int64
+	Within24 int64
+	Within48 int64
+}
+
+// Total is every coupon of the buckets.
+func (r RedeemTimes) Total() int64 { return r.SameDay + r.Within24 + r.Within48 }
+
+// TimeToRedeem is the redeem times of a period and of the one before it, with the coupons
+// generated in each (the sample).
+type TimeToRedeem struct {
+	Current                  RedeemTimes
+	Previous                 RedeemTimes
+	CouponsGenerated         int64
+	PreviousCouponsGenerated int64
+}
+
+// TimeToRedeemReader reads how long redemptions took. It only counts.
+type TimeToRedeemReader interface {
+	TimeToRedeem(ctx context.Context, businessID int64, current, previous MetricsPeriod) (TimeToRedeem, error)
+}
+
 // HeatCell is how many coupons were redeemed on one weekday (ISO: Monday 1 to Sunday 7) in
 // one time slot (0 to 3, see queries.HeatSlots), on Argentina's clock.
 type HeatCell struct {
