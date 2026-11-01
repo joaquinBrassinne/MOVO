@@ -1,7 +1,7 @@
 // Pure helpers for subscription dates and tabs. Dates are Argentine calendar days
 // (`YYYY-MM-DD`); they are never turned into local instants, so no timezone can shift them.
 
-import type { PaymentState, SubscriptionRow, SubscriptionTab } from "./types.ts";
+import type { PaymentState, SubscriptionRow } from "./types.ts";
 
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
@@ -54,51 +54,6 @@ export const STATE_LABEL: Record<PaymentState, string> = {
   grace: "En gracia",
   expired: "Vencida",
 };
-
-export const TAB_LABEL: Record<SubscriptionTab, string> = {
-  all: "Todas",
-  expiring: "Por vencer (7 días)",
-  grace: "En gracia",
-  expired: "Vencidas",
-  ok: "Al día",
-};
-
-export const TAB_ORDER: SubscriptionTab[] = ["all", "expiring", "grace", "expired", "ok"];
-
-/** How many rows each tab holds. */
-export function tabCounts(rows: SubscriptionRow[]): Record<SubscriptionTab, number> {
-  const counts: Record<SubscriptionTab, number> = {
-    all: rows.length,
-    ok: 0,
-    expiring: 0,
-    grace: 0,
-    expired: 0,
-  };
-  for (const row of rows) counts[paymentState(row)] += 1;
-  return counts;
-}
-
-function normalize(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .trim();
-}
-
-/** The rows of a tab whose business name contains the search text (case and accent blind). */
-export function filterRows(
-  rows: SubscriptionRow[],
-  tab: SubscriptionTab,
-  search: string,
-): SubscriptionRow[] {
-  const needle = normalize(search);
-  return rows.filter(
-    (row) =>
-      (tab === "all" || paymentState(row) === tab) &&
-      (needle === "" || normalize(row.business_name).includes(needle)),
-  );
-}
 
 /** Up to two initials for the avatar: "Alma Haus Training" -> "AH". */
 export function initials(name: string): string {

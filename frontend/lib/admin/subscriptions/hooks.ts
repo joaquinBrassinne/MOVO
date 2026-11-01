@@ -7,7 +7,7 @@ import type { Loaded } from "@/lib/business/hooks";
 import type { Plan } from "@/lib/plans/types";
 
 import { getPlanCatalog, getSubscription, listSubscriptions } from "./api";
-import type { Subscription, SubscriptionRow } from "./types";
+import type { Subscription, SubscriptionFilters, SubscriptionList } from "./types";
 
 interface Resource<T> {
   state: Loaded<T>;
@@ -44,13 +44,14 @@ function useLoaded<T, R>(
   return { state, reload: () => setVersion((current) => current + 1) };
 }
 
-const rowsOf = (data: { subscriptions: SubscriptionRow[] }) => data.subscriptions;
 const plansOf = (data: { plans: Plan[] }) => data.plans;
 const same = (data: Subscription) => data;
+const sameList = (data: SubscriptionList) => data;
 
-/** Every subscription, ordered by expiry; the tabs are derived on the client. */
-export function useSubscriptions(): Resource<SubscriptionRow[]> {
-  return useLoaded(listSubscriptions, rowsOf, []);
+/** One page of subscriptions (ordered by expiry) and how many matched the filters in all. */
+export function useSubscriptions(filters: SubscriptionFilters): Resource<SubscriptionList> {
+  const { status, plan, query, page } = filters;
+  return useLoaded(() => listSubscriptions(filters), sameList, [status, plan, query, page]);
 }
 
 /** The subscription of a business; `missing` when it has none. */

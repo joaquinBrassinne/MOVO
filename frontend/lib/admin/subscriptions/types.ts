@@ -25,10 +25,25 @@ export interface SubscriptionRow extends Subscription {
   days_left: number;
   /** A wa.me link with the reminder text; empty when the business has no usable contact. */
   reminder_url: string;
+  /** The plan (a pilot gets Pro's) includes priority support: only a mark for the admin. */
+  priority_support: boolean;
 }
 
 export interface SubscriptionList {
   subscriptions: SubscriptionRow[];
+  /** Entries that match the filters, before paging. */
+  total: number;
+}
+
+/** `""` is every status; the values are the `status` query of the API. */
+export type SubscriptionStatusFilter = "" | "expiring" | "grace" | "expired";
+
+export interface SubscriptionFilters {
+  status: SubscriptionStatusFilter;
+  plan: "" | PlanId;
+  query: string;
+  /** 1-based. */
+  page: number;
 }
 
 export interface NamedItem {
@@ -49,5 +64,3 @@ export interface ConfirmPaymentInput {
 
 /** What the admin sees for a subscription; it merges the paid status with the expiry warning. */
 export type PaymentState = "ok" | "expiring" | "grace" | "expired";
-
-export type SubscriptionTab = "all" | PaymentState;

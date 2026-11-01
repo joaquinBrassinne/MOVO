@@ -4,13 +4,23 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { Logo } from "@/components/Logo";
-import { GridIcon, LogOutIcon, StarIcon, StoreIcon } from "@/components/socios/icons";
+import { GridIcon, LogOutIcon, StarIcon, StoreIcon, Svg } from "@/components/socios/icons";
 import { useSession } from "@/lib/session/SessionProvider";
+
+const ChartIcon = ({ className }: { className?: string }) => (
+  <Svg className={className}>
+    <path d="M3 3v18h18" />
+    <path d="M7 16v-4" />
+    <path d="M12 16V8" />
+    <path d="M17 16v-7" />
+  </Svg>
+);
 
 const NAV = [
   { href: "/admin/businesses", label: "Locales", Icon: StoreIcon },
   { href: "/admin/subscriptions", label: "Suscripciones", Icon: GridIcon },
   { href: "/admin/reviews", label: "Reseñas", Icon: StarIcon },
+  { href: "/admin/metrics", label: "Métricas", Icon: ChartIcon },
 ];
 
 /** Marco del panel del super admin: barra lateral oscura y contenido ancho. */

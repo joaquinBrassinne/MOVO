@@ -1,15 +1,18 @@
 import { authed } from "@/lib/api/authed";
 import type { PlansResponse } from "@/lib/plans/types";
 
+import { subscriptionsQuery } from "./query";
 import type {
   ConfirmPaymentInput,
   PlanChange,
   PlanId,
   Subscription,
+  SubscriptionFilters,
   SubscriptionList,
 } from "./types";
 
-export const listSubscriptions = () => authed<SubscriptionList>("GET", "/admin/subscriptions");
+export const listSubscriptions = (filters: SubscriptionFilters) =>
+  authed<SubscriptionList>("GET", `/admin/subscriptions?${subscriptionsQuery(filters)}`);
 
 export const getSubscription = (businessId: number) =>
   authed<Subscription>("GET", `/admin/subscriptions/${businessId}`);
