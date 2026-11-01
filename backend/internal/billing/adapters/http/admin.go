@@ -115,16 +115,27 @@ type listEntryJSON struct {
 	ReminderURL    string `json:"reminder_url"`
 }
 
-// handleList answers GET /admin/subscriptions?status=active|grace|expired|expiring. The
+// handleList answers GET /admin/subscriptions?status=active|grace|expired|expiring, narrowed
+// by plan and q (part of the business name) and paged with limit and offset. The
 // "expiring" filter is the "por vencer en 7 días" view, each entry with its reminder link.
 func (a *Admin) handleList(w http.ResponseWriter, r *http.Request) {
-	entries, err := a.deps.List.Handle(r.Context(), r.URL.Query().Get("status"), domain.DayOf(a.now()))
+	query := r.URL.Query()
+	limit, okLimit := intParam(query.Get("limit"))
+	offset, okOffset := intParam(query.Get("offset"))
+	if !okLimit || !okOffset {
+		a.fail(w, r, queries.ErrPageInvalid)
+		return
+	}
+	page, err := a.deps.List.Handle(r.Context(), queries.SubscriptionFilter{
+		Status: query.Get("status"), Plan: query.Get("plan"), Query: query.Get("q"),
+		Limit: limit, Offset: offset,
+	}, domain.DayOf(a.now()))
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	out := make([]listEntryJSON, 0, len(entries))
-	for _, e := range entries {
+	out := make([]listEntryJSON, 0, len(page.Entries))
+	for _, e := range page.Entries {
 		item := a.toJSON(e.Subscription)
 		item.Status = string(e.Status)
 		out = append(out, listEntryJSON{
@@ -132,7 +143,16 @@ func (a *Admin) handleList(w http.ResponseWriter, r *http.Request) {
 			Pilot: e.Pilot, ExpiringSoon: e.ExpiringSoon, DaysLeft: e.DaysLeft, ReminderURL: e.ReminderURL,
 		})
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"subscriptions": out})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"subscriptions": out, "total": page.Total})
+}
+
+// intParam reads an optional integer query parameter; an absent one is 0 (no paging).
+func intParam(raw string) (int, bool) {
+	if raw == "" {
+		return 0, true
+	}
+	n, err := strconv.Atoi(raw)
+	return n, err == nil
 }
 
 func (a *Admin) handleGet(w http.ResponseWriter, r *http.Request) {
@@ -234,6 +254,7 @@ func items(in []billing.Item) []billing.Item {
 
 var validation = map[error]fieldError{
 	queries.ErrSubscriptionFilterInvalid: {"status", "invalid"},
+	queries.ErrPageInvalid:               {"limit", "invalid"},
 	domain.ErrPlanInvalid:                {"plan", "invalid"},
 	domain.ErrPaidUntilInvalid:           {"paid_until", "invalid"},
 	commands.ErrPaidUntilInThePast:       {"paid_until", "in_the_past"},

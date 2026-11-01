@@ -2507,25 +2507,58 @@ paths:
           schema:
             type: string
             enum: [active, grace, expired, expiring]
+        - name: plan
+          in: query
+          required: false
+          description: Only subscriptions on this plan.
+          schema:
+            type: string
+            enum: [starter, pro]
+        - name: q
+          in: query
+          required: false
+          description: Case-insensitive part of the business name.
+          schema:
+            type: string
+            maxLength: 100
+        - name: limit
+          in: query
+          required: false
+          description: Page size. Omit for every entry.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100
+        - name: offset
+          in: query
+          required: false
+          description: Entries to skip.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
-          description: The subscriptions.
+          description: The page of subscriptions and how many matched in all.
           content:
             application/json:
               schema:
                 type: object
-                required: [subscriptions]
+                required: [subscriptions, total]
                 properties:
                   subscriptions:
                     type: array
                     items:
                       $ref: '#/components/schemas/BillingSubscriptionEntry'
+                  total:
+                    type: integer
+                    description: Entries that match the filters, before paging.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '422':
-          description: '`validation_failed` with `details.field` `status` (invalid).'
+          description: '`validation_failed` with `details.field` `status`, `plan` or `limit` (invalid).'
           content:
             application/json:
               schema:

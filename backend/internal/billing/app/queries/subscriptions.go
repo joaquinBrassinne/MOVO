@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strings"
 
 	"github.com/joaquinBrassinne/MOVO/internal/billing"
 	"github.com/joaquinBrassinne/MOVO/internal/billing/domain"
@@ -13,6 +14,29 @@ import (
 
 // ErrSubscriptionFilterInvalid means the status filter is not one of the known values.
 var ErrSubscriptionFilterInvalid = errors.New("billing: subscription filter is not valid")
+
+// ErrPageInvalid means limit or offset is negative or the limit is over MaxSubscriptionPage.
+var ErrPageInvalid = errors.New("billing: page is not valid")
+
+// MaxSubscriptionPage is the largest page ListSubscriptions serves.
+const MaxSubscriptionPage = 100
+
+// SubscriptionFilter narrows and pages the list. Every field is optional: Status is one of the
+// Filter* values, Plan a plan name, Query a case-insensitive part of the business name, and a
+// zero Limit means no paging.
+type SubscriptionFilter struct {
+	Status string
+	Plan   string
+	Query  string
+	Limit  int
+	Offset int
+}
+
+// SubscriptionPage is the requested slice of the list plus how many entries matched in all.
+type SubscriptionPage struct {
+	Entries []SubscriptionEntry
+	Total   int
+}
 
 // Filters of ListSubscriptions. Empty means every subscription. Expiring is an active
 // subscription that ends within domain.ExpiringSoonDays.
@@ -45,18 +69,30 @@ func NewListSubscriptions(directory billing.SubscriptionDirectory) *ListSubscrip
 	return &ListSubscriptions{directory: directory}
 }
 
-// Handle returns the subscriptions that match filter, the ones ending first on top.
-func (q *ListSubscriptions) Handle(ctx context.Context, filter string, today domain.Day) ([]SubscriptionEntry, error) {
-	switch filter {
+// Handle returns the page of subscriptions that match filter, the ones ending first on top.
+func (q *ListSubscriptions) Handle(ctx context.Context, filter SubscriptionFilter, today domain.Day) (SubscriptionPage, error) {
+	switch filter.Status {
 	case "", FilterActive, FilterGrace, FilterExpired, FilterExpiring:
 	default:
-		return nil, ErrSubscriptionFilterInvalid
+		return SubscriptionPage{}, ErrSubscriptionFilterInvalid
+	}
+	var plan domain.Plan
+	if filter.Plan != "" {
+		parsed, err := domain.ParsePlan(filter.Plan)
+		if err != nil {
+			return SubscriptionPage{}, err
+		}
+		plan = parsed
+	}
+	if filter.Limit < 0 || filter.Offset < 0 || filter.Limit > MaxSubscriptionPage {
+		return SubscriptionPage{}, ErrPageInvalid
 	}
 
 	rows, err := q.directory.List(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list subscriptions: %w", err)
+		return SubscriptionPage{}, fmt.Errorf("list subscriptions: %w", err)
 	}
+	needle := strings.ToLower(strings.TrimSpace(filter.Query))
 
 	entries := make([]SubscriptionEntry, 0, len(rows))
 	for _, row := range rows {
@@ -68,14 +104,28 @@ func (q *ListSubscriptions) Handle(ctx context.Context, filter string, today dom
 			DaysLeft:        today.DaysUntil(sub.PaidUntil),
 			ReminderURL:     ReminderURL(row.OwnerWhatsApp, row.BusinessName, sub.PaidUntil),
 		}
-		if matches(filter, entry) {
+		if matches(filter.Status, entry) && (plan == "" || sub.Plan == plan) &&
+			strings.Contains(strings.ToLower(row.BusinessName), needle) {
 			entries = append(entries, entry)
 		}
 	}
 	sort.SliceStable(entries, func(i, j int) bool {
 		return entries[i].Subscription.PaidUntil.Before(entries[j].Subscription.PaidUntil)
 	})
-	return entries, nil
+	return paginate(entries, filter.Limit, filter.Offset), nil
+}
+
+// paginate cuts the page out of entries. A zero limit keeps everything from offset on.
+func paginate(entries []SubscriptionEntry, limit, offset int) SubscriptionPage {
+	total := len(entries)
+	if offset >= total {
+		return SubscriptionPage{Entries: []SubscriptionEntry{}, Total: total}
+	}
+	end := total
+	if limit > 0 && offset+limit < total {
+		end = offset + limit
+	}
+	return SubscriptionPage{Entries: entries[offset:end], Total: total}
 }
 
 func matches(filter string, e SubscriptionEntry) bool {

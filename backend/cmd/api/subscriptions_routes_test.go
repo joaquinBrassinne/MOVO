@@ -185,6 +185,17 @@ VALUES ($1, $2, 'Calle 2', 'Cordoba', ST_SetSRID(ST_MakePoint(-64.19, -31.43), 4
 	if status, body := h.do(http.MethodGet, "/admin/subscriptions?status=bogus", adminToken, nil); status != http.StatusUnprocessableEntity || errorCode(body) != "validation_failed" {
 		t.Errorf("bad filter = %d %q, want 422 validation_failed", status, errorCode(body))
 	}
+	if status, body := h.do(http.MethodGet, "/admin/subscriptions?plan=starter&limit=1", adminToken, nil); status != http.StatusOK || body["total"] != float64(1) {
+		t.Errorf("plan filter = %d %v, want 200 with total 1", status, body)
+	}
+	if status, body := h.do(http.MethodGet, "/admin/subscriptions?plan=pro", adminToken, nil); status != http.StatusOK || body["total"] != float64(0) {
+		t.Errorf("plan pro = %d %v, want 200 with total 0", status, body)
+	}
+	for _, bad := range []string{"plan=gold", "limit=101", "limit=abc", "offset=-1"} {
+		if status, body := h.do(http.MethodGet, "/admin/subscriptions?"+bad, adminToken, nil); status != http.StatusUnprocessableEntity || errorCode(body) != "validation_failed" {
+			t.Errorf("%s = %d %q, want 422 validation_failed", bad, status, errorCode(body))
+		}
+	}
 
 	// The three actions are in the history of the business, with who did them.
 	var actions []string

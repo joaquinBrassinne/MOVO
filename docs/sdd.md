@@ -614,7 +614,7 @@ Convenciones de trabajo:
 ### Fase 6 — Panel Super Admin y métricas
 **Objetivo:** que el admin opere sin tocar la base y que el dueño vea resultados.
 
-- [ ] 6.1 Super admin: listados y filtros de locales y suscripciones (M)
+- [x] 6.1 Super admin: listados y filtros de locales y suscripciones (M) — `GET /admin/subscriptions` suma `plan`, `q` (nombre del local), `limit`/`offset` y `total`; sin `limit` devuelve todo, para no recortar la vista actual (la de locales ya filtraba y paginaba)
 - [ ] 6.2 Reseteo de contraseña asistido (enlace temporal para enviar por WhatsApp) (M)
 - [ ] 6.3 Métricas del super admin: locales activos, cupones generados y canjeados (S)
 - [ ] 6.3b Anti-inflado de métricas: descartar el mismo clic o vista repetido desde la misma IP en una ventana corta, en memoria (interfaz lista para Redis) y sin persistir la IP; se aplica a `profile_view`, `service_view` y `whatsapp_click` antes de mostrar métricas en el panel (S)
