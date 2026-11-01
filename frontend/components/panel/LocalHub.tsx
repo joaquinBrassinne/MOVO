@@ -4,6 +4,7 @@ import { TicketIcon } from "@/components/benefits/icons";
 import {
   ArrowRightIcon,
   ClockIcon,
+  GridIcon,
   ImageIcon,
   MapPinIcon,
   StoreIcon,
@@ -33,6 +34,12 @@ const SECTIONS = [
     title: "Fotos",
     body: "La galería que se ve en la ficha de tu local.",
     icon: ImageIcon,
+  },
+  {
+    href: "/owners/metrics",
+    title: "Métricas",
+    body: "Vistas, cupones y, en el Plan Pro, inteligencia comercial.",
+    icon: GridIcon,
   },
   {
     href: "/owners/plan",

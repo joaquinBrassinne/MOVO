@@ -31,6 +31,7 @@ const NAV = [
       "/owners/services",
       "/owners/photos",
       "/owners/plan",
+      "/owners/metrics",
     ],
   },
 ] as const;
