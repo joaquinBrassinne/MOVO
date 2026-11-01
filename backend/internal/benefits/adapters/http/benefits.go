@@ -83,6 +83,9 @@ type Deps struct {
 	TimeToRedeem *queries.GetTimeToRedeem
 	// Returning serves how many customers came back; without it the route is not mounted.
 	Returning *queries.GetRepeatCustomers
+	// QuotaProjection serves the Pro estimate of when the quota runs out; without it the route
+	// is not mounted.
+	QuotaProjection *queries.GetQuotaProjection
 	// Quota and SetQuota serve the monthly coupon cap of the business; each route is
 	// mounted only when its use case is set.
 	Quota    *queries.GetCouponQuota
@@ -152,6 +155,9 @@ func (h *Handlers) Mount(r chi.Router) {
 	}
 	if h.Returning != nil {
 		owner.Get("/me/business/metrics/returning-customers", h.handleRepeatCustomers)
+	}
+	if h.QuotaProjection != nil {
+		owner.Get("/me/business/metrics/quota-projection", h.handleQuotaProjection)
 	}
 	if h.Quota != nil {
 		owner.Get("/me/business/coupon-quota", h.handleQuota)

@@ -2151,6 +2151,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /me/business/metrics/quota-projection:
+    get:
+      operationId: benefitsGetQuotaProjection
+      summary: When the monthly coupon quota runs out (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. A linear estimate, from the
+        pace of the month so far on Argentina's calendar, of the day the monthly coupon quota runs out.
+        It takes no period: it looks at the month in course. `status` says what is known:
+        `no_quota` (the business has no limit; nothing else is sent), `insufficient_data` (fewer than
+        `minimum_days` days have gone by or nothing was generated yet), `exhausted` (the quota is used
+        up), `on_track` (at this pace it lasts until `resets_on`) and `will_run_out` (it runs out on
+        `exhausts_on`). Counts only, no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The projection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsQuotaProjection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /me/business/activity:
     get:
       operationId: benefitsGetActivity
@@ -3489,6 +3521,41 @@ components:
               rate:
                 type: number
                 nullable: true
+    MetricsQuotaProjection:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [no_quota, insufficient_data, exhausted, on_track, will_run_out]
+        limit:
+          type: integer
+        generated:
+          type: integer
+          description: Coupons generated this month.
+        days_elapsed:
+          type: integer
+          description: Days of the month gone by, today included.
+        days_in_month:
+          type: integer
+        minimum_days:
+          type: integer
+          description: Days that must go by before an estimate is made. Sent with insufficient_data.
+          example: 3
+        daily_rate:
+          type: number
+          description: Coupons generated per day so far. Sent with on_track and will_run_out.
+        projected_total:
+          type: integer
+          description: Coupons the month would end with at this pace. Sent with on_track and will_run_out.
+        exhausts_on:
+          type: string
+          format: date
+          description: Day the quota runs out. Sent with will_run_out.
+        resets_on:
+          type: string
+          format: date
+          description: First day of the next month, when the count starts again.
     MetricsReturningCustomers:
       type: object
       required: [status, period, previous_period, coupons_generated, minimum_sample]
