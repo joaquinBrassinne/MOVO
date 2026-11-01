@@ -615,7 +615,7 @@ Convenciones de trabajo:
 **Objetivo:** que el admin opere sin tocar la base y que el dueño vea resultados.
 
 - [x] 6.1 Super admin: listados y filtros de locales y suscripciones (M) — `GET /admin/subscriptions` suma `plan`, `q` (nombre del local), `limit`/`offset` y `total`; sin `limit` devuelve todo, para no recortar la vista actual (la de locales ya filtraba y paginaba)
-- [ ] 6.2 Reseteo de contraseña asistido (enlace temporal para enviar por WhatsApp) (M)
+- [x] 6.2 Reseteo de contraseña asistido (enlace temporal para enviar por WhatsApp) (M) — `POST /admin/password-resets` (super admin, solo dueños) devuelve un token de un solo uso y 24 h; `POST /auth/reset-password` lo canjea, cambia la clave y cierra todas las sesiones; solo se guarda el hash del token y cada paso queda en `audit_log`. Las pantallas van en 6.9
 - [ ] 6.3 Métricas del super admin: locales activos, cupones generados y canjeados (S)
 - [ ] 6.3b Anti-inflado de métricas: descartar el mismo clic o vista repetido desde la misma IP en una ventana corta, en memoria (interfaz lista para Redis) y sin persistir la IP; se aplica a `profile_view`, `service_view` y `whatsapp_click` antes de mostrar métricas en el panel (S)
 - [ ] 6.4 Métricas esenciales del local (Starter) sobre `metric_daily` y las tablas de cupones (M)

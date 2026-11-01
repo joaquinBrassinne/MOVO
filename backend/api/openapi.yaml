@@ -228,6 +228,108 @@ paths:
           description: Session closed. No body.
         '400':
           $ref: '#/components/responses/BadRequest'
+  /auth/reset-password:
+    post:
+      operationId: identityResetPassword
+      summary: Set a new password with a reset link
+      description: >-
+        Public: the one-time token the super admin sent is the credential. On success the
+        password changes and every session of the owner ends. A token that is unknown,
+        expired (24 hours) or already used answers `invalid_reset_token`. Rate limited per
+        address. Not cached.
+      tags: [Identity]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '204':
+          description: Password changed. No body.
+        '400':
+          description: '`invalid_reset_token`, or a body that is not valid JSON.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `password` (`too_short` or `too_long`).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: '`too_many_attempts`, with `Retry-After`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/password-resets:
+    post:
+      operationId: identityIssuePasswordReset
+      summary: Issue a password reset link for an owner
+      description: >-
+        Requires role `super_admin`. Returns the token once; only its digest is stored. The
+        admin builds the link `/owners/reset-password?token=...` and sends it to the owner by
+        WhatsApp. The token works once and for 24 hours; a new one retires the previous.
+        Only business owners can be reset: a super admin email answers 404 like an unknown
+        one. The action is recorded in the audit log. Not cached.
+      tags: [Identity]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+      responses:
+        '201':
+          description: The token, shown this once.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user_id, email, token, expires_at]
+                properties:
+                  user_id:
+                    type: integer
+                    format: int64
+                  email:
+                    type: string
+                  token:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: '`user_not_found`: no owner has that email.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `email` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /search:
     get:
       operationId: searchNearby

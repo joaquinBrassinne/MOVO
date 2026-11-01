@@ -47,7 +47,8 @@ func newAPIHarness(t *testing.T) *apiHarness {
 		t.Fatalf("newBusinessRoutes: %v", err)
 	}
 	// The reviews routes share /me/business and /admin with the business ones, as in main.
-	ts := httptest.NewServer(httpx.NewRouter(nil, pool, businessMount, billingMount, newReviewsRoutes(nil, pool, signer)))
+	ts := httptest.NewServer(httpx.NewRouter(nil, pool, newIdentityRoutes(nil, pool, config.Auth{RefreshTokenTTL: time.Hour}, signer),
+		businessMount, billingMount, newReviewsRoutes(nil, pool, signer)))
 	t.Cleanup(ts.Close)
 
 	return &apiHarness{t: t, pool: pool, signer: signer, url: ts.URL + "/api/v1"}
