@@ -418,6 +418,38 @@ type TimeToRedeemReader interface {
 	TimeToRedeem(ctx context.Context, businessID int64, current, previous MetricsPeriod) (TimeToRedeem, error)
 }
 
+// MonthRedemptions is how many coupons were redeemed in a calendar month ("2006-01") on
+// Argentina's calendar.
+type MonthRedemptions struct {
+	Month       string
+	Redemptions int64
+}
+
+// BenefitRedemptions is how many coupons of one benefit were redeemed.
+type BenefitRedemptions struct {
+	BenefitID   int64
+	Redemptions int64
+}
+
+// RecordsData is what "Tus récords" works from: the redemptions of the 12 complete months
+// before the current one, the current month so far, and the weekday, slot and benefit of the
+// redemptions of those 12 months. Months and Cells list only the ones with redemptions.
+type RecordsData struct {
+	// FirstCouponAt is when the business generated its first coupon, nil if it never did.
+	FirstCouponAt           *time.Time
+	Months                  []MonthRedemptions
+	CurrentMonthRedemptions int64
+	Cells                   []HeatCell
+	Benefits                []BenefitRedemptions
+}
+
+// RecordsReader reads the data behind the records. windowFrom is the first instant of the
+// oldest of the 12 months, monthStart the first instant of the current month, which ends the
+// window. It only counts.
+type RecordsReader interface {
+	Records(ctx context.Context, businessID int64, windowFrom, monthStart time.Time) (RecordsData, error)
+}
+
 // ReviewStats are the reviews a business got in a period and the redemptions that left one. A
 // hidden review is not counted: it is not public. A reported one still is, like everywhere else.
 type ReviewStats struct {

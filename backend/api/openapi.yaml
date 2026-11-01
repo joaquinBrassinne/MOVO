@@ -2326,6 +2326,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /me/business/metrics/records:
+    get:
+      operationId: benefitsGetRecords
+      summary: Your records (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. It takes no period: it looks
+        at the 12 complete calendar months before the current one, on Argentina's calendar. The best
+        month by redemptions (the month in course never enters the ranking; a tie goes to the most
+        recent month), how far the month in course has gone against it (`progress` 0.65 is "vas al
+        65 %"; `record_in_progress` once it beats it), the strong weekday and slot (from the redemption
+        heat map of those 12 months) and the star benefit (the one with the most redemptions in them).
+        It needs at least `minimum_history_months` complete months of history, counted from the first
+        coupon the business generated, and `minimum_best_month_redemptions` redemptions in the best
+        month; otherwise the answer is `{status: insufficient_data}` with the history and, when the
+        history is enough, the best month's count. Counts only, no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The records, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsRecords'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /me/business/activity:
     get:
       operationId: benefitsGetActivity
@@ -3664,6 +3699,85 @@ components:
               rate:
                 type: number
                 nullable: true
+    MetricsRecords:
+      type: object
+      required: [status, history_months, minimum_history_months, minimum_best_month_redemptions, window]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        history_months:
+          type: integer
+          description: Complete calendar months, among the last 12, that began after the first coupon.
+        minimum_history_months:
+          type: integer
+          example: 2
+        minimum_best_month_redemptions:
+          type: integer
+          example: 20
+        window:
+          type: object
+          required: [from, to]
+          properties:
+            from:
+              type: string
+              format: date
+            to:
+              type: string
+              format: date
+        best_month_redemptions:
+          type: integer
+          description: Sent with insufficient_data when the history is enough.
+        best_month:
+          type: object
+          required: [month, redemptions]
+          properties:
+            month:
+              type: string
+              example: '2028-02'
+            redemptions:
+              type: integer
+        current_month:
+          type: object
+          required: [month, redemptions, progress, record_in_progress]
+          properties:
+            month:
+              type: string
+            redemptions:
+              type: integer
+            progress:
+              type: number
+              description: Redemptions of the month in course over those of the best month.
+            record_in_progress:
+              type: boolean
+        strong_weekday:
+          type: integer
+          minimum: 1
+          maximum: 7
+          description: ISO weekday with the most redemptions, Monday 1 to Sunday 7.
+        strong_slot:
+          type: object
+          required: [slot, key]
+          properties:
+            slot:
+              type: integer
+              minimum: 0
+              maximum: 3
+            key:
+              type: string
+              enum: [overnight, morning, afternoon, evening]
+        star_benefit:
+          type: object
+          nullable: true
+          required: [benefit_id, name, redemptions]
+          properties:
+            benefit_id:
+              type: integer
+              format: int64
+            name:
+              type: string
+            redemptions:
+              type: integer
     MetricsReviewsOverTime:
       type: object
       required: [status, period, previous_period, coupons_generated, minimum_sample]

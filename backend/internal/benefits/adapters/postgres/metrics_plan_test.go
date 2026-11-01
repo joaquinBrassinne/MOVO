@@ -117,6 +117,11 @@ func TestMetricsQueriesUseTheIndexesInsteadOfReadingEveryCoupon(t *testing.T) {
 			"benefit_codes_business_redeemed_idx",
 		},
 		{
+			"first coupon of a business",
+			`SELECT min(created_at) FROM benefit_codes WHERE business_id = $1`,
+			"benefit_codes_business_created_idx",
+		},
+		{
 			"average rating of the reviews of 90 days",
 			`SELECT count(*), avg(rating) FROM reviews WHERE business_id = $1 AND status <> 'hidden' AND created_at >= now() - interval '90 days' AND created_at < now()`,
 			"reviews_business_created_idx",

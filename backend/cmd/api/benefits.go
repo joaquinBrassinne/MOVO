@@ -85,6 +85,7 @@ func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.Toke
 		EstimatedReturn:  queries.NewGetEstimatedReturn(gate, plan, coupons, nil),
 		BranchComparison: queries.NewGetBranchComparison(gate, coupons, nil),
 		ReviewsOverTime:  queries.NewGetReviewsOverTime(gate, coupons, nil),
+		Records:          queries.NewGetRecords(gate, repo, coupons, nil),
 		Quota:            queries.NewGetCouponQuota(owners, coupons, nil),
 		SetQuota:         commands.NewSetCouponQuota(owners, coupons, nil),
 		Generate:         commands.NewGenerateCode(coupons, limiter, nil, nil),
