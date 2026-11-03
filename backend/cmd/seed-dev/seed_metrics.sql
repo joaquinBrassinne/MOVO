@@ -18,11 +18,20 @@ BEGIN
         RETURN;
     END IF;
     SELECT id INTO brid FROM branches WHERE business_id = bid ORDER BY id LIMIT 1;
-    benefits := ARRAY(SELECT id FROM benefits WHERE business_id = bid ORDER BY id);
-    clients  := ARRAY(SELECT id FROM customers WHERE phone LIKE '549357100000%' ORDER BY id);
-    IF brid IS NULL OR cardinality(benefits) = 0 OR cardinality(clients) = 0 THEN
+    IF brid IS NULL THEN
         RETURN;
     END IF;
+
+    -- Own benefit and customers, so this works whatever the other seeds (or the owner) already made.
+    IF NOT EXISTS (SELECT 1 FROM benefits WHERE business_id = bid) THEN
+        INSERT INTO benefits (business_id, type, percent, conditions) VALUES (bid, 'percent', 15, 'Beneficio de prueba.');
+    END IF;
+    INSERT INTO customers (name, phone)
+    SELECT 'Cliente de prueba ' || g, '54935711000' || lpad(g::text, 2, '0')
+    FROM generate_series(1, 6) g
+    WHERE NOT EXISTS (SELECT 1 FROM customers WHERE phone = '54935711000' || lpad(g::text, 2, '0'));
+    benefits := ARRAY(SELECT id FROM benefits WHERE business_id = bid ORDER BY id);
+    clients  := ARRAY(SELECT id FROM customers WHERE phone LIKE '54935711000%' ORDER BY id);
 
     UPDATE businesses SET average_ticket_ars = 6500 WHERE id = bid;
     UPDATE subscriptions SET plan = 'pro' WHERE business_id = bid;
@@ -52,13 +61,16 @@ BEGIN
 
     -- Counters for the last 90 days that the seed of coupons does not cover (it has the last 7).
     INSERT INTO metric_daily (business_id, branch_id, date, metric, count)
-    SELECT bid, NULL, (current_date - d), 'profile_view', 30 + (d * 7) % 41 FROM generate_series(7, 89) d;
+    SELECT bid, NULL, (current_date - d), 'profile_view', 30 + (d * 7) % 41 FROM generate_series(7, 89) d
+    ON CONFLICT DO NOTHING;
     INSERT INTO metric_daily (business_id, branch_id, date, metric, count)
-    SELECT bid, brid, (current_date - d), 'whatsapp_click', 4 + (d * 5) % 9 FROM generate_series(7, 89) d;
+    SELECT bid, brid, (current_date - d), 'whatsapp_click', 4 + (d * 5) % 9 FROM generate_series(7, 89) d
+    ON CONFLICT DO NOTHING;
     INSERT INTO metric_daily (business_id, branch_id, service_id, date, metric, count)
     SELECT bid, brid, s.id, (current_date - d), 'service_view', 3 + (d * s.id) % 11
     FROM services s, generate_series(0, 89) d
-    WHERE s.business_id = bid AND s.deleted_at IS NULL;
+    WHERE s.business_id = bid AND s.deleted_at IS NULL
+    ON CONFLICT DO NOTHING;
 
     INSERT INTO alerts (business_id, type, payload)
     VALUES (bid, 'unredeemed_coupons',
