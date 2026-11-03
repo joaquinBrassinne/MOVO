@@ -72,6 +72,24 @@ test("the proxy lets the public reviews of a branch through", async () => {
   assert.equal(await reachesTheApi("GET", "branches/12/reviews/summary"), true);
 });
 
+test("the proxy lets the service view beacon and the owner's new password through, with no session", async () => {
+  assert.equal(await reachesTheApi("POST", "branches/12/services/34/view"), true);
+  assert.equal(await reachesTheApi("POST", "auth/reset-password"), true);
+});
+
+test("the proxy still refuses what is next to the beacon and the reset routes", async () => {
+  for (const path of [
+    "branches/12/services/view",
+    "branches/12/services/abc/view",
+    "branches/12/services/34/other",
+    "auth/login",
+    "auth/refresh",
+    "auth/reset-password/extra",
+  ]) {
+    assert.equal(await reachesTheApi("POST", path), false, `${path} must not pass`);
+  }
+});
+
 test("the proxy still refuses what is next to the review routes", async () => {
   for (const path of [
     `access/${COUPON_TOKEN}/other`,

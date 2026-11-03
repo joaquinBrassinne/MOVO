@@ -77,6 +77,11 @@ const PROXIED = [
   // y redirige a wa.me. La respuesta del botón es una redirección que el navegador sigue.
   /^businesses\/[a-z0-9-]+\/view$/,
   /^r\/wa\/\d+$/,
+  // El aviso de que un servicio estuvo a la vista (POST, siempre 204) y la clave nueva del dueño
+  // con el enlace que le dio el super admin: ninguno tiene sesión. Login y refresh van por
+  // /api/session, nunca por acá.
+  /^branches\/\d+\/services\/\d+\/view$/,
+  /^auth\/reset-password$/,
   // El cliente no tiene cuenta: genera su cupón (POST) y lo vuelve a ver con su enlace de
   // acceso, cuyo token tiene 43 caracteres. Son los únicos puntos de cupones sin sesión.
   /^benefits\/\d+\/codes$/,
