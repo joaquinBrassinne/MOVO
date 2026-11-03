@@ -28,7 +28,9 @@ type Handlers struct {
 	view     *commands.RecordProfileView
 	// serviceView counts the views of a service.
 	serviceView *commands.RecordServiceView
-	log         *slog.Logger
+	// limiter, when set, caps the requests of GET /search and GET /home/featured per client.
+	limiter Limiter
+	log     *slog.Logger
 }
 
 // New builds the handlers. A nil logger discards logs.
@@ -41,8 +43,8 @@ func New(nearby *queries.NearbyBranches, featured *queries.FeaturedBranches, log
 
 // Mount registers GET /search, GET /home/featured and, when enabled, GET /businesses/{slug}. All are public and take no identity.
 func (h *Handlers) Mount(r chi.Router) {
-	r.Get("/search", h.handleSearch)
-	r.Get("/home/featured", h.handleFeatured)
+	r.With(h.limit).Get("/search", h.handleSearch)
+	r.With(h.limit).Get("/home/featured", h.handleFeatured)
 	if h.profile != nil {
 		r.Get("/businesses/{slug}", h.handleProfile)
 	}

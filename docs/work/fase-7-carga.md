@@ -4,6 +4,8 @@ Estado: **herramientas listas, mediciones pendientes**. Las celdas de las tablas
 
 Línea base de la Fase 3 (`docs/work/fase-3-busqueda.md`, solo la consulta, sin red ni HTTP, 10 000 negocios): `/search` 5 km zona densa p95 **2,7 ms**; 50 km centro denso p95 **35,6 ms** (máximo 81 ms). El presupuesto es p95 < 300 ms.
 
+> **Antes de correr k6:** poné `SEARCH_RATE_LIMIT=0` en el entorno de la API. k6 sale de una sola IP y sin pausas (miles de pedidos por segundo), así que con el límite por defecto (300 por minuto por IP) casi todo daría 429 y la medición no significaría nada.
+
 ## Qué mide
 
 `backend/loadtest/search.js` (k6) pega a `GET /api/v1/search` con `lat`, `lng`, `radius_m` (5 km en 4 de cada 5 consultas, 50 km en la quinta) y `limit=21`, desde ~100 orígenes repartidos en una grilla de ±0,09° alrededor del centro de la zona densa de `make seed-dev` (Río Tercero, `-32.1738, -64.1146`).

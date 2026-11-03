@@ -117,6 +117,11 @@ func run() error {
 		return err
 	}
 
+	searchRate, err := config.LoadSearchRate(os.Getenv)
+	if err != nil {
+		return err
+	}
+
 	poolCfg, err := config.LoadPool(os.Getenv)
 	if err != nil {
 		return err
@@ -168,7 +173,7 @@ func run() error {
 	}
 	searchCache := newSearchCache(log, cacheCfg, redisStore)
 
-	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer, redisStore), businessMount, billingMount, newSearchRoutes(log, pool, images, searchCache.decorators...), newBenefitsRoutes(log, pool, signer, coupons.MaxAttempts, metricsAccess, redisStore), newReviewsRoutes(log, pool, signer), newAdminRoutes(log, pool, signer))
+	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer, redisStore), businessMount, billingMount, newSearchRoutes(log, pool, images, newSearchLimiter(log, searchRate, redisStore), searchCache.decorators...), newBenefitsRoutes(log, pool, signer, coupons.MaxAttempts, metricsAccess, redisStore), newReviewsRoutes(log, pool, signer), newAdminRoutes(log, pool, signer))
 	// The client address feeds the login and coupon limits, so it is resolved before any route.
 	handler := searchCache.invalidate(clientip.Middleware(proxies.Trusted)(router))
 	if cfg.APIDocs {

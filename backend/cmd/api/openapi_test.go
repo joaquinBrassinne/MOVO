@@ -89,7 +89,7 @@ func servedRoutes(t *testing.T) []string {
 		newIdentityRoutes(log, pool, config.Auth{RefreshTokenTTL: time.Hour}, signer, nil),
 		businessMount,
 		billingMount,
-		newSearchRoutes(log, pool, images),
+		newSearchRoutes(log, pool, images, nil),
 		newBenefitsRoutes(log, pool, signer, 5, metricsAccess, nil),
 		newReviewsRoutes(log, pool, signer),
 		newAdminRoutes(log, pool, signer),
