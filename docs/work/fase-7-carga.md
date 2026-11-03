@@ -58,6 +58,20 @@ Completar con mediciones reales. Una fila por corrida (la mediana de las repetic
 | 2026-11-03 | sin | default | default | 50 | 8,64 | 14,85 | 4 314 | 0 % | — | Corrida 2 |
 | 2026-11-03 | con | default | default | 50 | 7,22 | 16,66 | 4 424 | 0 % | 99,9 % | Corrida 2 |
 
+### Ajuste del pool (2026-11-03)
+
+API directa, caché apagada, límite de búsqueda apagado (`SEARCH_RATE_LIMIT=0`), 50 VUs, una corrida por valor. El default de pgx en esta máquina es 12 (12 CPUs):
+
+| `DB_MAX_CONNS` | `DB_MIN_CONNS` | p50 (ms) | p95 (ms) | rps | `http_req_failed` |
+|---|---|---|---|---|---|
+| 4 | 1 | 11,20 | 17,01 | 3 500 | 0 % |
+| 12 (default, mediana de 2) | 0 | 8,1 | 15,1 | ~4 490 | 0 % |
+| 40 | 1 | 6,34 | 17,56 | 4 661 | 0 % |
+
+- **Un pool de 4 limita:** baja la capacidad un 22 % respecto del default (3 500 contra ~4 490 rps) y sube la mediana.
+- **De 12 a 40 no cambia nada medible:** 4 661 contra ~4 490 rps entra en el ruido entre corridas (las dos del default difirieron 8 %), y el p95 queda igual. Con 40 conexiones por proceso, dos procesos ya usan 80 de las 100 de Postgres (`max_connections`), sin ganar nada.
+- **Decisión:** se deja el default de pgx, `max(4, CPUs)`. Cambiarlo solo hace falta si se despliegan más de unas pocas réplicas (cuidar que la suma de `DB_MAX_CONNS` no pase de `max_connections`). Una sola corrida por valor no alcanza para afinar más; con estos datos no hay nada que afinar.
+
 ### Lectura de la primera medición (2026-11-03)
 
 Entorno: base de desarrollo con **15 sedes visibles** (no las 10 000 de la Fase 3), API y Postgres en Docker Desktop sobre Windows, k6 en la misma máquina, sin pausa entre iteraciones (más de 1 millón de requests por corrida).
