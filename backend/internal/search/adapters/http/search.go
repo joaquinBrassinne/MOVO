@@ -26,7 +26,9 @@ type Handlers struct {
 	whatsapp *commands.OpenWhatsApp
 	profile  *queries.BusinessProfile
 	view     *commands.RecordProfileView
-	log      *slog.Logger
+	// serviceView counts the views of a service.
+	serviceView *commands.RecordServiceView
+	log         *slog.Logger
 }
 
 // New builds the handlers. A nil logger discards logs.
@@ -46,6 +48,9 @@ func (h *Handlers) Mount(r chi.Router) {
 	}
 	if h.view != nil {
 		r.Post("/businesses/{slug}/view", h.handleProfileView)
+	}
+	if h.serviceView != nil {
+		r.Post("/branches/{branch_id}/services/{service_id}/view", h.handleServiceView)
 	}
 	if h.whatsapp != nil {
 		r.Get("/r/wa/{branch_id}", h.handleWhatsApp)

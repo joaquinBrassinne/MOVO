@@ -3,6 +3,7 @@ package commands
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -38,10 +39,12 @@ func IsBot(userAgent string) bool {
 	return false
 }
 
-// RecordMetric counts an event unless a bot caused it. The user agent is read to
-// decide that and is not stored or passed on.
+// RecordMetric counts an event unless a bot caused it or the same visitor already caused
+// the same event a moment ago. The user agent and the address are read to decide that and
+// are not stored or passed on.
 type RecordMetric struct {
 	counter search.MetricCounter
+	dedupe  search.Deduper
 	now     func() time.Time
 }
 
@@ -53,14 +56,31 @@ func NewRecordMetric(counter search.MetricCounter, now func() time.Time) *Record
 	return &RecordMetric{counter: counter, now: now}
 }
 
-// Handle returns whether the event was counted. A bot is not an error: it returns
-// false and nil. An event with the wrong shape returns search.ErrInvalidEvent.
+// WithDeduper makes the command drop a repeated event of the same address (SDD 6.3b). An
+// event with no address in its context is always counted.
+func (r *RecordMetric) WithDeduper(d search.Deduper) *RecordMetric {
+	r.dedupe = d
+	return r
+}
+
+// Handle returns whether the event was counted. A bot or a repeat is not an error: it
+// returns false and nil. An event with the wrong shape returns search.ErrInvalidEvent.
 func (r *RecordMetric) Handle(ctx context.Context, e search.Event, userAgent string) (bool, error) {
 	if err := e.Validate(); err != nil {
 		return false, err
 	}
 	if IsBot(userAgent) {
 		return false, nil
+	}
+	if address := search.ClientFrom(ctx); r.dedupe != nil && address != "" {
+		key := fmt.Sprintf("%s|%d|%d|%d|%s", e.Metric, e.BusinessID, e.BranchID, e.ServiceID, address)
+		duplicate, err := r.dedupe.Seen(ctx, key)
+		if err != nil {
+			return false, err
+		}
+		if duplicate {
+			return false, nil
+		}
 	}
 	if err := r.counter.Increment(ctx, e, r.now().In(argentina)); err != nil {
 		return false, err

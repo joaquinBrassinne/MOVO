@@ -35,7 +35,10 @@ func (t tokens) Verify(raw string) (httpx.Principal, error) {
 }
 
 // planLimits gives every business the same limits; 0 means unlimited.
-type planLimits struct{ branches, services int }
+type planLimits struct {
+	branches, services int
+	advancedMetrics    bool
+}
 
 func (l planLimits) CanAddBranch(current int) bool { return l.branches == 0 || current < l.branches }
 
@@ -44,6 +47,8 @@ func (l planLimits) CanActivateService(current int) bool {
 }
 
 type fixedPlan struct{ limits planLimits }
+
+func (l planLimits) AdvancedMetrics() bool { return l.advancedMetrics }
 
 func (f fixedPlan) For(context.Context, int64) (business.Entitlements, error) { return f.limits, nil }
 
@@ -76,7 +81,7 @@ func newServer(t *testing.T, limits planLimits) *server {
 		MaxImages:       maxPhotos,
 		MyBusiness:      queries.NewGetMyBusiness(businesses, branches, images, s.storage),
 		CreateBusiness:  commands.NewCreateBusiness(businesses),
-		UpdateBusiness:  commands.NewUpdateBusiness(businesses),
+		UpdateBusiness:  commands.NewUpdateBusiness(businesses, plan),
 		SubmitBusiness:  commands.NewSubmitBusiness(businesses),
 		PresignImage:    commands.NewPresignImageUpload(businesses, s.storage, nil),
 		Geocode:         commands.NewGeocodeAddress(businesses, s.geocoder),

@@ -38,9 +38,11 @@ const (
 	CodePendingCoupon    = "pending_coupon"
 	CodeQuotaReached     = "quota_reached"
 	CodeRateLimited      = "rate_limited"
-	CodeCouponNotFound   = "coupon_not_found"
-	CodeCouponRedeemed   = "coupon_redeemed"
-	CodeCouponExpired    = "coupon_expired"
+	// CodePlanUpgradeRequired is the 403 of a Starter business asking for a Pro metric.
+	CodePlanUpgradeRequired = "plan_upgrade_required"
+	CodeCouponNotFound      = "coupon_not_found"
+	CodeCouponRedeemed      = "coupon_redeemed"
+	CodeCouponExpired       = "coupon_expired"
 )
 
 // Deps are the use cases and the token verifier the handlers need.
@@ -67,6 +69,31 @@ type Deps struct {
 	View *queries.ViewMyCoupon
 	// Overview serves the counts of the panel home; without it the route is not mounted.
 	Overview *queries.GetOverview
+	// Metrics serves the owner's metrics over a period; without it the route is not mounted.
+	Metrics *queries.GetMetrics
+	// Activities serves the most demanded activities; without it the route is not mounted.
+	Activities *queries.GetTopActivities
+	// Conversion serves the Pro conversion metric; without it the route is not mounted.
+	Conversion *queries.GetConversion
+	// Heatmap serves the Pro redemption heat map; without it the route is not mounted.
+	Heatmap *queries.GetHeatmap
+	// Performance serves the Pro performance per benefit; without it the route is not mounted.
+	Performance *queries.GetBenefitPerformance
+	// TimeToRedeem serves how long redemptions took; without it the route is not mounted.
+	TimeToRedeem *queries.GetTimeToRedeem
+	// Returning serves how many customers came back; without it the route is not mounted.
+	Returning *queries.GetRepeatCustomers
+	// QuotaProjection serves the Pro estimate of when the quota runs out; without it the route
+	// is not mounted.
+	QuotaProjection *queries.GetQuotaProjection
+	// EstimatedReturn serves the Pro estimated return; without it the route is not mounted.
+	EstimatedReturn *queries.GetEstimatedReturn
+	// BranchComparison serves the Pro comparison of the branches; without it the route is not mounted.
+	BranchComparison *queries.GetBranchComparison
+	// ReviewsOverTime serves the Pro evolution of the reviews; without it the route is not mounted.
+	ReviewsOverTime *queries.GetReviewsOverTime
+	// Records serves the Pro "Tus récords"; without it the route is not mounted.
+	Records *queries.GetRecords
 	// Quota and SetQuota serve the monthly coupon cap of the business; each route is
 	// mounted only when its use case is set.
 	Quota    *queries.GetCouponQuota
@@ -115,6 +142,42 @@ func (h *Handlers) Mount(r chi.Router) {
 	}
 	if h.Overview != nil {
 		owner.Get("/me/business/overview", h.handleOverview)
+	}
+	if h.Metrics != nil {
+		owner.Get("/me/business/metrics", h.handleMetrics)
+	}
+	if h.Activities != nil {
+		owner.Get("/me/business/metrics/activities", h.handleActivities)
+	}
+	if h.Conversion != nil {
+		owner.Get("/me/business/metrics/conversion", h.handleConversion)
+	}
+	if h.Heatmap != nil {
+		owner.Get("/me/business/metrics/heatmap", h.handleHeatmap)
+	}
+	if h.Performance != nil {
+		owner.Get("/me/business/metrics/benefits", h.handleBenefitPerformance)
+	}
+	if h.TimeToRedeem != nil {
+		owner.Get("/me/business/metrics/time-to-redeem", h.handleTimeToRedeem)
+	}
+	if h.Returning != nil {
+		owner.Get("/me/business/metrics/returning-customers", h.handleRepeatCustomers)
+	}
+	if h.QuotaProjection != nil {
+		owner.Get("/me/business/metrics/quota-projection", h.handleQuotaProjection)
+	}
+	if h.EstimatedReturn != nil {
+		owner.Get("/me/business/metrics/estimated-return", h.handleEstimatedReturn)
+	}
+	if h.BranchComparison != nil {
+		owner.Get("/me/business/metrics/branches", h.handleBranchComparison)
+	}
+	if h.ReviewsOverTime != nil {
+		owner.Get("/me/business/metrics/reviews", h.handleReviewsOverTime)
+	}
+	if h.Records != nil {
+		owner.Get("/me/business/metrics/records", h.handleRecords)
 	}
 	if h.Quota != nil {
 		owner.Get("/me/business/coupon-quota", h.handleQuota)
@@ -517,6 +580,13 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, benefits.ErrBusinessNotEditable):
 		httpx.WriteError(w, http.StatusConflict, CodeBusinessDeleted, "this business was deleted and can no longer change", nil)
 		return
+	case errors.Is(err, benefits.ErrPlanUpgradeRequired):
+		httpx.WriteError(w, http.StatusForbidden, CodePlanUpgradeRequired, "your plan does not include the advanced metrics: upgrade to Pro to see them", nil)
+		return
+	case errors.Is(err, benefits.ErrMetricsPeriodInvalid):
+		httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the period is not valid",
+			map[string]string{"field": "period", "reason": "invalid"})
+		return
 	}
 	var below *domain.QuotaBelowGeneratedError
 	if errors.As(err, &below) {
@@ -644,6 +714,91 @@ type overviewJSON struct {
 	RedeemedToday    int `json:"redeemed_today"`
 	ProfileViews7d   int `json:"profile_views_7d"`
 	WhatsAppClicks7d int `json:"whatsapp_clicks_7d"`
+}
+
+type metricsJSON struct {
+	Period struct {
+		Days int    `json:"days"`
+		From string `json:"from"`
+		To   string `json:"to"`
+	} `json:"period"`
+	ProfileViews int64 `json:"profile_views"`
+	Coupons      struct {
+		Generated int64 `json:"generated"`
+		Redeemed  int64 `json:"redeemed"`
+	} `json:"coupons"`
+}
+
+// periodParam reads ?period= (0 when absent). It answers the 422 itself when the value is
+// not a number, and reports whether the handler may go on.
+func (h *Handlers) periodParam(w http.ResponseWriter, r *http.Request) (int, bool) {
+	raw := r.URL.Query().Get("period")
+	if raw == "" {
+		return 0, true
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		h.fail(w, r, benefits.ErrMetricsPeriodInvalid)
+		return 0, false
+	}
+	return n, true
+}
+
+type demandJSON struct {
+	ServiceID int64  `json:"service_id"`
+	Name      string `json:"name"`
+	Views     int64  `json:"views"`
+	Clicks    int64  `json:"whatsapp_clicks"`
+}
+
+type activitiesJSON struct {
+	Period     periodJSON   `json:"period"`
+	Activities []demandJSON `json:"activities"`
+}
+
+type periodJSON struct {
+	Days int    `json:"days"`
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// handleActivities answers GET /me/business/metrics/activities?period=7|30|90.
+func (h *Handlers) handleActivities(w http.ResponseWriter, r *http.Request) {
+	days, ok := h.periodParam(w, r)
+	if !ok {
+		return
+	}
+	got, err := h.Activities.Handle(r.Context(), callerID(r), days)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	out := activitiesJSON{
+		Period:     periodJSON{Days: got.Period.Days, From: got.Period.FromDay, To: got.Period.ToDay},
+		Activities: make([]demandJSON, 0, len(got.Activities)),
+	}
+	for _, a := range got.Activities {
+		out.Activities = append(out.Activities, demandJSON{ServiceID: a.ServiceID, Name: a.Name, Views: a.Views, Clicks: a.Clicks})
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+// handleMetrics answers GET /me/business/metrics?period=7|30|90 (30 by default).
+func (h *Handlers) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	days, ok := h.periodParam(w, r)
+	if !ok {
+		return
+	}
+	got, err := h.Metrics.Handle(r.Context(), callerID(r), days)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	var out metricsJSON
+	out.Period.Days, out.Period.From, out.Period.To = got.Period.Days, got.Period.FromDay, got.Period.ToDay
+	out.ProfileViews = got.Metrics.ProfileViews
+	out.Coupons.Generated, out.Coupons.Redeemed = got.Metrics.CouponsGenerated, got.Metrics.CouponsRedeemed
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 func (h *Handlers) handleOverview(w http.ResponseWriter, r *http.Request) {

@@ -50,6 +50,21 @@ type RefreshTokenStore interface {
 	Revoke(ctx context.Context, hash []byte, now time.Time) error
 }
 
+// ErrResetTokenInvalid means a password reset token is unknown, expired or already used.
+var ErrResetTokenInvalid = errors.New("identity: password reset token is unknown, expired or used")
+
+// PasswordResetStore keeps the digests of the one-time reset tokens.
+type PasswordResetStore interface {
+	// Issue stores the digest of a new token for userID, retires the unused ones of
+	// that user and records the super admin action, all in one transaction.
+	Issue(ctx context.Context, actorID, userID int64, hash []byte, expiresAt, now time.Time) error
+	// Redeem atomically consumes the token, sets the new password hash, revokes every
+	// refresh token of the owner and records the change. Of two concurrent calls with
+	// the same token only one succeeds; an unknown, expired or used token yields
+	// ErrResetTokenInvalid and changes nothing.
+	Redeem(ctx context.Context, hash []byte, passwordHash string, now time.Time) (userID int64, err error)
+}
+
 // AccessTokenIssuer signs short-lived access tokens.
 type AccessTokenIssuer interface {
 	Issue(userID int64, role domain.Role, now time.Time) (token string, expiresAt time.Time, err error)

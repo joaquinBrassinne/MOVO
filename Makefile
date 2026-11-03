@@ -26,7 +26,7 @@ GOLANGCI_LINT         ?= golangci-lint
 TESTFLAGS ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help env up down ps logs wait-db migrate migrate-up migrate-down migrate-status run-api run-worker seed-dev fmtfmt-check tidy lint test build frontend-lint frontend-test frontend-build
+.PHONY: help env up down ps logs wait-db migrate migrate-up migrate-down migrate-status run-api run-worker seed-dev fmt fmt-check tidy lint test build frontend-lint frontend-test frontend-build ci
 
 # --- Entorno ----------------------------------------------------------------
 
@@ -125,3 +125,10 @@ frontend-test: ## Corre los tests unitarios del frontend
 
 frontend-build: ## Compila el frontend para producción
 	cd frontend && npm run build
+
+# --- CI local ----------------------------------------------------------------
+
+# Lo mismo que corre .github/workflows/ci.yml, salvo la ida y vuelta de
+# migraciones (necesita una base: make up && make migrate-up). El -race lo agrega
+# CI; acá se pasa con TESTFLAGS="-race" donde haya gcc.
+ci: fmt-check lint test build frontend-lint frontend-test frontend-build ## Corre localmente lo mismo que CI (sin la ida y vuelta de migraciones)

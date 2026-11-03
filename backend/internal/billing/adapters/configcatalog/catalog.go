@@ -33,6 +33,7 @@ func info(plan domain.Plan, s config.PlanSettings) (billing.PlanInfo, error) {
 	if err != nil {
 		return billing.PlanInfo{}, fmt.Errorf("configcatalog: plan %s: %w", plan, err)
 	}
+	entitlements = entitlements.WithAdvancedMetrics(s.AdvancedMetrics).WithPrioritySupport(s.PrioritySupport)
 	return billing.PlanInfo{Plan: plan, Price: s.Price, CheckoutURL: s.CheckoutURL, Entitlements: entitlements}, nil
 }
 

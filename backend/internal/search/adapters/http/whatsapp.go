@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/joaquinBrassinne/MOVO/internal/platform/clientip"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
 	"github.com/joaquinBrassinne/MOVO/internal/search"
 )
@@ -37,7 +38,7 @@ func (h *Handlers) handleWhatsApp(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodHead {
 		link, err = h.whatsapp.Preview(r.Context(), branchID, serviceID)
 	} else {
-		link, err = h.whatsapp.Handle(r.Context(), branchID, serviceID, r.UserAgent())
+		link, err = h.whatsapp.Handle(search.WithClient(r.Context(), clientip.From(r)), branchID, serviceID, r.UserAgent())
 	}
 	if errors.Is(err, search.ErrBranchNotFound) {
 		httpx.WriteError(w, http.StatusNotFound, CodeBranchNotFound, "branch not found", nil)

@@ -57,12 +57,12 @@ func TestListSubscriptionsFiltersByDerivedStatusAndOrdersByDate(t *testing.T) {
 		{queries.FilterGrace, []int64{4}},
 		{queries.FilterExpired, []int64{5}},
 	} {
-		got, err := q.Handle(t.Context(), tc.filter, today)
+		got, err := q.Handle(t.Context(), queries.SubscriptionFilter{Status: tc.filter}, today)
 		if err != nil {
 			t.Fatalf("filter %q: %v", tc.filter, err)
 		}
 		var ids []int64
-		for _, e := range got {
+		for _, e := range got.Entries {
 			ids = append(ids, e.Subscription.BusinessID)
 		}
 		if len(ids) != len(tc.want) {
@@ -77,7 +77,7 @@ func TestListSubscriptionsFiltersByDerivedStatusAndOrdersByDate(t *testing.T) {
 		}
 	}
 
-	if _, err := q.Handle(t.Context(), "pending", today); !errors.Is(err, queries.ErrSubscriptionFilterInvalid) {
+	if _, err := q.Handle(t.Context(), queries.SubscriptionFilter{Status: "pending"}, today); !errors.Is(err, queries.ErrSubscriptionFilterInvalid) {
 		t.Errorf("unknown filter error = %v, want ErrSubscriptionFilterInvalid", err)
 	}
 }
@@ -89,12 +89,95 @@ func TestListSubscriptionsReportsTheDaysLeft(t *testing.T) {
 	got, err := queries.NewListSubscriptions(directory{rows: []billing.SubscriptionRow{
 		row(t, 1, "Soon", "5491100000001", "2026-11-15"),
 		row(t, 2, "Late", "5491100000002", "2026-11-10"),
-	}}).Handle(t.Context(), "", today)
+	}}).Handle(t.Context(), queries.SubscriptionFilter{}, today)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[0].DaysLeft != -2 || got[1].DaysLeft != 3 {
-		t.Errorf("days left = %d, %d, want -2, 3", got[0].DaysLeft, got[1].DaysLeft)
+	if got.Entries[0].DaysLeft != -2 || got.Entries[1].DaysLeft != 3 {
+		t.Errorf("days left = %d, %d, want -2, 3", got.Entries[0].DaysLeft, got.Entries[1].DaysLeft)
+	}
+}
+
+func proRow(t *testing.T, id int64, name, paidUntil string) billing.SubscriptionRow {
+	t.Helper()
+	r := row(t, id, name, "", paidUntil)
+	sub, err := r.Subscription.ChangePlan(domain.PlanPro)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Subscription = sub
+	return r
+}
+
+func ids(page queries.SubscriptionPage) []int64 {
+	out := []int64{}
+	for _, e := range page.Entries {
+		out = append(out, e.Subscription.BusinessID)
+	}
+	return out
+}
+
+func TestListSubscriptionsNarrowsByPlanAndBusinessName(t *testing.T) {
+	t.Parallel()
+
+	today := day(t, "2026-11-12")
+	q := queries.NewListSubscriptions(directory{rows: []billing.SubscriptionRow{
+		row(t, 1, "Pilates Sur", "", "2026-12-01"),
+		proRow(t, 2, "Gimnasio Norte", "2026-12-02"),
+		proRow(t, 3, "pilates Centro", "2026-12-03"),
+	}})
+
+	for _, tc := range []struct {
+		name   string
+		filter queries.SubscriptionFilter
+		want   []int64
+	}{
+		{"plan", queries.SubscriptionFilter{Plan: "pro"}, []int64{2, 3}},
+		{"name ignores case", queries.SubscriptionFilter{Query: " PILATES "}, []int64{1, 3}},
+		{"plan and name", queries.SubscriptionFilter{Plan: "pro", Query: "pilates"}, []int64{3}},
+		{"nothing matches", queries.SubscriptionFilter{Query: "yoga"}, []int64{}},
+	} {
+		got, err := q.Handle(t.Context(), tc.filter, today)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if g := ids(got); len(g) != len(tc.want) || got.Total != len(tc.want) {
+			t.Errorf("%s: ids = %v total %d, want %v", tc.name, g, got.Total, tc.want)
+		}
+	}
+
+	if _, err := q.Handle(t.Context(), queries.SubscriptionFilter{Plan: "gold"}, today); !errors.Is(err, domain.ErrPlanInvalid) {
+		t.Errorf("unknown plan error = %v, want ErrPlanInvalid", err)
+	}
+}
+
+func TestListSubscriptionsPagesAndReportsTheTotal(t *testing.T) {
+	t.Parallel()
+
+	today := day(t, "2026-11-12")
+	q := queries.NewListSubscriptions(directory{rows: []billing.SubscriptionRow{
+		row(t, 1, "A", "", "2026-12-01"),
+		row(t, 2, "B", "", "2026-12-02"),
+		row(t, 3, "C", "", "2026-12-03"),
+	}})
+
+	got, err := q.Handle(t.Context(), queries.SubscriptionFilter{Limit: 2, Offset: 1}, today)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := ids(got); len(g) != 2 || g[0] != 2 || g[1] != 3 || got.Total != 3 {
+		t.Errorf("page = %v total %d, want [2 3] of 3", g, got.Total)
+	}
+
+	past, err := q.Handle(t.Context(), queries.SubscriptionFilter{Limit: 2, Offset: 9}, today)
+	if err != nil || len(past.Entries) != 0 || past.Total != 3 {
+		t.Errorf("past the end = %d entries total %d err %v, want 0 of 3", len(past.Entries), past.Total, err)
+	}
+
+	for _, f := range []queries.SubscriptionFilter{{Limit: -1}, {Offset: -1}, {Limit: queries.MaxSubscriptionPage + 1}} {
+		if _, err := q.Handle(t.Context(), f, today); !errors.Is(err, queries.ErrPageInvalid) {
+			t.Errorf("filter %+v error = %v, want ErrPageInvalid", f, err)
+		}
 	}
 }
 

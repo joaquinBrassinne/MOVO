@@ -39,15 +39,20 @@ func newAPIHarness(t *testing.T) *apiHarness {
 	}
 	plans := config.Plans{
 		Starter: config.PlanSettings{MaxBranches: 2, MaxActiveServices: 3, Price: 19800},
-		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800},
+		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800, AdvancedMetrics: true, PrioritySupport: true},
 	}
 
 	businessMount, billingMount, err := newBusinessRoutes(nil, pool, signer, plans, storage.NewMemory(), 6, unusedGeocoder{})
 	if err != nil {
 		t.Fatalf("newBusinessRoutes: %v", err)
 	}
+	metricsAccess, err := newMetricsPlan(pool, plans)
+	if err != nil {
+		t.Fatalf("newMetricsPlan: %v", err)
+	}
 	// The reviews routes share /me/business and /admin with the business ones, as in main.
-	ts := httptest.NewServer(httpx.NewRouter(nil, pool, businessMount, billingMount, newReviewsRoutes(nil, pool, signer)))
+	ts := httptest.NewServer(httpx.NewRouter(nil, pool, newIdentityRoutes(nil, pool, config.Auth{RefreshTokenTTL: time.Hour}, signer),
+		businessMount, billingMount, newBenefitsRoutes(nil, pool, signer, 5, metricsAccess), newReviewsRoutes(nil, pool, signer), newAdminRoutes(nil, pool, signer)))
 	t.Cleanup(ts.Close)
 
 	return &apiHarness{t: t, pool: pool, signer: signer, url: ts.URL + "/api/v1"}

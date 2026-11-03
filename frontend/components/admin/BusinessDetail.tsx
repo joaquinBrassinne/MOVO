@@ -15,6 +15,7 @@ import type { FormMessage } from "@/lib/business/messages";
 import { BUSINESS_STATUS } from "@/lib/business/types";
 
 import { ConfirmPaymentForm } from "./ConfirmPaymentForm";
+import { OwnerAccess } from "./OwnerAccess";
 import { StatusPill } from "./StatusPill";
 import { PLAN_NAME } from "./SubscriptionPills";
 
@@ -222,6 +223,10 @@ export function BusinessDetail({ id, onClose, onChanged }: Props) {
           {services_total === 1 ? "servicio activo" : "servicios activos"}
         </p>
       </Section>
+
+      {isDeleted ? null : (
+        <OwnerAccess key={business.id} email={business.owner_email} whatsapp={business.whatsapp} />
+      )}
 
       <Section title="Pago declarado">
         {business.mp_payer_email ? (

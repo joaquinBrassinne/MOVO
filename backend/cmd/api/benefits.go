@@ -50,27 +50,48 @@ const (
 	couponMaxKeys = 100_000
 )
 
+// metricsPlanPort is what the Pro metrics ask of the plan of a business: whether it includes
+// them, and the figures the estimated return multiplies.
+type metricsPlanPort interface {
+	benefits.MetricsPermission
+	benefits.BusinessEconomics
+}
+
 // newBenefitsRoutes composes the benefits module: adapters, use cases and HTTP.
-func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.TokenVerifier, couponAttempts int) func(chi.Router) {
+func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.TokenVerifier, couponAttempts int, plan metricsPlanPort) func(chi.Router) {
 	owners := ownerBusinesses{businesses: businesspostgres.NewBusinesses(pool)}
+	// Every Pro metric goes through this one gate.
+	gate := queries.NewProGate(owners, plan)
 	repo := benefitspostgres.NewBenefits(pool)
 	coupons := benefitspostgres.NewCoupons(pool)
 	limiter := ratelimit.New(ratelimit.Config{MaxAttempts: couponAttempts, Window: couponWindow, MaxKeys: couponMaxKeys}, nil)
 	return benefitshttp.New(benefitshttp.Deps{
-		Verifier:  verifier,
-		Log:       log,
-		List:      queries.NewListMyBenefits(owners, repo, coupons, nil),
-		Add:       commands.NewAddBenefit(owners, repo),
-		Edit:      commands.NewEditBenefit(owners, repo),
-		SetActive: commands.NewSetBenefitActive(owners, repo),
-		Pause:     commands.NewPauseBenefit(repo),
-		Overview:  queries.NewGetOverview(owners, coupons, nil),
-		Quota:     queries.NewGetCouponQuota(owners, coupons, nil),
-		SetQuota:  commands.NewSetCouponQuota(owners, coupons, nil),
-		Generate:  commands.NewGenerateCode(coupons, limiter, nil, nil),
-		Redeem:    commands.NewRedeemCode(owners, coupons, nil),
-		Preview:   queries.NewPreviewCode(owners, coupons, nil),
-		View:      queries.NewViewMyCoupon(coupons, nil),
-		Activity:  queries.NewRecentActivity(owners, coupons),
+		Verifier:         verifier,
+		Log:              log,
+		List:             queries.NewListMyBenefits(owners, repo, coupons, nil),
+		Add:              commands.NewAddBenefit(owners, repo),
+		Edit:             commands.NewEditBenefit(owners, repo),
+		SetActive:        commands.NewSetBenefitActive(owners, repo),
+		Pause:            commands.NewPauseBenefit(repo),
+		Overview:         queries.NewGetOverview(owners, coupons, nil),
+		Metrics:          queries.NewGetMetrics(owners, coupons, nil),
+		Activities:       queries.NewGetTopActivities(owners, coupons, nil),
+		Conversion:       queries.NewGetConversion(gate, coupons, nil),
+		Heatmap:          queries.NewGetHeatmap(gate, coupons, nil),
+		Performance:      queries.NewGetBenefitPerformance(gate, repo, coupons, nil),
+		TimeToRedeem:     queries.NewGetTimeToRedeem(gate, coupons, nil),
+		Returning:        queries.NewGetRepeatCustomers(gate, coupons, nil),
+		QuotaProjection:  queries.NewGetQuotaProjection(gate, coupons, nil),
+		EstimatedReturn:  queries.NewGetEstimatedReturn(gate, plan, coupons, nil),
+		BranchComparison: queries.NewGetBranchComparison(gate, coupons, nil),
+		ReviewsOverTime:  queries.NewGetReviewsOverTime(gate, coupons, nil),
+		Records:          queries.NewGetRecords(gate, repo, coupons, nil),
+		Quota:            queries.NewGetCouponQuota(owners, coupons, nil),
+		SetQuota:         commands.NewSetCouponQuota(owners, coupons, nil),
+		Generate:         commands.NewGenerateCode(coupons, limiter, nil, nil),
+		Redeem:           commands.NewRedeemCode(owners, coupons, nil),
+		Preview:          queries.NewPreviewCode(owners, coupons, nil),
+		View:             queries.NewViewMyCoupon(coupons, nil),
+		Activity:         queries.NewRecentActivity(owners, coupons),
 	}).Mount
 }

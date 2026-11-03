@@ -182,6 +182,10 @@ func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, http.StatusUnauthorized, CodeInvalidCredentials, "email or password is incorrect", nil)
 	case errors.Is(err, commands.ErrSessionInvalid):
 		httpx.WriteError(w, http.StatusUnauthorized, CodeInvalidSession, "the session is no longer valid, sign in again", nil)
+	case errors.Is(err, identity.ErrUserNotFound):
+		httpx.WriteError(w, http.StatusNotFound, CodeUserNotFound, "there is no owner with that email", nil)
+	case errors.Is(err, identity.ErrResetTokenInvalid):
+		httpx.WriteError(w, http.StatusBadRequest, CodeInvalidResetToken, "the link is no longer valid, ask for a new one", nil)
 	case errors.As(err, &limited):
 		seconds := int(math.Ceil(limited.RetryAfter.Seconds()))
 		w.Header().Set("Retry-After", strconv.Itoa(seconds))

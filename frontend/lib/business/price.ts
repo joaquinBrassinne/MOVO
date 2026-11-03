@@ -15,6 +15,15 @@ export function parsePrice(text: string): number | null | undefined {
   return amount > MAX_PRICE ? undefined : amount;
 }
 
+/**
+ * El ticket promedio: como un precio, pero $ 0 no vale (la API pide al menos 1 peso).
+ * `null` si quedó vacío (se borra), `undefined` si no es válido.
+ */
+export function parseTicket(text: string): number | null | undefined {
+  const amount = parsePrice(text);
+  return amount === 0 ? undefined : amount;
+}
+
 /** "5500" se muestra como "$ 5.500". */
 export function formatPrice(amount: number): string {
   return `$ ${amount.toLocaleString("es-AR")}`;

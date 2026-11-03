@@ -78,7 +78,12 @@ func (f *fakeBusinesses) Save(_ context.Context, b domain.Business) error {
 }
 
 // limits is a business.Entitlements with fixed limits; 0 means unlimited.
-type limits struct{ branches, services int }
+type limits struct {
+	branches, services int
+	advancedMetrics    bool
+}
+
+func (l limits) AdvancedMetrics() bool { return l.advancedMetrics }
 
 func (l limits) CanAddBranch(current int) bool { return l.branches == 0 || current < l.branches }
 

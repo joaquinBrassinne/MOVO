@@ -37,6 +37,28 @@ func TestCatalogReadsLimitsFromConfiguration(t *testing.T) {
 	}
 }
 
+func TestCatalogGivesTheAdvancedMetricsOnlyToThePlansConfiguredForThem(t *testing.T) {
+	t.Parallel()
+
+	catalog, err := configcatalog.New(config.Plans{
+		Starter: config.PlanSettings{MaxBranches: 2, MaxActiveServices: 3, Price: 19800},
+		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800, AdvancedMetrics: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	starter, _ := catalog.Entitlements(domain.PlanStarter)
+	pro, _ := catalog.Entitlements(domain.PlanPro)
+	if starter.AdvancedMetrics() || !pro.AdvancedMetrics() {
+		t.Errorf("starter %t, pro %t; want false and true", starter.AdvancedMetrics(), pro.AdvancedMetrics())
+	}
+	for _, info := range catalog.Plans() {
+		if info.Plan == domain.PlanPro && !info.Entitlements.AdvancedMetrics() {
+			t.Error("the plan list must carry the same capability")
+		}
+	}
+}
+
 func TestCatalogListsPlansCheapestFirstWithPrices(t *testing.T) {
 	t.Parallel()
 

@@ -19,6 +19,15 @@ export function PaymentStatePill({ state }: { state: PaymentState }) {
   );
 }
 
+/** The business has priority support: the admin answers it first. */
+export function PrioritySupportMark() {
+  return (
+    <span className="mt-1 inline-flex rounded-full bg-movo-accent/40 px-2 py-0.5 text-xs font-bold text-movo-ink">
+      Soporte prioritario
+    </span>
+  );
+}
+
 export function PlanChip({ plan }: { plan: PlanId }) {
   return (
     <span

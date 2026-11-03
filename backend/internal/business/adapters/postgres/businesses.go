@@ -23,7 +23,8 @@ const (
 
 const selectBusiness = `
 SELECT id, owner_user_id, category_id, name, slug, description, whatsapp_number, status,
-       pilot, verified_at, verified_by, mp_payer_email, mp_payer_name, mp_return_params, created_at
+       pilot, verified_at, verified_by, mp_payer_email, mp_payer_name, mp_return_params, created_at,
+       average_ticket_ars
 FROM businesses`
 
 // Businesses implements business.BusinessRepository.
@@ -79,6 +80,7 @@ func scanBusiness(row pgx.Row) (domain.Business, error) {
 	err := row.Scan(
 		&b.ID, &b.OwnerID, &b.CategoryID, &b.Name, &b.Slug, &b.Description, &b.WhatsApp, &status,
 		&b.Pilot, &b.VerifiedAt, &by, &payer.email, &payer.name, &payer.params, &b.CreatedAt,
+		&b.AverageTicketARS,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Business{}, business.ErrBusinessNotFound
@@ -94,6 +96,20 @@ func scanBusiness(row pgx.Row) (domain.Business, error) {
 	}
 	payer.applyTo(&b)
 	return b, nil
+}
+
+// AverageTicket returns the average ticket of the business in whole pesos, nil when its owner
+// never loaded one, or business.ErrBusinessNotFound.
+func (r *Businesses) AverageTicket(ctx context.Context, businessID int64) (*int, error) {
+	var ticket *int
+	err := r.pool.QueryRow(ctx, `SELECT average_ticket_ars FROM businesses WHERE id = $1`, businessID).Scan(&ticket)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, business.ErrBusinessNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("postgres: select average ticket: %w", err)
+	}
+	return ticket, nil
 }
 
 // Save persists the profile, status and declared payer of b. The slug and
@@ -182,9 +198,9 @@ func (r *Businesses) SaveProfile(ctx context.Context, b domain.Business, entry b
 
 	tag, err := tx.Exec(ctx, `
 UPDATE businesses
-SET category_id = $2, name = $3, description = $4, whatsapp_number = $5, updated_at = now()
+SET category_id = $2, name = $3, description = $4, whatsapp_number = $5, average_ticket_ars = $6, updated_at = now()
 WHERE id = $1`,
-		b.ID, b.CategoryID, b.Name, b.Description, b.WhatsApp)
+		b.ID, b.CategoryID, b.Name, b.Description, b.WhatsApp, b.AverageTicketARS)
 
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == foreignKeyViolation && pgErr.ConstraintName == "businesses_category_id_fkey" {

@@ -14,7 +14,7 @@ func TestUpdateBusinessRecordsEachChangeInTheAuditTrail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	update := commands.NewUpdateBusiness(store)
+	update := commands.NewUpdateBusiness(store, unlimited())
 
 	// Name and category change; the description and the WhatsApp stay as they were.
 	if _, err := update.Handle(t.Context(), commands.UpdateBusinessInput{
@@ -47,7 +47,7 @@ func TestUpdateBusinessWithNothingNewSavesAndRecordsNothing(t *testing.T) {
 	}
 	saves := store.saves
 
-	got, err := commands.NewUpdateBusiness(store).Handle(t.Context(), commands.UpdateBusinessInput{
+	got, err := commands.NewUpdateBusiness(store, unlimited()).Handle(t.Context(), commands.UpdateBusinessInput{
 		OwnerID: 7, CategoryID: created.CategoryID, Name: "  Same Name ", Description: created.Description, WhatsApp: created.WhatsApp,
 	})
 	if err != nil || got.Name != "Same Name" {
@@ -67,7 +67,7 @@ func TestUpdateBusinessThatFailsRecordsNothing(t *testing.T) {
 	}
 
 	// Category 9 does not exist: the store refuses, so there is no change to record.
-	if _, err := commands.NewUpdateBusiness(store).Handle(t.Context(), commands.UpdateBusinessInput{
+	if _, err := commands.NewUpdateBusiness(store, unlimited()).Handle(t.Context(), commands.UpdateBusinessInput{
 		OwnerID: 7, CategoryID: 9, Name: "New Name", WhatsApp: "5491198765432",
 	}); err == nil {
 		t.Fatal("an unknown category must fail")

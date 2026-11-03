@@ -1,32 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Notice } from "@/components/onboarding/fields";
 import { SearchIcon } from "@/components/socios/icons";
+import { pageCount, pageWindow } from "@/lib/admin/pagination";
 import {
   describeDaysLeft,
-  filterRows,
   formatDate,
   initials,
   paymentState,
-  TAB_LABEL,
-  TAB_ORDER,
-  tabCounts,
 } from "@/lib/admin/subscriptions/format";
 import { useSubscriptions } from "@/lib/admin/subscriptions/hooks";
-import type { PaymentState, SubscriptionTab } from "@/lib/admin/subscriptions/types";
+import {
+  hasActiveFilters,
+  NO_FILTERS,
+  PAGE_SIZE,
+  pageRange,
+  STATUS_FILTERS,
+} from "@/lib/admin/subscriptions/query";
+import type { SubscriptionFilters } from "@/lib/admin/subscriptions/types";
 import { useRequireSuperAdmin } from "@/lib/session/hooks";
 
 import { AdminShell } from "./AdminShell";
 import { SubscriptionDetail } from "./SubscriptionDetail";
-import { PaymentStatePill, PlanChip } from "./SubscriptionPills";
+import { PaymentStatePill, PlanChip, PrioritySupportMark } from "./SubscriptionPills";
 
-const SUMMARY: { state: PaymentState; label: string; hint: string }[] = [
-  { state: "ok", label: "Al día", hint: "con el plan vigente" },
-  { state: "expiring", label: "Por vencer", hint: "vencen en los próximos 7 días" },
-  { state: "grace", label: "En gracia", hint: "ya vencieron, con plazo adicional" },
-];
+const SEARCH_DELAY_MS = 300;
 
 /** Gestión de suscripciones y cobros: vigencias, estados y acciones de cobro del super admin. */
 export function SubscriptionsView() {
@@ -41,15 +41,36 @@ export function SubscriptionsView() {
 }
 
 function Subscriptions() {
-  const list = useSubscriptions();
-  const [tab, setTab] = useState<SubscriptionTab>("all");
-  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState<SubscriptionFilters>(NO_FILTERS);
+  const [draft, setDraft] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
+  const list = useSubscriptions(filters);
 
-  const rows = list.state.status === "ready" ? list.state.data : [];
-  const counts = tabCounts(rows);
-  const visible = filterRows(rows, tab, search);
+  // La búsqueda espera a que el admin deje de escribir para no pedir en cada tecla.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setFilters((current) =>
+        current.query === draft ? current : { ...current, query: draft, page: 1 },
+      );
+    }, SEARCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [draft]);
+
+  const data = list.state.status === "ready" ? list.state.data : null;
+  const rows = data?.subscriptions ?? [];
+  const total = data?.total ?? 0;
+  const pages = pageCount(total, PAGE_SIZE);
+  const { from, to } = pageRange(filters.page, total);
   const selectedRow = rows.find((row) => row.business_id === selected) ?? null;
+
+  function change(next: Partial<SubscriptionFilters>) {
+    setFilters((current) => ({ ...current, page: 1, ...next }));
+  }
+
+  function clear() {
+    setDraft("");
+    setFilters(NO_FILTERS);
+  }
 
   return (
     <div className="space-y-6">
@@ -61,23 +82,13 @@ function Subscriptions() {
         </p>
       </header>
 
-      <ul className="grid gap-4 sm:grid-cols-3" aria-label="Resumen">
-        {SUMMARY.map(({ state, label, hint }) => (
-          <li key={state} className="rounded-3xl bg-white p-5 shadow-sm">
-            <p className="text-xs font-bold tracking-wide text-movo-slate uppercase">{label}</p>
-            <p className="mt-2 font-display text-4xl font-extrabold">{counts[state]}</p>
-            <p className="text-sm text-movo-slate">{hint}</p>
-          </li>
-        ))}
-      </ul>
-
       <section className="space-y-4 rounded-3xl bg-white p-5 shadow-sm">
         <div className="flex items-center gap-3 rounded-2xl bg-movo-sand px-4 focus-within:ring-2 focus-within:ring-movo-accent">
           <SearchIcon className="size-5 shrink-0 text-movo-slate" />
           <input
             type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
             maxLength={100}
             placeholder="Buscar por nombre del local…"
             aria-label="Buscar suscripciones"
@@ -85,21 +96,52 @@ function Subscriptions() {
           />
         </div>
 
-        <div role="tablist" aria-label="Estado de la suscripción" className="flex flex-wrap gap-2">
-          {TAB_ORDER.map((key) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={key === tab}
-              onClick={() => setTab(key)}
-              className={`h-10 rounded-full px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-movo-accent ${
-                key === tab ? "bg-movo-card text-movo-accent" : "bg-movo-sand"
-              }`}
+        <div className="flex flex-wrap items-center gap-3">
+          <div
+            role="tablist"
+            aria-label="Estado de la suscripción"
+            className="flex flex-wrap gap-2"
+          >
+            {STATUS_FILTERS.map(({ value, label }) => (
+              <button
+                key={label}
+                type="button"
+                role="tab"
+                aria-selected={value === filters.status}
+                onClick={() => change({ status: value })}
+                className={`h-10 rounded-full px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-movo-accent ${
+                  value === filters.status ? "bg-movo-card text-movo-accent" : "bg-movo-sand"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <label className="flex items-center gap-2 text-sm font-semibold">
+            Plan
+            <select
+              value={filters.plan}
+              onChange={(event) =>
+                change({ plan: event.target.value as SubscriptionFilters["plan"] })
+              }
+              className="h-10 rounded-full bg-movo-sand px-4 outline-none focus:ring-2 focus:ring-movo-accent"
             >
-              {TAB_LABEL[key]} ({counts[key]})
+              <option value="">Todos</option>
+              <option value="starter">Starter</option>
+              <option value="pro">Pro</option>
+            </select>
+          </label>
+
+          {hasActiveFilters(filters) || draft !== "" ? (
+            <button
+              type="button"
+              onClick={clear}
+              className="h-10 rounded-full px-4 text-sm font-bold underline outline-none focus-visible:ring-2 focus-visible:ring-movo-accent"
+            >
+              Limpiar filtros
             </button>
-          ))}
+          ) : null}
         </div>
       </section>
 
@@ -135,7 +177,7 @@ function Subscriptions() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((row) => (
+              {rows.map((row) => (
                 <tr
                   key={row.business_id}
                   className={`border-t border-movo-sand ${row.business_id === selected ? "bg-movo-accent/15" : ""}`}
@@ -148,7 +190,12 @@ function Subscriptions() {
                       >
                         {initials(row.business_name)}
                       </span>
-                      <span className="font-display text-base font-bold">{row.business_name}</span>
+                      <span>
+                        <span className="block font-display text-base font-bold">
+                          {row.business_name}
+                        </span>
+                        {row.priority_support ? <PrioritySupportMark /> : null}
+                      </span>
                     </span>
                   </th>
                   <td className="px-5 py-4">
@@ -182,17 +229,49 @@ function Subscriptions() {
           {list.state.status === "loading" ? (
             <p className="p-8 text-center text-movo-slate">Cargando…</p>
           ) : null}
-          {list.state.status === "ready" && visible.length === 0 ? (
+          {data && rows.length === 0 ? (
             <p className="p-8 text-center text-movo-slate">
-              {rows.length === 0
-                ? "Todavía no hay suscripciones: aparecen cuando confirmás el primer pago de un local."
-                : "No hay suscripciones que coincidan con los filtros."}
+              {hasActiveFilters(filters)
+                ? "No hay suscripciones que coincidan con los filtros."
+                : "Todavía no hay suscripciones: aparecen cuando confirmás el primer pago de un local."}
             </p>
           ) : null}
-          {list.state.status === "ready" && rows.length > 0 ? (
-            <p className="border-t border-movo-sand px-5 py-4 text-sm text-movo-slate">
-              Mostrando {visible.length} de {rows.length} suscripciones
-            </p>
+
+          {total > 0 ? (
+            <nav
+              aria-label="Páginas"
+              className="flex flex-wrap items-center justify-between gap-3 border-t border-movo-sand px-5 py-4"
+            >
+              <p className="text-sm text-movo-slate">
+                Mostrando {from}–{to} de {total} suscripciones
+              </p>
+              <div className="flex items-center gap-1">
+                <PageButton
+                  disabled={filters.page === 1}
+                  onClick={() => setFilters({ ...filters, page: filters.page - 1 })}
+                  label="Anterior"
+                >
+                  ‹
+                </PageButton>
+                {pageWindow(filters.page, pages).map((n) => (
+                  <PageButton
+                    key={n}
+                    current={n === filters.page}
+                    onClick={() => setFilters({ ...filters, page: n })}
+                    label={`Página ${n}`}
+                  >
+                    {n}
+                  </PageButton>
+                ))}
+                <PageButton
+                  disabled={filters.page >= pages}
+                  onClick={() => setFilters({ ...filters, page: filters.page + 1 })}
+                  label="Siguiente"
+                >
+                  ›
+                </PageButton>
+              </div>
+            </nav>
           ) : null}
         </section>
 
@@ -206,5 +285,34 @@ function Subscriptions() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+function PageButton({
+  children,
+  label,
+  current,
+  disabled,
+  onClick,
+}: {
+  children: string | number;
+  label: string;
+  current?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-current={current ? "page" : undefined}
+      disabled={disabled}
+      onClick={onClick}
+      className={`grid size-10 place-items-center rounded-full text-sm font-bold outline-none focus-visible:ring-2 focus-visible:ring-movo-accent disabled:opacity-40 ${
+        current ? "bg-movo-card text-movo-accent" : "bg-movo-sand"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

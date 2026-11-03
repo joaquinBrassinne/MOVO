@@ -1,6 +1,7 @@
 "use client";
 
 import { Field, Notice, TextArea, TextInput } from "@/components/onboarding/fields";
+import { TicketField, TicketLockedCard } from "@/components/panel/TicketCard";
 import { useCategories } from "@/lib/business/hooks";
 import { MAX_DESCRIPTION_LENGTH } from "@/lib/business/types";
 import type { useBusinessForm } from "@/lib/business/useBusinessForm";
@@ -126,6 +127,16 @@ export function BusinessFields({ form }: Props) {
           />
         </div>
       </Field>
+
+      {form.ticketEditable ? (
+        <TicketField
+          value={form.ticket}
+          onChange={form.setTicket}
+          error={fields.average_ticket_ars}
+          disabled={form.pending}
+        />
+      ) : null}
+      {form.ticketLocked ? <TicketLockedCard /> : null}
 
       {notice ? <Notice title={notice.title} body={notice.body} /> : null}
     </>

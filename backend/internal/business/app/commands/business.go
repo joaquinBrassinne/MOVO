@@ -66,40 +66,65 @@ func (c *CreateBusiness) Handle(ctx context.Context, in CreateBusinessInput) (do
 	return domain.Business{}, ErrSlugExhausted
 }
 
+// OptionalTicket is the average ticket as the owner sent it: absent (Set false, the stored
+// value stays), null (Set true, Value nil, the ticket is removed) or a number.
+type OptionalTicket struct {
+	Set   bool
+	Value *int
+}
+
 // UpdateBusinessInput is the new profile of the owner's business.
 type UpdateBusinessInput struct {
-	OwnerID     int64
-	CategoryID  int64
-	Name        string
-	Description string
-	WhatsApp    string
+	OwnerID       int64
+	CategoryID    int64
+	Name          string
+	Description   string
+	WhatsApp      string
+	AverageTicket OptionalTicket
 }
 
 // UpdateBusiness edits the profile of the owner's business.
 type UpdateBusiness struct {
-	businesses business.BusinessRepository
+	businesses   business.BusinessRepository
+	entitlements business.EntitlementsProvider
 }
 
 // NewUpdateBusiness wires the UpdateBusiness use case.
-func NewUpdateBusiness(businesses business.BusinessRepository) *UpdateBusiness {
-	return &UpdateBusiness{businesses: businesses}
+func NewUpdateBusiness(businesses business.BusinessRepository, entitlements business.EntitlementsProvider) *UpdateBusiness {
+	return &UpdateBusiness{businesses: businesses, entitlements: entitlements}
 }
 
-// Handle applies the new profile to the business of in.OwnerID.
+// Handle applies the new profile to the business of in.OwnerID. Setting an average ticket
+// needs a plan with the advanced metrics (business.ErrPlanUpgradeRequired otherwise); keeping
+// the one it has, or removing it, is always allowed, so a downgraded business can still clear it.
 func (c *UpdateBusiness) Handle(ctx context.Context, in UpdateBusinessInput) (domain.Business, error) {
 	current, err := c.businesses.FindByOwner(ctx, in.OwnerID)
 	if err != nil {
 		return domain.Business{}, fmt.Errorf("find business: %w", err)
 	}
 
+	ticket := current.AverageTicketARS
+	if in.AverageTicket.Set {
+		ticket = in.AverageTicket.Value
+	}
 	updated, err := current.UpdateProfile(domain.ProfileInput{
-		CategoryID:  in.CategoryID,
-		Name:        in.Name,
-		Description: in.Description,
-		WhatsApp:    in.WhatsApp,
+		CategoryID:       in.CategoryID,
+		Name:             in.Name,
+		Description:      in.Description,
+		WhatsApp:         in.WhatsApp,
+		AverageTicketARS: ticket,
 	})
 	if err != nil {
 		return domain.Business{}, err
+	}
+	if updated.AverageTicketARS != nil && ticketValue(updated.AverageTicketARS) != ticketValue(current.AverageTicketARS) {
+		granted, err := c.entitlements.For(ctx, current.ID)
+		if err != nil {
+			return domain.Business{}, fmt.Errorf("resolve entitlements: %w", err)
+		}
+		if !granted.AdvancedMetrics() {
+			return domain.Business{}, business.ErrPlanUpgradeRequired
+		}
 	}
 
 	// Nothing to save, and nothing to record, when the owner sent what was already there.
@@ -135,7 +160,16 @@ func profileChanges(before, after domain.Business) map[string]map[string]any {
 	note("category_id", before.CategoryID, after.CategoryID)
 	note("description", before.Description, after.Description)
 	note("whatsapp", before.WhatsApp, after.WhatsApp)
+	note("average_ticket_ars", ticketValue(before.AverageTicketARS), ticketValue(after.AverageTicketARS))
 	return changes
+}
+
+// ticketValue is the ticket as a comparable, loggable value: the number or nil.
+func ticketValue(t *int) any {
+	if t == nil {
+		return nil
+	}
+	return *t
 }
 
 // SubmitBusinessInput asks for the manual review.

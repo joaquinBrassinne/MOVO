@@ -33,10 +33,47 @@ func TestLoadPlans(t *testing.T) {
 	}
 	want := config.Plans{
 		Starter: config.PlanSettings{MaxBranches: 2, MaxActiveServices: 3, Price: 19800, CheckoutURL: "https://mp.example/starter"},
-		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800, CheckoutURL: "https://mp.example/pro"},
+		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800, CheckoutURL: "https://mp.example/pro", AdvancedMetrics: true, PrioritySupport: true},
 	}
 	if got != want {
 		t.Errorf("plans = %+v, want %+v", got, want)
+	}
+}
+
+func TestLoadPlansAdvancedMetricsAreOptionalAndDefaultToProOnly(t *testing.T) {
+	t.Parallel()
+
+	got, err := config.LoadPlans(plansEnv(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Starter.AdvancedMetrics || !got.Pro.AdvancedMetrics {
+		t.Errorf("defaults: starter %t, pro %t; want false and true", got.Starter.AdvancedMetrics, got.Pro.AdvancedMetrics)
+	}
+
+	got, err = config.LoadPlans(plansEnv(map[string]string{
+		"PLAN_STARTER_ADVANCED_METRICS": "true", "PLAN_PRO_ADVANCED_METRICS": "true",
+	}))
+	if err != nil || !got.Starter.AdvancedMetrics {
+		t.Errorf("starter with the metrics on: %+v, %v; want them on", got.Starter, err)
+	}
+
+	got, err = config.LoadPlans(plansEnv(map[string]string{"PLAN_PRO_ADVANCED_METRICS": "false"}))
+	if err != nil || got.Pro.AdvancedMetrics {
+		t.Errorf("pro with the metrics off: %+v, %v; want them off", got.Pro, err)
+	}
+}
+
+func TestLoadPlansAdvancedMetricsRejections(t *testing.T) {
+	t.Parallel()
+
+	for name, overrides := range map[string]map[string]string{
+		"a typo is not a bool":               {"PLAN_PRO_ADVANCED_METRICS": "yes please"},
+		"pro cannot offer less than starter": {"PLAN_STARTER_ADVANCED_METRICS": "true", "PLAN_PRO_ADVANCED_METRICS": "false"},
+	} {
+		if _, err := config.LoadPlans(plansEnv(overrides)); err == nil || !strings.Contains(err.Error(), "ADVANCED_METRICS") {
+			t.Errorf("%s: error = %v, want one naming ADVANCED_METRICS", name, err)
+		}
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/joaquinBrassinne/MOVO/internal/benefits"
 	"github.com/joaquinBrassinne/MOVO/internal/billing"
 	"github.com/joaquinBrassinne/MOVO/internal/billing/adapters/configcatalog"
 	billinghttp "github.com/joaquinBrassinne/MOVO/internal/billing/adapters/http"
@@ -33,6 +34,65 @@ type entitlementsOf struct {
 
 func (e entitlementsOf) For(ctx context.Context, businessID int64) (business.Entitlements, error) {
 	return e.query.Handle(ctx, businessID)
+}
+
+// metricsPlan adapts billing and business to the ports the benefits module declares for the Pro
+// metrics: a business may read them when its entitlements say so (a pilot gets the Pro ones),
+// and its economics are the average ticket its owner loaded and the price of the plan it is on.
+type metricsPlan struct {
+	query      *billingqueries.EntitlementsFor
+	businesses *businesspostgres.Businesses
+	resolver   billing.PlanResolver
+	catalog    billing.PlanCatalog
+}
+
+func (m metricsPlan) AdvancedMetrics(ctx context.Context, businessID int64) (bool, error) {
+	granted, err := m.query.Handle(ctx, businessID)
+	if err != nil {
+		return false, err
+	}
+	return granted.AdvancedMetrics(), nil
+}
+
+func (m metricsPlan) Economics(ctx context.Context, businessID int64) (benefits.Economics, error) {
+	ticket, err := m.businesses.AverageTicket(ctx, businessID)
+	if err != nil {
+		return benefits.Economics{}, err
+	}
+	plan, err := m.resolver.PlanOf(ctx, businessID)
+	if err != nil {
+		return benefits.Economics{}, err
+	}
+	for _, info := range m.catalog.Plans() {
+		if info.Plan == plan {
+			return benefits.Economics{AverageTicketARS: ticket, PlanPriceARS: info.Price}, nil
+		}
+	}
+	return benefits.Economics{}, billing.ErrUnknownPlan
+}
+
+// newMetricsPlan builds the Pro metrics plan from the plan settings and the same resolver the
+// business routes use, so both answer alike.
+func newMetricsPlan(pool *pgxpool.Pool, plans config.Plans) (metricsPlan, error) {
+	catalog, err := configcatalog.New(plans)
+	if err != nil {
+		return metricsPlan{}, err
+	}
+	resolver, _ := newPlanResolver(pool)
+	return metricsPlan{
+		query:      billingqueries.NewEntitlementsFor(catalog, resolver),
+		businesses: businesspostgres.NewBusinesses(pool),
+		resolver:   resolver,
+		catalog:    catalog,
+	}, nil
+}
+
+// newPlanResolver tells which plan a business is on: pilot businesses get the Pro limits for
+// free; everyone else is on the plan of their subscription (Starter until the admin confirms
+// the payment). Dropping pilotplan ends the pilot. It also returns the subscriptions store.
+func newPlanResolver(pool *pgxpool.Pool) (billing.PlanResolver, *billingpostgres.Subscriptions) {
+	subscriptions := billingpostgres.NewSubscriptions(pool)
+	return pilotplan.New(businesspostgres.NewBusinesses(pool), subscriptions), subscriptions
 }
 
 // ownerPlans answers which plan an owner's business is on. It joins the two modules
@@ -114,11 +174,7 @@ func newBusinessRoutes(
 	admin := businesspostgres.NewAdmin(pool)
 	photos := businesspostgres.NewImages(pool)
 
-	// Pilot businesses get the Pro limits for free; everyone else is on the plan of
-	// their subscription (Starter until the admin confirms the payment). Dropping
-	// pilotplan ends the pilot.
-	subscriptions := billingpostgres.NewSubscriptions(pool)
-	resolver := pilotplan.New(businesses, subscriptions)
+	resolver, subscriptions := newPlanResolver(pool)
 	entitlements := entitlementsOf{query: billingqueries.NewEntitlementsFor(catalog, resolver)}
 
 	handlers := businesshttp.New(businesshttp.Deps{
@@ -127,7 +183,7 @@ func newBusinessRoutes(
 
 		MyBusiness:     queries.NewGetMyBusiness(businesses, branches, photos, images),
 		CreateBusiness: commands.NewCreateBusiness(businesses),
-		UpdateBusiness: commands.NewUpdateBusiness(businesses),
+		UpdateBusiness: commands.NewUpdateBusiness(businesses, entitlements),
 		SubmitBusiness: commands.NewSubmitBusiness(businesses),
 		PresignImage:   commands.NewPresignImageUpload(businesses, images, nil),
 		Geocode:        commands.NewGeocodeAddress(businesses, geocoder),
@@ -164,7 +220,7 @@ func newBusinessRoutes(
 		Confirm:       billingcommands.NewConfirmPayment(subscriptions, time.Now),
 		Register:      billingcommands.NewRegisterPayment(subscriptions, time.Now),
 		ChangePlan:    billingcommands.NewChangePlan(subscriptions, catalog),
-		List:          billingqueries.NewListSubscriptions(subscriptions),
+		List:          billingqueries.NewListSubscriptions(subscriptions).WithPlans(catalog),
 	})
 	billingMount = func(r chi.Router) {
 		planHandlers.Mount(r)

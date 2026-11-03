@@ -73,7 +73,7 @@ func servedRoutes(t *testing.T) []string {
 	}
 	plans := config.Plans{
 		Starter: config.PlanSettings{MaxBranches: 2, MaxActiveServices: 3, Price: 19800},
-		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800},
+		Pro:     config.PlanSettings{MaxBranches: 4, MaxActiveServices: 0, Price: 29800, AdvancedMetrics: true, PrioritySupport: true},
 	}
 	images := storage.NewMemory()
 
@@ -81,13 +81,18 @@ func servedRoutes(t *testing.T) []string {
 	if err != nil {
 		t.Fatalf("newBusinessRoutes: %v", err)
 	}
+	metricsAccess, err := newMetricsPlan(pool, plans)
+	if err != nil {
+		t.Fatalf("newMetricsPlan: %v", err)
+	}
 	router := httpx.NewRouter(log, pool,
 		newIdentityRoutes(log, pool, config.Auth{RefreshTokenTTL: time.Hour}, signer),
 		businessMount,
 		billingMount,
 		newSearchRoutes(log, pool, images),
-		newBenefitsRoutes(log, pool, signer, 5),
+		newBenefitsRoutes(log, pool, signer, 5, metricsAccess),
 		newReviewsRoutes(log, pool, signer),
+		newAdminRoutes(log, pool, signer),
 	)
 
 	routes, ok := router.(chi.Routes)

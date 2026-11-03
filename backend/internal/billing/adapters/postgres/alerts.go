@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -53,6 +54,26 @@ ORDER BY a.created_at DESC, a.id DESC`, ownerID)
 		return nil, fmt.Errorf("postgres: list alerts: %w", err)
 	}
 	return out, nil
+}
+
+// Raise stores an alert for a business unless it already got one of the same type created
+// after notBefore, read or not. It reports whether it stored it. The statement is a single
+// INSERT ... WHERE NOT EXISTS; the worker runs it under an advisory lock, so two runs never
+// race.
+func (r *Alerts) Raise(ctx context.Context, businessID int64, alertType string, payload map[string]any, notBefore time.Time) (bool, error) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return false, fmt.Errorf("postgres: encode alert payload: %w", err)
+	}
+	tag, err := r.pool.Exec(ctx, `
+INSERT INTO alerts (business_id, type, payload)
+SELECT $1, $2, $3
+WHERE NOT EXISTS (SELECT 1 FROM alerts WHERE business_id = $1 AND type = $2 AND created_at > $4)`,
+		businessID, alertType, raw, notBefore)
+	if err != nil {
+		return false, fmt.Errorf("postgres: raise alert: %w", err)
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // MarkRead dismisses an alert of the owner's business.

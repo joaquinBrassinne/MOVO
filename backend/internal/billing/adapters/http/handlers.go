@@ -144,6 +144,9 @@ type planJSON struct {
 	// The limits are null when the plan is unlimited.
 	MaxBranches       *int `json:"max_branches"`
 	MaxActiveServices *int `json:"max_active_services"`
+	// AdvancedMetrics is whether the plan includes the Pro metrics (SDD 4.3); the panel uses
+	// it to show them or to show the lock.
+	AdvancedMetrics bool `json:"advanced_metrics"`
 }
 
 func toPlanJSON(p billing.PlanInfo) planJSON {
@@ -152,6 +155,7 @@ func toPlanJSON(p billing.PlanInfo) planJSON {
 		Price:             p.Price,
 		MaxBranches:       limit(p.Entitlements.MaxBranches()),
 		MaxActiveServices: limit(p.Entitlements.MaxActiveServices()),
+		AdvancedMetrics:   p.Entitlements.AdvancedMetrics(),
 	}
 }
 

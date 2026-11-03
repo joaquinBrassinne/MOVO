@@ -228,6 +228,142 @@ paths:
           description: Session closed. No body.
         '400':
           $ref: '#/components/responses/BadRequest'
+  /auth/reset-password:
+    post:
+      operationId: identityResetPassword
+      summary: Set a new password with a reset link
+      description: >-
+        Public: the one-time token the super admin sent is the credential. On success the
+        password changes and every session of the owner ends. A token that is unknown,
+        expired (24 hours) or already used answers `invalid_reset_token`. Rate limited per
+        address. Not cached.
+      tags: [Identity]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '204':
+          description: Password changed. No body.
+        '400':
+          description: '`invalid_reset_token`, or a body that is not valid JSON.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `password` (`too_short` or `too_long`).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: '`too_many_attempts`, with `Retry-After`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/password-resets:
+    post:
+      operationId: identityIssuePasswordReset
+      summary: Issue a password reset link for an owner
+      description: >-
+        Requires role `super_admin`. Returns the token once; only its digest is stored. The
+        admin builds the link `/owners/reset-password?token=...` and sends it to the owner by
+        WhatsApp. The token works once and for 24 hours; a new one retires the previous.
+        Only business owners can be reset: a super admin email answers 404 like an unknown
+        one. The action is recorded in the audit log. Not cached.
+      tags: [Identity]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+      responses:
+        '201':
+          description: The token, shown this once.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user_id, email, token, expires_at]
+                properties:
+                  user_id:
+                    type: integer
+                    format: int64
+                  email:
+                    type: string
+                  token:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: '`user_not_found`: no owner has that email.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `email` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/metrics:
+    get:
+      operationId: adminMetrics
+      summary: Platform figures for the super admin
+      description: >-
+        Requires role `super_admin`. Active businesses and coupon totals, all-time and since
+        the first day of the current month on Argentina's clock. Counts only, no personal data.
+        Not cached.
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The figures.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [active_businesses, coupons, coupons_this_month, month_start]
+                properties:
+                  active_businesses:
+                    type: integer
+                  coupons:
+                    $ref: '#/components/schemas/AdminCouponCounts'
+                  coupons_this_month:
+                    $ref: '#/components/schemas/AdminCouponCounts'
+                  month_start:
+                    type: string
+                    format: date
+                    description: First day of the month that `coupons_this_month` counts from.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /search:
     get:
       operationId: searchNearby
@@ -411,6 +547,36 @@ paths:
               schema:
                 type: string
                 example: no-store
+  /branches/{branch_id}/services/{service_id}/view:
+    post:
+      operationId: searchRecordServiceView
+      summary: Count a service view
+      description: Beacon the public page sends when a service is on screen. It increments an aggregate counter; no personal data is stored. A repeat from the same address within 30 minutes is not counted. Always answers 204 whether or not it counted, so it does not reveal which branches or services exist.
+      tags: [Search]
+      security: []
+      parameters:
+        - name: branch_id
+          in: path
+          required: true
+          description: Branch the service is shown under.
+          schema:
+            type: integer
+            format: int64
+        - name: service_id
+          in: path
+          required: true
+          description: The service.
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Accepted. No body.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
   /r/wa/{branch_id}:
     get:
       operationId: searchOpenWhatsApp
@@ -573,7 +739,9 @@ paths:
       summary: Update my business profile
       description: >-
         Replaces category, name, description and WhatsApp. The slug never changes. A deleted business cannot be
-        edited. Requires role business_admin.
+        edited. The average ticket is the exception to "replaces": leave it out to keep the stored one, send
+        null to remove it, or a whole number of pesos above zero to set it. Setting a new one needs a plan with
+        the advanced metrics. Requires role business_admin.
       tags: [Business]
       security:
         - bearerAuth: []
@@ -582,7 +750,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BusinessProfileRequest'
+              $ref: '#/components/schemas/BusinessProfileUpdateRequest'
       responses:
         '200':
           description: The updated business.
@@ -595,7 +763,8 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: 'Not a business_admin (forbidden), or a plan without the advanced metrics tried to set the average ticket (plan_upgrade_required).'
+          content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
         '404':
           description: 'The caller has no business (business_not_found).'
           content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
@@ -1613,6 +1782,585 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /me/business/metrics:
+    get:
+      operationId: benefitsGetMetrics
+      summary: Essential metrics of my business
+      description: >-
+        Requires role business_admin. The views of the profile and the coupons generated and
+        redeemed over the last `days` days, today included, on Argentina's calendar. Available
+        on every plan. Counts events, never people, and carries no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The metrics of the period.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [period, profile_views, coupons]
+                properties:
+                  period:
+                    type: object
+                    required: [days, from, to]
+                    properties:
+                      days:
+                        type: integer
+                      from:
+                        type: string
+                        format: date
+                      to:
+                        type: string
+                        format: date
+                  profile_views:
+                    type: integer
+                  coupons:
+                    $ref: '#/components/schemas/AdminCouponCounts'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/metrics/activities:
+    get:
+      operationId: benefitsGetTopActivities
+      summary: Most demanded activities of my business
+      description: >-
+        Requires role business_admin. The five services with the most demand over the period:
+        the times each was looked at plus the times someone tapped WhatsApp from it, most
+        asked for first. Deleted services are left out. Available on every plan. Counts only,
+        no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The ranking, empty when nothing was asked for.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [period, activities]
+                properties:
+                  period:
+                    type: object
+                    required: [days, from, to]
+                    properties:
+                      days:
+                        type: integer
+                      from:
+                        type: string
+                        format: date
+                      to:
+                        type: string
+                        format: date
+                  activities:
+                    type: array
+                    items:
+                      type: object
+                      required: [service_id, name, views, whatsapp_clicks]
+                      properties:
+                        service_id:
+                          type: integer
+                          format: int64
+                        name:
+                          type: string
+                        views:
+                          type: integer
+                        whatsapp_clicks:
+                          type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/metrics/conversion:
+    get:
+      operationId: benefitsGetConversion
+      summary: Conversion rates (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. Views to coupons (at the level
+        of the business, since profile views are per business) and coupons to redemptions (of the coupons
+        generated in the period, how many were redeemed so far), each with its movement against the previous
+        period of the same length, plus the redemptions per WhatsApp tap by branch and the taps per view by
+        activity. Rates are fractions (0.25 is 25 %) and null when there is nothing to divide by; the previous
+        rate and the change are null when the previous period had fewer than `minimum_sample` coupons. With
+        fewer than `minimum_sample` coupons generated in the period the answer is only
+        `{status: insufficient_data}` with the period and the counts. Counts only, no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The conversion metric, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsConversion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/metrics/heatmap:
+    get:
+      operationId: benefitsGetHeatmap
+      summary: Redemption heat map (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. How many coupons were redeemed
+        on each weekday (ISO: Monday 1 to Sunday 7) and in each of four six-hour slots, read from
+        `redeemed_at` on Argentina's clock, over the period, with the total of the previous period of the
+        same length. `cells` has one entry for every weekday and slot, zeros included, ordered by weekday
+        and then slot. With fewer than `minimum_sample` coupons generated in the period the answer is
+        only `{status: insufficient_data}` with the period and the counts. Counts only, no personal
+        data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The heat map, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsHeatmap'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/metrics/benefits:
+    get:
+      operationId: benefitsGetBenefitPerformance
+      summary: Performance of each benefit (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. For every benefit that
+        generated a coupon in the period: the coupons generated, redeemed, expired and still pending, and
+        the redemption rate (redeemed over generated, by cohort) against the previous period. A coupon
+        counts as expired when it is marked expired or when it is still pending past its time. Benefits
+        are ordered by coupons generated. With fewer than `minimum_sample` coupons generated in all the
+        answer is only `{status: insufficient_data}` with the period and the counts. Counts only, no
+        personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The performance per benefit, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsBenefitPerformance'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/metrics/time-to-redeem:
+    get:
+      operationId: benefitsGetTimeToRedeem
+      summary: Time until redemption (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. Of the coupons redeemed in the
+        period, the share redeemed the same Argentine calendar day they were generated (`same_day`), on a
+        later day but within 24 hours (`within_24h`), and later than that, up to the 48 hours a coupon
+        lasts (`within_48h`). The buckets do not overlap and add up to `redemptions`. Each share comes
+        with the share of the previous period. With fewer than `minimum_sample` coupons generated in the
+        period the answer is only `{status: insufficient_data}` with the period and the counts. Counts
+        only, no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The buckets, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsTimeToRedeem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/metrics/returning-customers:
+    get:
+      operationId: benefitsGetReturningCustomers
+      summary: Customers who came back (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. Of the customers who redeemed
+        a coupon at the business in the period, how many redeemed once (`one_redemption`) and how many
+        two or more times (`two_or_more`), and the share of the second group against the previous period.
+        Only numbers: the count is made in the database and no customer, name or phone is ever returned.
+        With fewer than `minimum_sample` coupons generated in the period the answer is only
+        `{status: insufficient_data}` with the period and the counts. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The counts, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsReturningCustomers'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/metrics/quota-projection:
+    get:
+      operationId: benefitsGetQuotaProjection
+      summary: When the monthly coupon quota runs out (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. A linear estimate, from the
+        pace of the month so far on Argentina's calendar, of the day the monthly coupon quota runs out.
+        It takes no period: it looks at the month in course. `status` says what is known:
+        `no_quota` (the business has no limit; nothing else is sent), `insufficient_data` (fewer than
+        `minimum_days` days have gone by or nothing was generated yet), `exhausted` (the quota is used
+        up), `on_track` (at this pace it lasts until `resets_on`) and `will_run_out` (it runs out on
+        `exhausts_on`). Counts only, no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The projection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsQuotaProjection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/metrics/estimated-return:
+    get:
+      operationId: benefitsGetEstimatedReturn
+      summary: Estimated return of the coupons (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. An estimate, never a
+        measurement: the coupons redeemed in the period times the average ticket the owner loaded, as if
+        each redemption had spent that much, next to the monthly price of the plan the business is on.
+        Without an average ticket the answer is only `{status: no_ticket}` and nothing is shown. With
+        fewer than `minimum_sample` coupons generated in the period it is only `{status:
+        insufficient_data}`. The estimate for the previous period uses the same ticket and is null when
+        that period had too few coupons. Counts and pesos only, no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The estimate, no_ticket or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsEstimatedReturn'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/metrics/branches:
+    get:
+      operationId: benefitsGetBranchComparison
+      summary: Comparison of the branches (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. For every branch: the views of
+        its services, the taps on its WhatsApp button and the coupons redeemed there
+        (`redeemed_branch_id`), each with the same number in the previous period and the growth as a
+        fraction (null with no baseline: the previous period had fewer than `minimum_sample` coupons, or
+        the number was zero). Active branches are listed even with no activity; a retired branch only if
+        it had some. Ordered by redemptions. With fewer than `minimum_sample` coupons generated in the
+        period the answer is only `{status: insufficient_data}` with the period and the counts. Counts
+        only, no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The branches compared, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsBranchComparison'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/metrics/reviews:
+    get:
+      operationId: benefitsGetReviewsOverTime
+      summary: Reviews over time (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. The average rating of the
+        reviews written in the period against the previous period (hidden reviews are not counted; a
+        reported one still is), and the share of the coupons redeemed in the period that have a review.
+        The averages are null with no reviews; the previous average and the change are null when the
+        previous period had fewer than `minimum_sample` coupons or no reviews. With fewer than
+        `minimum_sample` coupons generated in the period the answer is only `{status:
+        insufficient_data}` with the period and the counts. Numbers only: no review text, name or
+        customer is ever returned. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Length of the period in days. 30 when omitted.
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        '200':
+          description: The reviews over time, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsReviewsOverTime'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`validation_failed` with `details.field` `period` (invalid).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /me/business/metrics/records:
+    get:
+      operationId: benefitsGetRecords
+      summary: Your records (Pro)
+      description: >-
+        Requires role business_admin and a plan with the advanced metrics. It takes no period: it looks
+        at the 12 complete calendar months before the current one, on Argentina's calendar. The best
+        month by redemptions (the month in course never enters the ranking; a tie goes to the most
+        recent month), how far the month in course has gone against it (`progress` 0.65 is "vas al
+        65 %"; `record_in_progress` once it beats it), the strong weekday and slot (from the redemption
+        heat map of those 12 months) and the star benefit (the one with the most redemptions in them).
+        It needs at least `minimum_history_months` complete months of history, counted from the first
+        coupon the business generated, and `minimum_best_month_redemptions` redemptions in the best
+        month; otherwise the answer is `{status: insufficient_data}` with the history and, when the
+        history is enough, the best month's count. Counts only, no personal data. Not cached.
+      tags: [Benefits]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The records, or insufficient_data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsRecords'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ProMetricForbidden'
+        '404':
+          description: The caller has not created a business yet (code business_not_found).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /me/business/activity:
     get:
       operationId: benefitsGetActivity
@@ -2433,8 +3181,9 @@ paths:
       operationId: billingListMyAlerts
       summary: List the unread alerts of the owner's business
       description: >-
-        Requires role `business_admin`. Today the only alert `type` is `plan_downgrade`,
-        created when a plan change switches off branches or services. Not cached.
+        Requires role `business_admin`. The alert `type` is `plan_downgrade` (created when a
+        plan change switches off branches or services) or `unredeemed_coupons` (the redemption
+        rate of the last 30 days is under the threshold; Pro only, at most one per week). Not cached.
       tags: [Subscription]
       security:
         - bearerAuth: []
@@ -2507,25 +3256,58 @@ paths:
           schema:
             type: string
             enum: [active, grace, expired, expiring]
+        - name: plan
+          in: query
+          required: false
+          description: Only subscriptions on this plan.
+          schema:
+            type: string
+            enum: [starter, pro]
+        - name: q
+          in: query
+          required: false
+          description: Case-insensitive part of the business name.
+          schema:
+            type: string
+            maxLength: 100
+        - name: limit
+          in: query
+          required: false
+          description: Page size. Omit for every entry.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100
+        - name: offset
+          in: query
+          required: false
+          description: Entries to skip.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
-          description: The subscriptions.
+          description: The page of subscriptions and how many matched in all.
           content:
             application/json:
               schema:
                 type: object
-                required: [subscriptions]
+                required: [subscriptions, total]
                 properties:
                   subscriptions:
                     type: array
                     items:
                       $ref: '#/components/schemas/BillingSubscriptionEntry'
+                  total:
+                    type: integer
+                    description: Entries that match the filters, before paging.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '422':
-          description: '`validation_failed` with `details.field` `status` (invalid).'
+          description: '`validation_failed` with `details.field` `status`, `plan` or `limit` (invalid).'
           content:
             application/json:
               schema:
@@ -2771,6 +3553,14 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    ProMetricForbidden:
+      description: >-
+        Not a business_admin (code `forbidden`), or the business's plan does not include the advanced
+        metrics (code `plan_upgrade_required`, with a message inviting to upgrade to Pro). No data is sent.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     NotFound:
       description: The resource does not exist, or it is not visible to the caller.
       content:
@@ -2823,6 +3613,490 @@ components:
           maxLength: 128
           description: Password, 10 to 128 characters.
           example: correct-horse-battery
+    MetricsPeriod:
+      type: object
+      required: [days, from, to]
+      properties:
+        days:
+          type: integer
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+    MetricsRate:
+      type: object
+      required: [numerator, denominator, rate, previous_rate, change]
+      properties:
+        numerator:
+          type: integer
+        denominator:
+          type: integer
+        rate:
+          type: number
+          nullable: true
+          description: numerator / denominator as a fraction; null when the denominator is zero.
+        previous_rate:
+          type: number
+          nullable: true
+        change:
+          type: number
+          nullable: true
+          description: rate minus previous_rate, as a fraction.
+    MetricsConversion:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        views_to_coupons:
+          $ref: '#/components/schemas/MetricsRate'
+        coupons_to_redemptions:
+          $ref: '#/components/schemas/MetricsRate'
+        by_branch:
+          type: array
+          items:
+            type: object
+            required: [branch_id, name, whatsapp_clicks, redemptions, rate]
+            properties:
+              branch_id:
+                type: integer
+                format: int64
+              name:
+                type: string
+              whatsapp_clicks:
+                type: integer
+              redemptions:
+                type: integer
+              rate:
+                type: number
+                nullable: true
+        by_activity:
+          type: array
+          items:
+            type: object
+            required: [service_id, name, views, whatsapp_clicks, rate]
+            properties:
+              service_id:
+                type: integer
+                format: int64
+              name:
+                type: string
+              views:
+                type: integer
+              whatsapp_clicks:
+                type: integer
+              rate:
+                type: number
+                nullable: true
+    MetricsRecords:
+      type: object
+      required: [status, history_months, minimum_history_months, minimum_best_month_redemptions, window]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        history_months:
+          type: integer
+          description: Complete calendar months, among the last 12, that began after the first coupon.
+        minimum_history_months:
+          type: integer
+          example: 2
+        minimum_best_month_redemptions:
+          type: integer
+          example: 20
+        window:
+          type: object
+          required: [from, to]
+          properties:
+            from:
+              type: string
+              format: date
+            to:
+              type: string
+              format: date
+        best_month_redemptions:
+          type: integer
+          description: Sent with insufficient_data when the history is enough.
+        best_month:
+          type: object
+          required: [month, redemptions]
+          properties:
+            month:
+              type: string
+              example: '2028-02'
+            redemptions:
+              type: integer
+        current_month:
+          type: object
+          required: [month, redemptions, progress, record_in_progress]
+          properties:
+            month:
+              type: string
+            redemptions:
+              type: integer
+            progress:
+              type: number
+              description: Redemptions of the month in course over those of the best month.
+            record_in_progress:
+              type: boolean
+        strong_weekday:
+          type: integer
+          minimum: 1
+          maximum: 7
+          description: ISO weekday with the most redemptions, Monday 1 to Sunday 7.
+        strong_slot:
+          type: object
+          required: [slot, key]
+          properties:
+            slot:
+              type: integer
+              minimum: 0
+              maximum: 3
+            key:
+              type: string
+              enum: [overnight, morning, afternoon, evening]
+        star_benefit:
+          type: object
+          nullable: true
+          required: [benefit_id, name, redemptions]
+          properties:
+            benefit_id:
+              type: integer
+              format: int64
+            name:
+              type: string
+            redemptions:
+              type: integer
+    MetricsReviewsOverTime:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        rating:
+          type: object
+          required: [reviews, previous_reviews, average, previous_average, change]
+          properties:
+            reviews:
+              type: integer
+              description: Reviews written in the period.
+            previous_reviews:
+              type: integer
+            average:
+              type: number
+              nullable: true
+              description: Stars, two decimals; null with no reviews.
+            previous_average:
+              type: number
+              nullable: true
+            change:
+              type: number
+              nullable: true
+              description: average minus previous_average, in stars.
+        review_rate:
+          $ref: '#/components/schemas/MetricsRate'
+    MetricsCount:
+      type: object
+      required: [value, previous, change]
+      properties:
+        value:
+          type: integer
+        previous:
+          type: integer
+        change:
+          type: number
+          nullable: true
+          description: Growth as a fraction, (value - previous) / previous.
+    MetricsBranchComparison:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        branches:
+          type: array
+          items:
+            type: object
+            required: [branch_id, name, active, service_views, whatsapp_clicks, redemptions]
+            properties:
+              branch_id:
+                type: integer
+                format: int64
+              name:
+                type: string
+              active:
+                type: boolean
+                description: False for a retired branch, whose history stays.
+              service_views:
+                $ref: '#/components/schemas/MetricsCount'
+              whatsapp_clicks:
+                $ref: '#/components/schemas/MetricsCount'
+              redemptions:
+                $ref: '#/components/schemas/MetricsCount'
+    MetricsEstimatedReturn:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, no_ticket, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        estimated:
+          type: boolean
+          description: Always true. The screen must present the figure as an estimate.
+        redemptions:
+          type: integer
+        previous_redemptions:
+          type: integer
+        average_ticket_ars:
+          type: integer
+          description: The ticket the owner loaded, the multiplier of the estimate.
+        estimated_return_ars:
+          type: integer
+          format: int64
+          description: redemptions times average_ticket_ars.
+        previous_estimated_return_ars:
+          type: integer
+          format: int64
+          nullable: true
+        plan_price_ars:
+          type: integer
+          description: Monthly price of the plan the business is on.
+    MetricsQuotaProjection:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [no_quota, insufficient_data, exhausted, on_track, will_run_out]
+        limit:
+          type: integer
+        generated:
+          type: integer
+          description: Coupons generated this month.
+        days_elapsed:
+          type: integer
+          description: Days of the month gone by, today included.
+        days_in_month:
+          type: integer
+        minimum_days:
+          type: integer
+          description: Days that must go by before an estimate is made. Sent with insufficient_data.
+          example: 3
+        daily_rate:
+          type: number
+          description: Coupons generated per day so far. Sent with on_track and will_run_out.
+        projected_total:
+          type: integer
+          description: Coupons the month would end with at this pace. Sent with on_track and will_run_out.
+        exhausts_on:
+          type: string
+          format: date
+          description: Day the quota runs out. Sent with will_run_out.
+        resets_on:
+          type: string
+          format: date
+          description: First day of the next month, when the count starts again.
+    MetricsReturningCustomers:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        customers:
+          type: integer
+          description: Different customers who redeemed in the period.
+        previous_customers:
+          type: integer
+        one_redemption:
+          type: integer
+        two_or_more:
+          type: integer
+        repeat_rate:
+          $ref: '#/components/schemas/MetricsRate'
+    MetricsTimeToRedeem:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        redemptions:
+          type: integer
+        previous_redemptions:
+          type: integer
+        same_day:
+          $ref: '#/components/schemas/MetricsRate'
+        within_24h:
+          $ref: '#/components/schemas/MetricsRate'
+        within_48h:
+          $ref: '#/components/schemas/MetricsRate'
+    MetricsBenefitPerformance:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        benefits:
+          type: array
+          items:
+            type: object
+            required: [benefit_id, name, generated, redeemed, expired, pending, rate, previous_rate, change]
+            properties:
+              benefit_id:
+                type: integer
+                format: int64
+              name:
+                type: string
+                description: The title of the benefit, or its short label ("-15%") when it has none.
+              generated:
+                type: integer
+              redeemed:
+                type: integer
+              expired:
+                type: integer
+              pending:
+                type: integer
+              rate:
+                type: number
+                nullable: true
+              previous_rate:
+                type: number
+                nullable: true
+              change:
+                type: number
+                nullable: true
+    MetricsHeatmap:
+      type: object
+      required: [status, period, previous_period, coupons_generated, minimum_sample]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data]
+        period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        previous_period:
+          $ref: '#/components/schemas/MetricsPeriod'
+        coupons_generated:
+          type: integer
+        minimum_sample:
+          type: integer
+          example: 20
+        slots:
+          type: array
+          description: The four slots of the day, indexed by the `slot` of each cell.
+          items:
+            type: object
+            required: [key, start, end]
+            properties:
+              key:
+                type: string
+                enum: [overnight, morning, afternoon, evening]
+              start:
+                type: string
+                example: '06:00'
+              end:
+                type: string
+                example: '11:59'
+        redemptions:
+          type: integer
+          description: Coupons redeemed in the period.
+        previous_redemptions:
+          type: integer
+          description: Coupons redeemed in the previous period of the same length.
+        cells:
+          type: array
+          items:
+            type: object
+            required: [weekday, slot, redemptions]
+            properties:
+              weekday:
+                type: integer
+                minimum: 1
+                maximum: 7
+              slot:
+                type: integer
+                minimum: 0
+                maximum: 3
+              redemptions:
+                type: integer
+    AdminCouponCounts:
+      type: object
+      required: [generated, redeemed]
+      properties:
+        generated:
+          type: integer
+        redeemed:
+          type: integer
     IdentityRefreshRequest:
       type: object
       additionalProperties: false
@@ -3118,8 +4392,14 @@ components:
     Business:
       type: object
       description: The business of an owner. Each owner has at most one.
-      required: [id, category_id, name, slug, description, whatsapp, status, pilot, verified, mp_payer_email, mp_payer_name, mp_plan_hint, created_at]
+      required: [id, category_id, name, slug, description, whatsapp, status, pilot, verified, mp_payer_email, mp_payer_name, mp_plan_hint, average_ticket_ars, created_at]
       properties:
+        average_ticket_ars:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: Typical spend of a customer in whole pesos, null when never loaded. Feeds the estimated return of the Pro metrics.
+          example: 15000
         id:
           type: integer
           format: int64
@@ -3165,6 +4445,18 @@ components:
         created_at:
           type: string
           format: date-time
+    BusinessProfileUpdateRequest:
+      description: The profile fields of an update, plus the optional average ticket, which only an update accepts.
+      allOf:
+        - $ref: '#/components/schemas/BusinessProfileRequest'
+        - type: object
+          properties:
+            average_ticket_ars:
+              type: integer
+              nullable: true
+              minimum: 1
+              description: Whole pesos. Absent keeps the stored value, null removes it.
+              example: 15000
     BusinessProfileRequest:
       type: object
       description: Profile fields of a business. All are written on both create and update (full replacement).
@@ -4167,8 +5459,11 @@ components:
           enum: [hidden, visible]
     BillingPlan:
       type: object
-      required: [plan, price, max_branches, max_active_services]
+      required: [plan, price, max_branches, max_active_services, advanced_metrics]
       properties:
+        advanced_metrics:
+          type: boolean
+          description: Whether the plan includes the Pro metrics ("inteligencia comercial").
         plan:
           $ref: '#/components/schemas/BillingPlanName'
         price:
@@ -4230,7 +5525,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/BillingSubscription'
         - type: object
-          required: [business_name, business_status, pilot, expiring_soon, days_left, reminder_url]
+          required: [business_name, business_status, pilot, expiring_soon, days_left, reminder_url, priority_support]
           properties:
             business_name:
               type: string
@@ -4248,6 +5543,11 @@ components:
             reminder_url:
               type: string
               description: '`wa.me` link with a prefilled reminder. Empty when the owner has no WhatsApp.'
+            priority_support:
+              type: boolean
+              description: >-
+                The plan of the business includes the priority support (a pilot gets Pro's), so
+                the admin answers it first. Only a mark: the support itself is a process.
     BillingConfirmRequest:
       type: object
       required: [plan, paid_until]
@@ -4332,12 +5632,15 @@ components:
           format: int64
         type:
           type: string
+          enum: [plan_downgrade, unredeemed_coupons]
           example: plan_downgrade
         payload:
           type: object
           description: >-
             For `plan_downgrade`: `plan_from`, `plan_to`, and `branches` and `services`
-            as lists of `{id, name}` that were switched off.
+            as lists of `{id, name}` that were switched off. For `unredeemed_coupons`:
+            `period_days` (30), `coupons_generated`, `coupons_redeemed`, `redeem_rate` and
+            `threshold`; counts and rates only.
           additionalProperties: true
         created_at:
           type: string
