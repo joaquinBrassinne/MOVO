@@ -51,10 +51,19 @@ Completar con mediciones reales. Una fila por corrida (la mediana de las repetic
 
 | Fecha | Caché (`REDIS_URL`) | `DB_MAX_CONNS` | `DB_MIN_CONNS` | VUs pico | p50 (ms) | p95 (ms) | rps | `http_req_failed` | Aciertos de caché | Notas |
 |---|---|---|---|---|---|---|---|---|---|---|
-| | sin | | | | | | | | — | |
-| | con | | | | | | | | | |
-| | sin | | | | | | | | — | |
-| | con | | | | | | | | | |
+| 2026-11-03 | sin | default | default | 50 | 7,56 | 15,30 | 4 664 | 0 % | — | Corrida 1 |
+| 2026-11-03 | con | default | default | 50 | 8,02 | 17,33 | 4 109 | 0 % | 99,9 % | Corrida 1 |
+| 2026-11-03 | sin | default | default | 50 | 8,64 | 14,85 | 4 314 | 0 % | — | Corrida 2 |
+| 2026-11-03 | con | default | default | 50 | 7,22 | 16,66 | 4 424 | 0 % | 99,9 % | Corrida 2 |
+
+### Lectura de la primera medición (2026-11-03)
+
+Entorno: base de desarrollo con **15 sedes visibles** (no las 10 000 de la Fase 3), API y Postgres en Docker Desktop sobre Windows, k6 en la misma máquina, sin pausa entre iteraciones (más de 1 millón de requests por corrida).
+
+- **El presupuesto se cumple con mucho margen:** p95 de ~15 ms, contra 300 ms, con 0 % de errores.
+- **La caché funciona, pero con estos datos no mejora:** acierta el 99,9 % de las entradas (≈ 900 consultas a Postgres por corrida, contra más de 1 millón sin caché), y aun así el p95 sube ~2 ms y el rps baja ~5 %. Con 15 sedes la consulta cuesta menos que lo que agrega la caché: dos idas a Redis por búsqueda (la generación de la 7.2 y la entrada) más decodificar el JSON.
+- **El DoD todavía no se puede cerrar:** la caché solo rinde cuando la consulta cuesta más que esas dos idas a Redis. Eso hay que medirlo con el volumen de la Fase 3 (10 000 negocios, peor caso p95 de 47 ms solo en la consulta), en una base descartable y no en la de desarrollo.
+- `keyspace_misses` crece al ritmo de las requests porque la clave de generación no existe hasta la primera invalidación: cuenta como miss pero no va a Postgres. La tasa de aciertos de la tabla es la de las entradas: hits / requests.
 
 Los valores de `p50`, `p95` y `rps` salen del resumen de k6: `http_req_duration` (med y p(95)) y `http_reqs` (rate). Las filas de pool sirven para el ajuste de la sección siguiente; las de caché, para la mejora de la 7.1 y 7.2.
 
