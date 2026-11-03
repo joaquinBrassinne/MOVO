@@ -23,13 +23,18 @@ const (
 	metricDedupeMaxKeys = 100_000
 )
 
-// newSearchRoutes composes the search module: adapters, use cases and HTTP.
-func newSearchRoutes(log *slog.Logger, pool *pgxpool.Pool, images search.ImageURLs) func(chi.Router) {
+// newSearchRoutes composes the search module: adapters, use cases and HTTP. decorate
+// optionally wraps the nearby search, as the Redis cache does (SDD 7.1).
+func newSearchRoutes(log *slog.Logger, pool *pgxpool.Pool, images search.ImageURLs, decorate ...func(search.BranchFinder) search.BranchFinder) func(chi.Router) {
 	branches := searchpostgres.NewBranches(pool)
+	var nearby search.BranchFinder = branches
+	for _, wrap := range decorate {
+		nearby = wrap(nearby)
+	}
 	// The same visitor repeating an event within the window counts once (SDD 6.3b).
 	record := commands.NewRecordMetric(searchpostgres.NewMetrics(pool), nil).
 		WithDeduper(searchmemory.NewDeduper(metricDedupeWindow, metricDedupeMaxKeys, nil))
-	return searchhttp.New(queries.NewNearbyBranches(branches), queries.NewFeaturedBranches(branches, nil), log).
+	return searchhttp.New(queries.NewNearbyBranches(nearby), queries.NewFeaturedBranches(branches, nil), log).
 		WithWhatsApp(commands.NewOpenWhatsApp(branches, record, log)).
 		WithProfile(queries.NewBusinessProfile(branches, images, nil)).
 		WithProfileView(commands.NewRecordProfileView(branches, record, log)).

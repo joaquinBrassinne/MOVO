@@ -669,7 +669,7 @@ Convenciones de trabajo:
 ---
 
 ### Fase 7 — Rendimiento y escala (opcional, guiada por métricas)
-- [ ] 7.1 Decorador de caché Redis (cache-aside, TTL, clave por geocelda/categoría) (M)
+- [x] 7.1 Decorador de caché Redis (cache-aside, TTL, clave por geocelda/categoría) (M) — decora `BranchFinder.Nearby` (`search/adapters/cache`) sobre un puerto `Store` con adaptador `platform/cache`. Es opcional: sin `REDIS_URL` todo sigue igual; si Redis falla en runtime, la búsqueda cae a Postgres. El origen se redondea a una celda (`SEARCH_CACHE_CELL_DEG`, 0,002° ≈ 220 m) y la consulta corre desde el centro de la celda, así una respuesta cacheada es idéntica a una fresca; las distancias mostradas pueden diferir ≤ ~150 m del punto exacto. TTL `SEARCH_CACHE_TTL` (1 min). Hasta 7.2 la invalidación es solo por TTL. La línea base de la Fase 3 ya cumple (p95 47 ms peor caso): medir la mejora real es la tarea 7.5
 - [ ] 7.2 Invalidación al cambiar un local o su visibilidad (M)
 - [ ] 7.3 Rate limiting distribuido con Redis (S)
 - [ ] 7.4 CDN delante del bucket de imágenes y optimización de imágenes (M)

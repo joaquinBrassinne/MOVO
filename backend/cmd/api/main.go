@@ -105,6 +105,11 @@ func run() error {
 		return err
 	}
 
+	cacheCfg, err := config.LoadCache(os.Getenv)
+	if err != nil {
+		return err
+	}
+
 	signer, err := tokens.NewSigner(auth.JWTSecret, auth.AccessTokenTTL, nil)
 	if err != nil {
 		return err
@@ -140,14 +145,20 @@ func run() error {
 		return err
 	}
 
-	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount, newSearchRoutes(log, pool, images), newBenefitsRoutes(log, pool, signer, coupons.MaxAttempts, metricsAccess), newReviewsRoutes(log, pool, signer), newAdminRoutes(log, pool, signer))
+	searchDecorators, closeCache, err := newSearchCache(signalCtx, log, cacheCfg)
+	if err != nil {
+		pool.Close()
+		return err
+	}
+
+	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount, newSearchRoutes(log, pool, images, searchDecorators...), newBenefitsRoutes(log, pool, signer, coupons.MaxAttempts, metricsAccess), newReviewsRoutes(log, pool, signer), newAdminRoutes(log, pool, signer))
 	// The client address feeds the login and coupon limits, so it is resolved before any route.
 	handler := clientip.Middleware(proxies.Trusted)(router)
 	if cfg.APIDocs {
 		handler = apidocs.Mount(apispec.Spec, handler)
 		log.Info("api docs enabled", "path", apidocs.PagePath)
 	}
-	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, handler, pool.Close)
+	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, handler, func() { closeCache(); pool.Close() })
 }
 
 // ensureBucket creates the development bucket when it is missing. It is bounded
