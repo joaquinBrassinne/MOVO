@@ -63,6 +63,20 @@ Entorno: base de desarrollo con **15 sedes visibles** (no las 10 000 de la Fase 
 - **El presupuesto se cumple con mucho margen:** p95 de ~15 ms, contra 300 ms, con 0 % de errores.
 - **La caché funciona, pero con estos datos no mejora:** acierta el 99,9 % de las entradas (≈ 900 consultas a Postgres por corrida, contra más de 1 millón sin caché), y aun así el p95 sube ~2 ms y el rps baja ~5 %. Con 15 sedes la consulta cuesta menos que lo que agrega la caché: dos idas a Redis por búsqueda (la generación de la 7.2 y la entrada) más decodificar el JSON.
 - **El DoD todavía no se puede cerrar:** la caché solo rinde cuando la consulta cuesta más que esas dos idas a Redis. Eso hay que medirlo con el volumen de la Fase 3 (10 000 negocios, peor caso p95 de 47 ms solo en la consulta), en una base descartable y no en la de desarrollo.
+### Camino real: navegador → proxy de Next → API (2026-11-03)
+
+El navegador no llama a la API Go: pasa por el proxy de Next (`frontend/lib/server/backend.ts`). Mismo script, contra `next start` (build de producción) en el `:3100`, con la API sin caché detrás:
+
+| Destino | VUs pico | p50 (ms) | p95 (ms) | rps | `http_req_failed` |
+|---|---|---|---|---|---|
+| API directa (mediana de 2) | 50 | 8,1 | 15,1 | ~4 490 | 0 % |
+| Next → API | 50 | 40,4 | 69,5 | 944 | 0 % |
+| Next → API | 200 | 155,6 | 267,6 | 1 026 | 0 % |
+
+- **El cuello de botella es Next, no la API ni Postgres:** con el proxy en el medio la capacidad cae unas 5 veces y se aplana en ~1 000 rps; con más usuarios no sube, solo crece la espera (a 200 VUs el p95 queda al borde de los 300 ms).
+- **En personas:** k6 corre sin pausas entre requests, así que 1 000 rps equivalen a ~60 000 aperturas del mapa por minuto (una búsqueda por apertura; mover el mapa no busca hasta tocar "Buscar en esta zona"). Hoy sobra; el techo aparece en un pico real fuerte.
+- **Salvedad:** k6, Next, la API y Postgres comparten la misma máquina y compiten por CPU, así que los números absolutos son conservadores; la proporción entre directo y por Next es lo que importa.
+
 - `keyspace_misses` crece al ritmo de las requests porque la clave de generación no existe hasta la primera invalidación: cuenta como miss pero no va a Postgres. La tasa de aciertos de la tabla es la de las entradas: hits / requests.
 
 Los valores de `p50`, `p95` y `rps` salen del resumen de k6: `http_req_duration` (med y p(95)) y `http_reqs` (rate). Las filas de pool sirven para el ajuste de la sección siguiente; las de caché, para la mejora de la 7.1 y 7.2.
