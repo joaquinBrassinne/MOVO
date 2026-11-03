@@ -93,6 +93,29 @@ El navegador no llama a la API Go: pasa por el proxy de Next (`frontend/lib/serv
 - **En personas:** k6 corre sin pausas entre requests, así que 1 000 rps equivalen a ~60 000 aperturas del mapa por minuto (una búsqueda por apertura; mover el mapa no busca hasta tocar "Buscar en esta zona"). Hoy sobra; el techo aparece en un pico real fuerte.
 - **Salvedad:** k6, Next, la API y Postgres comparten la misma máquina y compiten por CPU, así que los números absolutos son conservadores; la proporción entre directo y por Next es lo que importa.
 
+### La solución: la búsqueda directo a Go por Caddy (2026-11-03)
+
+`deploy/caddy/Caddyfile` manda **solo** `GET/HEAD /api/v1/search` y `/api/v1/home/featured` directo a la API Go; todo lo demás sigue por Next. No se manda todo `/api/v1/*` a propósito: Next decide qué rutas ve el navegador (`/auth/*` no está, porque ahí viaja el refresh token, que solo pasa por su cookie httpOnly).
+
+Probado con Caddy v2.11.7 en un contenedor, delante de la API y de Next reales:
+
+| Prueba | Resultado |
+|---|---|
+| Con Next apagado, `/search` por Caddy | 200: no pasa por Next |
+| Con Next apagado, `/me/business` | 502 con el sobre JSON `upstream_unavailable` (el mismo que daba Next) |
+| `POST /api/v1/auth/login` por Caddy | 404: lo corta la lista cerrada de Next, no llega a Go |
+| Límite de 5 por minuto con `X-Forwarded-For` falsificado (8 pedidos, cada uno con otra IP) | 3 pasaron y 5 dieron 429: el cupo no se renueva (Caddy reemplaza el header del cliente) |
+
+| Camino | VUs | p50 (ms) | p95 (ms) | rps |
+|---|---|---|---|---|
+| Next → API | 50 | 40,4 | 69,5 | 944 |
+| Caddy → API | 50 | 18,8 | 36,4 | 2 334 |
+| API directa | 50 | ~8 | ~15 | ~4 490 |
+
+- Caddy multiplica por ~2,5 la capacidad de la búsqueda respecto de pasar por Next. Queda por debajo de la API directa porque en esta prueba Caddy corría en Docker Desktop sobre Windows, que suma una capa de red virtual: en un VPS Linux debería acercarse más. No lo medí.
+- `TRUSTED_PROXIES` de la API tiene que listar a Caddy y a Next. En la prueba se usaron los rangos privados `10.0.0.0/8`, `172.16.0.0/12` y `192.168.0.0/16`; en producción conviene la subred exacta de la red de Docker.
+- Falta (8.4): el `docker-compose.prod.yml` con Caddy y un HTTPS real con dominio, y fijar la versión de la imagen (se probó con `caddy:2-alpine`).
+
 - `keyspace_misses` crece al ritmo de las requests porque la clave de generación no existe hasta la primera invalidación: cuenta como miss pero no va a Postgres. La tasa de aciertos de la tabla es la de las entradas: hits / requests.
 
 Los valores de `p50`, `p95` y `rps` salen del resumen de k6: `http_req_duration` (med y p(95)) y `http_reqs` (rate). Las filas de pool sirven para el ajuste de la sección siguiente; las de caché, para la mejora de la 7.1 y 7.2.
