@@ -54,5 +54,13 @@ func (r *Redis) Set(ctx context.Context, key string, value []byte, ttl time.Dura
 	return nil
 }
 
+// Incr adds one to the counter at key.
+func (r *Redis) Incr(ctx context.Context, key string) error {
+	if err := r.client.Incr(ctx, key).Err(); err != nil {
+		return fmt.Errorf("cache: incr %q: %w", key, err)
+	}
+	return nil
+}
+
 // Close releases the connections.
 func (r *Redis) Close() error { return r.client.Close() }

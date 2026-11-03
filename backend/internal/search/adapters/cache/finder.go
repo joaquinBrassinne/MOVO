@@ -17,6 +17,19 @@ import (
 type Store interface {
 	Get(ctx context.Context, key string) (value []byte, found bool, err error)
 	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
+	// Incr adds one to the counter at key, creating it at zero first.
+	Incr(ctx context.Context, key string) error
+}
+
+// generationKey holds the cache generation. Every entry key carries it, so bumping it makes
+// all earlier entries unreachable at once (they expire on their own TTL); that is the
+// invalidation of SDD 7.2, one write instead of a scan over the cells that changed.
+const generationKey = "search:nearby:generation"
+
+// Invalidate drops every cached search. A store error is returned for the caller to log:
+// the TTL bounds how long an entry can then stay stale.
+func Invalidate(ctx context.Context, store Store) error {
+	return store.Incr(ctx, generationKey)
 }
 
 // keyPrefix versions the cached shape: bump it when search.Branch changes so old entries are
@@ -48,8 +61,15 @@ func (f *Finder) Nearby(ctx context.Context, q search.Query) ([]search.Branch, e
 	if q.Validate() != nil {
 		return f.next.Nearby(ctx, q) // invalid input is never cached; the finder reports it
 	}
+	// The generation is read before the database so an invalidation that lands while the
+	// query runs leaves the new entry under the old generation, where nobody reads it.
+	gen, err := f.generation(ctx)
+	if err != nil {
+		f.log.WarnContext(ctx, "search cache generation unreadable", "error", err)
+		return f.next.Nearby(ctx, q)
+	}
 	latCell, lngCell := cellIndex(q.Lat, f.cell), cellIndex(q.Lng, f.cell)
-	key := fmt.Sprintf("%s:%d:%d:%d:%s:%g:%d:%d", keyPrefix, latCell, lngCell, q.RadiusM, q.Category, q.MinRating, q.Limit, q.Offset)
+	key := fmt.Sprintf("%s:g%s:%d:%d:%d:%s:%g:%d:%d", keyPrefix, gen, latCell, lngCell, q.RadiusM, q.Category, q.MinRating, q.Limit, q.Offset)
 
 	if raw, found, err := f.store.Get(ctx, key); err != nil {
 		f.log.WarnContext(ctx, "search cache read failed", "error", err)
@@ -74,6 +94,18 @@ func (f *Finder) Nearby(ctx context.Context, q search.Query) ([]search.Branch, e
 		}
 	}
 	return items, nil
+}
+
+// generation is the current cache generation; a store that has none yet is at "0".
+func (f *Finder) generation(ctx context.Context) (string, error) {
+	raw, found, err := f.store.Get(ctx, generationKey)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "0", nil
+	}
+	return string(raw), nil
 }
 
 func cellIndex(v, cell float64) int64 { return int64(math.Floor(v / cell)) }

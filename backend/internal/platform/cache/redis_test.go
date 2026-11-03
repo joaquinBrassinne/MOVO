@@ -35,6 +35,25 @@ func TestRedisStoresAndExpiresValues(t *testing.T) {
 	}
 }
 
+func TestRedisIncrCountsUp(t *testing.T) {
+	srv := miniredis.RunT(t)
+	ctx := context.Background()
+	store, err := cache.NewRedis(ctx, "redis://"+srv.Addr())
+	if err != nil {
+		t.Fatalf("NewRedis: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	for range 2 {
+		if err := store.Incr(ctx, "n"); err != nil {
+			t.Fatalf("Incr: %v", err)
+		}
+	}
+	if got, _ := srv.Get("n"); got != "2" {
+		t.Errorf("counter = %q, want 2", got)
+	}
+}
+
 func TestRedisReportsAnUnreachableServer(t *testing.T) {
 	if _, err := cache.NewRedis(context.Background(), "redis://127.0.0.1:1"); err == nil {
 		t.Fatal("NewRedis against a closed port succeeded")

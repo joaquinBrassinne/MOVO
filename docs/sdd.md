@@ -670,7 +670,7 @@ Convenciones de trabajo:
 
 ### Fase 7 — Rendimiento y escala (opcional, guiada por métricas)
 - [x] 7.1 Decorador de caché Redis (cache-aside, TTL, clave por geocelda/categoría) (M) — decora `BranchFinder.Nearby` (`search/adapters/cache`) sobre un puerto `Store` con adaptador `platform/cache`. Es opcional: sin `REDIS_URL` todo sigue igual; si Redis falla en runtime, la búsqueda cae a Postgres. El origen se redondea a una celda (`SEARCH_CACHE_CELL_DEG`, 0,002° ≈ 220 m) y la consulta corre desde el centro de la celda, así una respuesta cacheada es idéntica a una fresca; las distancias mostradas pueden diferir ≤ ~150 m del punto exacto. TTL `SEARCH_CACHE_TTL` (1 min). Hasta 7.2 la invalidación es solo por TTL. La línea base de la Fase 3 ya cumple (p95 47 ms peor caso): medir la mejora real es la tarea 7.5
-- [ ] 7.2 Invalidación al cambiar un local o su visibilidad (M)
+- [x] 7.2 Invalidación al cambiar un local o su visibilidad (M) — las claves llevan un contador de generación en Redis (`search:nearby:generation`); invalidar es un `INCR` y deja inalcanzables todas las entradas anteriores (vencen por TTL). Un middleware en el borde HTTP (`InvalidateOnWrite`) lo sube tras toda escritura exitosa bajo `/me/business` y `/admin`, y tras una reseña nueva; no lo sube el canje/generación de cupones, el geocoding, el presign ni las vistas. Es global y no por celda: los cambios son raros frente a las lecturas y evita que un módulo conozca las claves del buscador. Si Redis falla al invalidar, el TTL acota lo viejo
 - [ ] 7.3 Rate limiting distribuido con Redis (S)
 - [ ] 7.4 CDN delante del bucket de imágenes y optimización de imágenes (M)
 - [ ] 7.5 Prueba de carga (k6) y ajuste de pool de conexiones (M)

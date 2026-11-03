@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strconv"
 	"testing"
 	"time"
 
@@ -44,6 +45,15 @@ func (m *mapStore) Get(_ context.Context, key string) ([]byte, bool, error) {
 		return []byte("{not json"), true, nil
 	}
 	return v, ok, nil
+}
+
+func (m *mapStore) Incr(_ context.Context, key string) error {
+	if m.setErr != nil {
+		return m.setErr
+	}
+	n, _ := strconv.Atoi(string(m.data[key]))
+	m.data[key] = []byte(strconv.Itoa(n + 1))
+	return nil
 }
 
 func (m *mapStore) Set(_ context.Context, key string, v []byte, ttl time.Duration) error {
