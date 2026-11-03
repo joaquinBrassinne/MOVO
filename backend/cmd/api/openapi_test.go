@@ -86,11 +86,11 @@ func servedRoutes(t *testing.T) []string {
 		t.Fatalf("newMetricsPlan: %v", err)
 	}
 	router := httpx.NewRouter(log, pool,
-		newIdentityRoutes(log, pool, config.Auth{RefreshTokenTTL: time.Hour}, signer),
+		newIdentityRoutes(log, pool, config.Auth{RefreshTokenTTL: time.Hour}, signer, nil),
 		businessMount,
 		billingMount,
 		newSearchRoutes(log, pool, images),
-		newBenefitsRoutes(log, pool, signer, 5, metricsAccess),
+		newBenefitsRoutes(log, pool, signer, 5, metricsAccess, nil),
 		newReviewsRoutes(log, pool, signer),
 		newAdminRoutes(log, pool, signer),
 	)

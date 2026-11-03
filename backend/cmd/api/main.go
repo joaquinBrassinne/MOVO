@@ -17,12 +17,14 @@ import (
 
 	apispec "github.com/joaquinBrassinne/MOVO/api"
 	"github.com/joaquinBrassinne/MOVO/internal/business/adapters/nominatim"
+	"github.com/joaquinBrassinne/MOVO/internal/identity"
 	identityhttp "github.com/joaquinBrassinne/MOVO/internal/identity/adapters/http"
 	"github.com/joaquinBrassinne/MOVO/internal/identity/adapters/postgres"
 	"github.com/joaquinBrassinne/MOVO/internal/identity/adapters/ratelimit"
 	"github.com/joaquinBrassinne/MOVO/internal/identity/adapters/tokens"
 	"github.com/joaquinBrassinne/MOVO/internal/identity/app/commands"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/apidocs"
+	"github.com/joaquinBrassinne/MOVO/internal/platform/cache"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/clientip"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/config"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/db"
@@ -115,7 +117,12 @@ func run() error {
 		return err
 	}
 
-	pool, err := db.Connect(signalCtx, cfg.DatabaseURL)
+	poolCfg, err := config.LoadPool(os.Getenv)
+	if err != nil {
+		return err
+	}
+
+	pool, err := db.ConnectWithPool(signalCtx, cfg.DatabaseURL, poolCfg)
 	if err != nil {
 		return err
 	}
@@ -145,20 +152,39 @@ func run() error {
 		return err
 	}
 
-	searchCache, err := newSearchCache(signalCtx, log, cacheCfg)
+	// One Redis connection serves the search cache and the rate limits; nil when REDIS_URL is unset.
+	redisStore, err := openRedis(signalCtx, cacheCfg)
 	if err != nil {
 		pool.Close()
 		return err
 	}
+	closeRedis := func() {
+		if redisStore != nil {
+			_ = redisStore.Close()
+		}
+	}
+	if redisStore != nil {
+		log.Info("rate limits shared through redis")
+	}
+	searchCache := newSearchCache(log, cacheCfg, redisStore)
 
-	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer), businessMount, billingMount, newSearchRoutes(log, pool, images, searchCache.decorators...), newBenefitsRoutes(log, pool, signer, coupons.MaxAttempts, metricsAccess), newReviewsRoutes(log, pool, signer), newAdminRoutes(log, pool, signer))
+	router := httpx.NewRouter(log, pool, newIdentityRoutes(log, pool, auth, signer, redisStore), businessMount, billingMount, newSearchRoutes(log, pool, images, searchCache.decorators...), newBenefitsRoutes(log, pool, signer, coupons.MaxAttempts, metricsAccess, redisStore), newReviewsRoutes(log, pool, signer), newAdminRoutes(log, pool, signer))
 	// The client address feeds the login and coupon limits, so it is resolved before any route.
 	handler := searchCache.invalidate(clientip.Middleware(proxies.Trusted)(router))
 	if cfg.APIDocs {
 		handler = apidocs.Mount(apispec.Spec, handler)
 		log.Info("api docs enabled", "path", apidocs.PagePath)
 	}
-	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, handler, func() { searchCache.close(); pool.Close() })
+	return serve(signalCtx, log, cfg.HTTPAddr, cfg.ShutdownTimeout, handler, func() { closeRedis(); pool.Close() })
+}
+
+// openRedis connects to REDIS_URL, or returns nil when it is unset. An unreachable Redis stops
+// the start-up, so a typo in the URL is not mistaken for working shared limits.
+func openRedis(ctx context.Context, cfg config.Cache) (*cache.Redis, error) {
+	if cfg.RedisURL == "" {
+		return nil, nil
+	}
+	return cache.NewRedis(ctx, cfg.RedisURL)
 }
 
 // ensureBucket creates the development bucket when it is missing. It is bounded
@@ -191,21 +217,34 @@ func seedSuperAdmin(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, a
 	return nil
 }
 
-// newIdentityRoutes composes the identity module: adapters, use cases and HTTP.
-func newIdentityRoutes(log *slog.Logger, pool *pgxpool.Pool, auth config.Auth, signer *tokens.Signer) func(chi.Router) {
+// newIdentityRoutes composes the identity module: adapters, use cases and HTTP. With a Redis
+// store the login and sign-up limits are counted in Redis, shared by every instance; nil keeps
+// them in memory.
+func newIdentityRoutes(log *slog.Logger, pool *pgxpool.Pool, auth config.Auth, signer *tokens.Signer, redisStore *cache.Redis) func(chi.Router) {
 	users := postgres.NewUsers(pool)
 	store := postgres.NewRefreshTokens(pool)
-	limiter := ratelimit.New(ratelimit.Config{
+	loginLimit := ratelimit.Config{
 		MaxAttempts: loginMaxAttempts,
 		Window:      loginWindow,
 		MaxKeys:     loginMaxKeys,
-	}, nil)
+	}
 	// Its own budget and its own keys: a burst of sign-ups must not block anyone's login.
-	signUps := ratelimit.New(ratelimit.Config{
+	signUpLimit := ratelimit.Config{
 		MaxAttempts: registerMaxAttempts,
 		Window:      registerWindow,
 		MaxKeys:     registerMaxKeys,
-	}, nil)
+	}
+	var (
+		limiter identity.LoginLimiter
+		signUps identity.RegistrationLimiter
+	)
+	if redisStore == nil {
+		limiter = ratelimit.New(loginLimit, nil)
+		signUps = ratelimit.New(signUpLimit, nil)
+	} else {
+		limiter = ratelimit.NewRedis(redisStore, "login", loginLimit, log)
+		signUps = ratelimit.NewRedis(redisStore, "signup", signUpLimit, log)
+	}
 	sessions := commands.NewSessions(signer, store, users, auth.RefreshTokenTTL, nil, log)
 
 	handlers := identityhttp.New(
