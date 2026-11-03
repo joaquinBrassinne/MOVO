@@ -20,6 +20,7 @@ GO      ?= go
 #   go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 GOLANGCI_LINT_VERSION := v2.14.0
 GOLANGCI_LINT         ?= golangci-lint
+K6                    ?= k6
 
 # Flags extra para los tests. CI agrega -race; en Windows no hay gcc (CGO off),
 # así que el default local no lo pide.
@@ -113,6 +114,14 @@ test: ## Corre los tests del backend (CI agrega TESTFLAGS="-race")
 
 perf-search: ## Mide la búsqueda con 10k locales falsos (necesita Docker); imprime p95 y EXPLAIN ANALYZE
 	cd $(BACKEND) && $(GO) test -tags perf -run SearchLatency -v -count=1 ./internal/search/adapters/postgres
+
+load-search: ## Carga GET /search con k6 contra una API ya levantada (BASE_URL, PEAK_VUS); ver docs/work/fase-7-carga.md
+	@command -v $(K6) >/dev/null 2>&1 || { \
+	  echo "k6 no está instalado. Instalá k6 (https://k6.io/docs/get-started/installation/):"; \
+	  echo "  Windows: winget install k6 --accept-source-agreements"; \
+	  echo "  macOS:   brew install k6"; \
+	  exit 1; }
+	$(K6) run $(BACKEND)/loadtest/search.js
 
 build: ## Compila los binarios del backend en backend/bin
 	cd $(BACKEND) && $(GO) build -o bin/ ./cmd/...

@@ -4,7 +4,7 @@
 #   make down   # baja conservando volúmenes
 #
 # Los valores salen del .env de la raíz (ver .env.example).
-# Redis entra recién en la Fase 7 (§3.7 del SDD).
+# Redis entra en la Fase 7 (§3.7 del SDD) y es opcional.
 
 name: movo
 
@@ -50,6 +50,19 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+
+  redis:
+    # Caché de la búsqueda (Fase 7, tarea 7.1). Opcional: la API arranca sin ella
+    # si REDIS_URL no está definida.
+    image: ${REDIS_IMAGE:-redis:7.4-alpine}
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
 volumes:
   pgdata:

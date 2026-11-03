@@ -1,6 +1,6 @@
-// Package ratelimit throttles coupon requests in memory. It implements
-// benefits.GenerationLimiter; the state is per process, which is enough for the MVP,
-// and the port lets Redis replace it when the API runs several instances.
+// Package ratelimit throttles coupon requests. Limiter keeps its state in memory, per
+// process: it is used when REDIS_URL is unset. RedisLimiter (redis.go) keeps the same
+// budget in Redis, shared by every API instance. Both implement benefits.GenerationLimiter.
 package ratelimit
 
 import (

@@ -445,6 +445,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many searches from this address (code `rate_limited`, `details.retry_after_seconds`). The budget is `SEARCH_RATE_LIMIT` per minute.
+          headers:
+            Retry-After:
+              description: Seconds to wait.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /home/featured:
     get:
       operationId: searchFeatured
@@ -494,6 +505,17 @@ paths:
                 $ref: '#/components/schemas/SearchFeaturedResults'
         '422':
           description: Code `validation_failed` with `details` `{field, reason}` (required, invalid, out_of_range).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many searches from this address (code `rate_limited`), same budget and `Retry-After` as `/search`.
+          headers:
+            Retry-After:
+              description: Seconds to wait.
+              schema:
+                type: integer
           content:
             application/json:
               schema:

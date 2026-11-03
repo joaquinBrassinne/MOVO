@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -24,6 +26,8 @@ type S3 struct {
 	bucket      string
 	corsOrigins []string
 	ttl         func(*s3.PresignOptions)
+	// cdnURL, when set, is the base of the public URLs returned for reads.
+	cdnURL string
 }
 
 // NewS3 builds the adapter from the storage configuration. It makes no network
@@ -46,6 +50,7 @@ func NewS3(cfg config.Storage) *S3 {
 		bucket:      cfg.Bucket,
 		corsOrigins: cfg.CORSOrigins,
 		ttl:         func(o *s3.PresignOptions) { o.Expires = cfg.PresignTTL },
+		cdnURL:      cfg.CDNURL,
 	}
 }
 
@@ -54,6 +59,15 @@ func endpointOrNil(endpoint string) *string {
 		return nil
 	}
 	return aws.String(endpoint)
+}
+
+// escapeKey escapes each segment of an object key for use in a URL path.
+func escapeKey(key string) string {
+	segments := strings.Split(key, "/")
+	for i, segment := range segments {
+		segments[i] = url.PathEscape(segment)
+	}
+	return strings.Join(segments, "/")
 }
 
 // EnsureBucket creates the bucket when it does not exist and applies the CORS
@@ -100,22 +114,33 @@ func (s *S3) PresignUpload(ctx context.Context, req UploadRequest) (PresignedUpl
 		Key:           &req.Key,
 		ContentType:   &req.ContentType,
 		ContentLength: aws.Int64(req.Size),
+		CacheControl:  aws.String(ImageCacheControl),
 	}, s.ttl)
 	if err != nil {
 		return PresignedUpload{}, fmt.Errorf("storage: presign upload: %w", err)
 	}
 
 	return PresignedUpload{
-		URL:     signed.URL,
-		Method:  http.MethodPut,
-		Headers: map[string]string{"Content-Type": req.ContentType},
+		URL:    signed.URL,
+		Method: http.MethodPut,
+		Headers: map[string]string{
+			"Content-Type":  req.ContentType,
+			"Cache-Control": ImageCacheControl,
+		},
 	}, nil
 }
 
-// PresignDownload signs a GET for the object.
+// PresignDownload returns the URL to read the object. With a CDN configured it is the
+// plain public URL on that CDN (base + "/" + key), without a signature, so the CDN can
+// cache it: a signed URL would be a different cache key on every request. Otherwise it
+// is a presigned GET on the bucket.
 func (s *S3) PresignDownload(ctx context.Context, key string) (string, error) {
 	if err := validateKey(key); err != nil {
 		return "", err
+	}
+
+	if s.cdnURL != "" {
+		return s.cdnURL + "/" + escapeKey(key), nil
 	}
 
 	signed, err := s.presign.PresignGetObject(ctx, &s3.GetObjectInput{Bucket: &s.bucket, Key: &key}, s.ttl)

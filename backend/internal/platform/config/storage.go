@@ -59,6 +59,10 @@ type Storage struct {
 	CORSOrigins []string
 	// MaxImages is how many photos one business may register.
 	MaxImages int
+	// CDNURL is the base URL of the CDN in front of the bucket (IMAGES_CDN_URL), without a
+	// trailing slash. Empty means image reads use presigned bucket URLs. Uploads always
+	// go to the bucket.
+	CDNURL string
 }
 
 // LoadStorage builds a Storage from get, normally os.Getenv.
@@ -97,6 +101,11 @@ func LoadStorage(get func(string) string) (Storage, error) {
 		return Storage{}, err
 	}
 
+	cdnURL, err := loadImagesCDN(get)
+	if err != nil {
+		return Storage{}, err
+	}
+
 	ttl, err := parsePositiveDuration(envS3PresignTTL, get(envS3PresignTTL), defaultS3PresignTTL)
 	if err != nil {
 		return Storage{}, err
@@ -114,6 +123,7 @@ func LoadStorage(get func(string) string) (Storage, error) {
 		EnsureBucket: ensureBucket,
 		CORSOrigins:  splitList(get(envS3CORSOrigins)),
 		MaxImages:    maxImages,
+		CDNURL:       cdnURL,
 	}, nil
 }
 

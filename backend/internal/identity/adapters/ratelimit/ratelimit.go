@@ -1,6 +1,7 @@
-// Package ratelimit throttles failed logins in memory. It implements
-// identity.LoginLimiter; the state is per process, which is enough for the
-// MVP, and the port lets Redis replace it when the API runs several instances.
+// Package ratelimit throttles failed logins and sign-ups. Limiter keeps its state in
+// memory, per process: it is used when REDIS_URL is unset. RedisLimiter (redis.go) keeps the
+// same budget in Redis, shared by every API instance. Both implement
+// identity.LoginLimiter and identity.RegistrationLimiter.
 package ratelimit
 
 import (

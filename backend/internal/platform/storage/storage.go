@@ -20,6 +20,11 @@ const (
 	// MaxImageBytes is the largest image an owner may upload.
 	MaxImageBytes = 5 << 20
 	maxKeyLen     = 200
+
+	// ImageCacheControl is stored with every uploaded image. Image keys are built from
+	// a fresh random id per upload (businesses/<id>/<random><ext>), so an object is never
+	// replaced by different content under the same key and may be cached forever.
+	ImageCacheControl = "public, max-age=31536000, immutable"
 )
 
 // allowedImageTypes is a closed list. SVG is left out on purpose: it can carry

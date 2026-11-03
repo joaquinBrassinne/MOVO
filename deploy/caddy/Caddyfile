@@ -1,0 +1,44 @@
+# Proxy inverso de producción (SDD 8.4, medido en la Fase 7).
+#
+# La búsqueda pública va DIRECTO a la API Go: pasar por Next la limita a ~1 000 pedidos por
+# segundo contra ~4 500 de Go (docs/work/fase-7-carga.md). Todo lo demás sigue por Next.
+#
+# Variables (con estos valores por defecto en docker compose):
+#   SITE_ADDRESS   dominio público (HTTPS automático) o ":80" para probar sin certificado
+#   API_UPSTREAM   API Go          (api:8080)
+#   WEB_UPSTREAM   servidor de Next (web:3000)
+#
+# La API toma la IP real del cliente de X-Forwarded-For. Caddy no confía en el header que trae
+# el cliente: lo reemplaza por la dirección que ve. Por eso TRUSTED_PROXIES de la API debe
+# listar a Caddy y a Next (todos los saltos), y Next no debe quedar expuesto sin Caddy delante.
+
+{$SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	# SOLO estas dos rutas de lectura saltan a Next. Next es el que decide qué rutas de la API
+	# ve el navegador (por ejemplo /auth/* no está: el refresh token viaja solo por su cookie
+	# httpOnly), así que el resto de /api/v1/* NO se manda directo a Go.
+	@public_search {
+		method GET HEAD
+		path /api/v1/search /api/v1/home/featured
+	}
+	handle @public_search {
+		reverse_proxy {$API_UPSTREAM:api:8080}
+	}
+
+	handle {
+		reverse_proxy {$WEB_UPSTREAM:web:3000}
+	}
+
+	# Si la API no responde, mismo sobre de error que daba el proxy de Next (502).
+	handle_errors {
+		@api_down {
+			path /api/*
+			expression {err.status_code} in [502, 503, 504]
+		}
+		handle @api_down {
+			header Content-Type "application/json; charset=utf-8"
+			respond `{"error":{"code":"upstream_unavailable","message":"the service is not reachable right now"}}` 502
+		}
+	}
+}

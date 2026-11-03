@@ -154,8 +154,8 @@ type CouponReader interface {
 
 // GenerationLimiter caps how often one origin may ask for coupons (SDD 5.2): with no
 // verification of the customer, the only brakes are this limit and the monthly quota.
-// The in-memory adapter is per process; the port lets Redis replace it when the API
-// runs several instances.
+// The in-memory adapter is per process; with REDIS_URL set the Redis adapter shares the
+// count across every API instance (SDD 7.3).
 type GenerationLimiter interface {
 	// Allow counts one attempt of key, successful or not, and reports whether it may
 	// go on. When it may not, retryAfter is how long until the key can try again.

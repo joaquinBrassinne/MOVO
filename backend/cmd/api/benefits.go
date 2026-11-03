@@ -17,6 +17,7 @@ import (
 	"github.com/joaquinBrassinne/MOVO/internal/benefits/app/queries"
 	"github.com/joaquinBrassinne/MOVO/internal/business"
 	businesspostgres "github.com/joaquinBrassinne/MOVO/internal/business/adapters/postgres"
+	"github.com/joaquinBrassinne/MOVO/internal/platform/cache"
 	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
 )
 
@@ -57,14 +58,21 @@ type metricsPlanPort interface {
 	benefits.BusinessEconomics
 }
 
-// newBenefitsRoutes composes the benefits module: adapters, use cases and HTTP.
-func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.TokenVerifier, couponAttempts int, plan metricsPlanPort) func(chi.Router) {
+// newBenefitsRoutes composes the benefits module: adapters, use cases and HTTP. With a Redis
+// store the coupon limit is counted in Redis, shared by every instance; nil keeps it in memory.
+func newBenefitsRoutes(log *slog.Logger, pool *pgxpool.Pool, verifier httpx.TokenVerifier, couponAttempts int, plan metricsPlanPort, redisStore *cache.Redis) func(chi.Router) {
 	owners := ownerBusinesses{businesses: businesspostgres.NewBusinesses(pool)}
 	// Every Pro metric goes through this one gate.
 	gate := queries.NewProGate(owners, plan)
 	repo := benefitspostgres.NewBenefits(pool)
 	coupons := benefitspostgres.NewCoupons(pool)
-	limiter := ratelimit.New(ratelimit.Config{MaxAttempts: couponAttempts, Window: couponWindow, MaxKeys: couponMaxKeys}, nil)
+	couponLimit := ratelimit.Config{MaxAttempts: couponAttempts, Window: couponWindow, MaxKeys: couponMaxKeys}
+	var limiter benefits.GenerationLimiter
+	if redisStore == nil {
+		limiter = ratelimit.New(couponLimit, nil)
+	} else {
+		limiter = ratelimit.NewRedis(redisStore, "coupon", couponLimit, log)
+	}
 	return benefitshttp.New(benefitshttp.Deps{
 		Verifier:         verifier,
 		Log:              log,

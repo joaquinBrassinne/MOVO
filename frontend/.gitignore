@@ -44,3 +44,6 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 /blob-report/
+
+# mapa propio: tipografias, iconos y archivo PMTiles (ver docs/work/fase-7-mapa.md)
+/public/map/
