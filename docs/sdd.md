@@ -698,7 +698,7 @@ Convenciones de trabajo:
 ### Correcciones de frontend pendientes
 Problemas detectados probando a mano; se arreglan con test que los reproduzca y no pertenecen a una fase puntual.
 
-- [ ] F.1 Mapa de búsqueda (`/map`): al entrar a la ficha de un local y volver atrás, el mapa rompe con `Cannot read properties of undefined (reading 'appendChild')` en `<TileLayer>` de `components/explorar/SearchMap.tsx` (visto en Next.js 16.4.2 con Turbopack). Causa sin confirmar: reproducir primero (dev y build de producción), y comprobar si el `MapContainer` se vuelve a montar al restaurar la página. (M)
+- [x] F.1 Mapa de búsqueda (`/map`): al volver atrás desde la ficha el mapa rompía (`appendChild` en `<TileLayer>`). Corregido: con `cacheComponents` la página queda oculta en `<Activity>` y Leaflet perdía su nodo; `MountWhileVisible` monta el mapa solo mientras la página se ve (commits 474aefa, 4f9d967, PR #31). Confirmado a mano: ir y volver sin que reaparezca. (M)
 - [x] F.2 Home (`/`, `localhost:3000`): rediseñar la portada con una cara más cuidada. Hecho sin imagen de diseño, a pedido: hero con buscador, categorías, destacados y cercanos con la foto de portada del local (`cover_url` en `/search` y `/home/featured`), "Cómo funciona" y banner para locales; la ficha y la lista del mapa siguen el mismo estilo, con avatar y apartado "Fotos" en la ficha. (M)
 
 ---
