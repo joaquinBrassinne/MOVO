@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { CategoryIcon, Icon, VerifiedIcon } from "@/components/explorar/icons";
+import { CoverTile } from "@/components/CoverImage";
 import { Logo } from "@/components/Logo";
 import { StarRating } from "@/components/reviews/StarRating";
 import { ArrowLeftIcon } from "@/components/socios/icons";
@@ -64,15 +65,12 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
 
       <main className="relative -mt-8 rounded-t-[2rem] bg-movo-cream px-4 pt-0">
         <div className="-mt-12 flex items-end gap-4">
-          <span className="grid size-24 shrink-0 place-items-center overflow-hidden rounded-3xl bg-movo-card text-movo-accent shadow-lg ring-4 ring-movo-cream">
-            {profile.images[0] ? (
-              // Las URLs son prefirmadas y de otro origen: next/image no las optimiza.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={profile.images[0]} alt="" className="size-full object-cover" />
-            ) : (
-              <CategoryIcon slug={profile.category.slug} className="size-10" />
-            )}
-          </span>
+          <CoverTile
+            src={profile.images[0] ?? null}
+            categorySlug={profile.category.slug}
+            className="size-24 rounded-3xl bg-movo-card shadow-lg ring-4 ring-movo-cream"
+            iconClassName="size-10"
+          />
           <div className="flex min-w-0 flex-wrap items-center gap-2 pb-1">
             <p className="inline-flex rounded-full bg-movo-ink px-3 py-1.5 text-xs font-bold text-white">
               {profile.category.name}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { CoverTile, PhotoImage } from "@/components/CoverImage";
 import { Logo } from "@/components/Logo";
 import { StarRating } from "@/components/reviews/StarRating";
 import { ArrowRightIcon, StarIcon } from "@/components/socios/icons";
@@ -232,14 +233,7 @@ function FeaturedCard({ item }: { item: SearchResult }) {
       ) : null}
       {item.cover_url ? (
         <>
-          {/* Las URLs son prefirmadas y de otro origen: next/image no las optimiza. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={item.cover_url}
-            alt=""
-            loading="lazy"
-            className="absolute inset-0 size-full object-cover"
-          />
+          <PhotoImage src={item.cover_url} className="absolute inset-0 size-full" />
           <span
             aria-hidden="true"
             className="absolute inset-0 bg-gradient-to-t from-movo-tabs via-movo-tabs/60 to-transparent"
@@ -274,19 +268,12 @@ function NearbyCard({ item }: { item: SearchResult }) {
       href={profilePath(item)}
       className="flex items-center gap-4 rounded-3xl bg-movo-card p-4 outline-none transition-colors hover:bg-movo-card/80 focus-visible:ring-2 focus-visible:ring-movo-accent cursor-pointer"
     >
-      <span className="relative grid size-[7.5rem] shrink-0 place-items-center overflow-hidden rounded-2xl bg-gradient-to-br from-movo-tabs to-movo-page text-movo-accent">
-        {item.cover_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={item.cover_url}
-            alt=""
-            loading="lazy"
-            className="absolute inset-0 size-full object-cover"
-          />
-        ) : (
-          <CategoryIcon slug={item.category_slug} className="size-12" />
-        )}
-      </span>
+      <CoverTile
+        src={item.cover_url}
+        categorySlug={item.category_slug}
+        className="size-[7.5rem] rounded-2xl bg-gradient-to-br from-movo-tabs to-movo-page"
+        iconClassName="size-12"
+      />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="truncate font-display text-lg font-extrabold">{item.business_name}</span>

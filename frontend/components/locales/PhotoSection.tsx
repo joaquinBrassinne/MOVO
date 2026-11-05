@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 
+import { PhotoImage } from "@/components/CoverImage";
 import { ArrowLeftIcon, ArrowRightIcon } from "@/components/socios/icons";
 
 interface Props {
@@ -48,12 +49,8 @@ export function PhotoSection({ images, name }: Props) {
               aria-label={`Ver ${label(index)} en grande`}
               className={`block aspect-square w-full cursor-pointer overflow-hidden rounded-2xl bg-movo-sand shadow-sm ${FOCUS}`}
             >
-              {/* Las URLs son prefirmadas y de otro origen: next/image no las optimiza. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <PhotoImage
                 src={src}
-                alt=""
-                loading="lazy"
                 className="size-full object-cover transition-transform duration-300 motion-safe:hover:scale-105"
               />
             </button>
@@ -70,11 +67,11 @@ export function PhotoSection({ images, name }: Props) {
         className="m-auto size-full max-h-dvh max-w-none bg-black/95 p-0 backdrop:bg-black"
       >
         <div className="relative grid size-full place-items-center p-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <PhotoImage
             src={images[current]}
             alt={label(current)}
-            className="max-h-[75dvh] max-w-full rounded-2xl object-contain"
+            loading="eager"
+            className="max-h-[75dvh] max-w-full rounded-2xl object-contain object-contain"
           />
           <button
             type="button"
