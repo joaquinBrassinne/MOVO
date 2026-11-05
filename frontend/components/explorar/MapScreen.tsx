@@ -220,8 +220,19 @@ function ResultCard({
         selected && "ring-2 ring-movo-accent",
       )}
     >
-      <span className="grid size-20 shrink-0 place-items-center rounded-2xl bg-movo-card text-movo-accent">
-        <CategoryIcon slug={item.category_slug} className="size-9" />
+      <span className="relative grid size-20 shrink-0 place-items-center overflow-hidden rounded-2xl bg-movo-card text-movo-accent">
+        {item.cover_url ? (
+          // Las URLs son prefirmadas y de otro origen: next/image no las optimiza.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={item.cover_url}
+            alt=""
+            loading="lazy"
+            className="absolute inset-0 size-full object-cover"
+          />
+        ) : (
+          <CategoryIcon slug={item.category_slug} className="size-9" />
+        )}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap gap-2">

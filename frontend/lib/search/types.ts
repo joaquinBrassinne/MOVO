@@ -19,6 +19,8 @@ export interface SearchResult {
   category_name: string;
   /** La etiqueta del beneficio más alto que ofrece el local ("-15%", "-$2.000", "Beneficio"); `null` si no tiene. */
   benefit_label: string | null;
+  /** URL prefirmada de la primera foto del local; `null` si no cargó fotos. */
+  cover_url: string | null;
 }
 
 export interface SearchPage {

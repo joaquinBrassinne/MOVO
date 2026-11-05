@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { Icon, VerifiedIcon } from "@/components/explorar/icons";
+import { CategoryIcon, Icon, VerifiedIcon } from "@/components/explorar/icons";
 import { Logo } from "@/components/Logo";
 import { StarRating } from "@/components/reviews/StarRating";
 import { ArrowLeftIcon } from "@/components/socios/icons";
@@ -13,7 +13,7 @@ import {
   type ProfileBranch,
 } from "@/lib/search/profile";
 
-import { Gallery } from "./Gallery";
+import { PhotoSection } from "./PhotoSection";
 import { ProfileBenefits } from "./ProfileBenefits";
 import { ProfileViewBeacon } from "./ProfileViewBeacon";
 import { ServiceViewBeacon } from "./ServiceViewBeacon";
@@ -34,9 +34,20 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
 
   return (
     <div className="min-h-dvh bg-movo-cream pb-32 font-sans text-movo-ink">
-      <div className="relative">
-        <Gallery images={profile.images} name={profile.name} categorySlug={profile.category.slug} />
-        <header className="absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-movo-page/80 to-transparent px-4 pt-4 pb-8">
+      <div className="relative overflow-hidden bg-gradient-to-br from-movo-page via-movo-card to-movo-tabs pb-24">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-24 -right-12 size-72 rounded-full bg-movo-accent/25 blur-3xl"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute top-10 -left-20 size-56 rounded-full bg-white/5 blur-3xl"
+        />
+        <CategoryIcon
+          slug={profile.category.slug}
+          className="pointer-events-none absolute right-5 bottom-4 size-32 text-white/10"
+        />
+        <header className="relative flex items-center justify-between px-4 pt-4">
           <Link
             href="/map"
             aria-label="Volver al mapa"
@@ -45,25 +56,38 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
             <ArrowLeftIcon />
           </Link>
           <Link href="/" aria-label="MOVO, ir al inicio" className="outline-none">
-            <Logo className="h-8" />
+            <Logo className="h-10" />
           </Link>
           <span className="size-11" aria-hidden="true" />
         </header>
       </div>
 
-      <main className="relative -mt-6 rounded-t-[2rem] bg-movo-cream px-4 pt-6">
-        <p className="inline-flex rounded-full bg-white px-3 py-1.5 text-sm font-semibold shadow-sm">
-          {profile.category.name}
-        </p>
+      <main className="relative -mt-8 rounded-t-[2rem] bg-movo-cream px-4 pt-0">
+        <div className="-mt-12 flex items-end gap-4">
+          <span className="grid size-24 shrink-0 place-items-center overflow-hidden rounded-3xl bg-movo-card text-movo-accent shadow-lg ring-4 ring-movo-cream">
+            {profile.images[0] ? (
+              // Las URLs son prefirmadas y de otro origen: next/image no las optimiza.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={profile.images[0]} alt="" className="size-full object-cover" />
+            ) : (
+              <CategoryIcon slug={profile.category.slug} className="size-10" />
+            )}
+          </span>
+          <div className="flex min-w-0 flex-wrap items-center gap-2 pb-1">
+            <p className="inline-flex rounded-full bg-movo-ink px-3 py-1.5 text-xs font-bold text-white">
+              {profile.category.name}
+            </p>
+            {profile.verified ? (
+              <p className="inline-flex items-center gap-1 rounded-full bg-movo-accent px-3 py-1.5 text-xs font-bold text-movo-ink">
+                <VerifiedIcon className="size-4" />
+                Verificado
+              </p>
+            ) : null}
+          </div>
+        </div>
 
-        <h1 className="mt-3 flex items-center gap-2 font-display text-3xl leading-tight font-extrabold">
+        <h1 className="mt-4 font-display text-3xl leading-tight font-extrabold text-balance">
           {profile.name}
-          {profile.verified ? (
-            <span title="Local verificado por MOVO" className="shrink-0 text-movo-gold">
-              <VerifiedIcon className="size-7" />
-              <span className="sr-only">Local verificado por MOVO</span>
-            </span>
-          ) : null}
         </h1>
 
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -126,6 +150,8 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
         ) : null}
 
         <ProfileBenefits businessName={profile.name} benefits={profile.benefits} />
+
+        <PhotoSection images={profile.images} name={profile.name} />
 
         {profile.services.length > 0 ? (
           <section aria-labelledby="services" className="mt-8">
@@ -255,7 +281,7 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
 function OpenStatus({ branch, today }: { branch: ProfileBranch; today: number }) {
   const open = branch.open_now.open;
   return (
-    <p className="mt-2 flex items-center gap-2 text-sm text-movo-slate">
+    <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-sm text-movo-slate shadow-sm">
       <span
         aria-hidden="true"
         className={`size-2.5 shrink-0 rounded-full ${open ? "bg-movo-ok" : "bg-movo-slate/50"}`}
