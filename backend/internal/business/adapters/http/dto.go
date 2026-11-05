@@ -78,7 +78,7 @@ type myBusinessJSON struct {
 	Business businessJSON `json:"business"`
 	Branches []branchJSON `json:"branches"`
 	Images   []imageJSON  `json:"images"`
-	// MaxImages is how many photos the business may have, so the panel can say "3 de 10".
+	// MaxImages is how many photos the business may have, so the panel can say "3 de 4".
 	MaxImages int `json:"max_images"`
 }
 

@@ -29,7 +29,7 @@ const (
 
 	// defaultMaxImages is how many photos a business may show unless MAX_BUSINESS_IMAGES
 	// says otherwise; maxImagesCeiling keeps a typo from turning the page into an album.
-	defaultMaxImages = 10
+	defaultMaxImages = 4
 	maxImagesCeiling = 30
 )
 

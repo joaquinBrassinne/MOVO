@@ -102,7 +102,7 @@ func TestLoadStorageMaxImages(t *testing.T) {
 		want    int
 		wantErr bool
 	}{
-		{"unset takes the default of ten", "", 10, false},
+		{"unset takes the default of four", "", 4, false},
 		{"a configured limit", " 4 ", 4, false},
 		{"the ceiling is allowed", "30", 30, false},
 		{"zero is rejected", "0", 0, true},
