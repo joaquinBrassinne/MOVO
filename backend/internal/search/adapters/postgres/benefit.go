@@ -18,6 +18,14 @@ const bestBenefitLateral = `
         LIMIT 1
     ) bb ON true`
 
+// coverLateral joins, to each branch of a query over visible_branches (alias v), the first
+// photo of its business: the cover. The column is cv.object_key, null with no photos.
+const coverLateral = `
+    LEFT JOIN LATERAL (
+        SELECT bi.object_key FROM business_images bi
+        WHERE bi.business_id = v.business_id ORDER BY bi.position LIMIT 1
+    ) cv ON true`
+
 // bestBenefit is the benefit columns of a branch row, as the database returns them.
 type bestBenefit struct {
 	kind    *string

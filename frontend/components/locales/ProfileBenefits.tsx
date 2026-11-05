@@ -30,20 +30,23 @@ export function ProfileBenefits({ businessName, benefits }: Props) {
 
       <ul className="mt-3 space-y-3">
         {benefits.map((benefit) => (
-          <li key={benefit.id} className="rounded-3xl bg-white p-4 shadow-sm">
-            <span className="inline-flex rounded-full bg-movo-accent px-3 py-1 text-xs font-extrabold">
+          <li
+            key={benefit.id}
+            className="rounded-3xl bg-gradient-to-br from-movo-accent to-amber-200 p-5 text-movo-ink shadow-md"
+          >
+            <span className="inline-flex rounded-full bg-movo-ink px-3 py-1 text-xs font-extrabold text-movo-accent">
               {benefit.short_label}
             </span>
             <h3 className="mt-2 font-display text-lg leading-tight font-bold">
               {benefitHeadline(benefit)}
             </h3>
             {benefit.conditions ? (
-              <p className="mt-1 text-sm text-movo-slate">{benefit.conditions}</p>
+              <p className="mt-1 text-sm font-medium text-movo-ink/80">{benefit.conditions}</p>
             ) : null}
             <button
               type="button"
               onClick={() => setChosen(benefit)}
-              className="mt-3 h-12 w-full rounded-full bg-movo-accent font-display text-base font-bold outline-none focus-visible:ring-2 focus-visible:ring-movo-ink"
+              className="mt-4 h-12 w-full cursor-pointer rounded-full bg-movo-ink font-display text-base font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-movo-ink focus-visible:ring-offset-2 focus-visible:ring-offset-amber-200"
             >
               Obtener cupón
             </button>

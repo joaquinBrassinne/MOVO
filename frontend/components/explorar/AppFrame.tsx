@@ -29,7 +29,7 @@ const TABS = [
 export function AccountLink({ className }: { className?: string }) {
   return (
     <Link
-      href="/owners"
+      href="/owners/sign-in"
       aria-label="Ingreso de socios"
       className={cn(
         "grid size-11 place-items-center rounded-full bg-movo-card text-white outline-none focus-visible:ring-2 focus-visible:ring-movo-accent",

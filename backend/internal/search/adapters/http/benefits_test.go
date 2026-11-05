@@ -5,6 +5,13 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/joaquinBrassinne/MOVO/internal/platform/dbtest"
+	"github.com/joaquinBrassinne/MOVO/internal/platform/httpx"
+	"github.com/joaquinBrassinne/MOVO/internal/platform/storage"
+	searchhttp "github.com/joaquinBrassinne/MOVO/internal/search/adapters/http"
+	searchpostgres "github.com/joaquinBrassinne/MOVO/internal/search/adapters/postgres"
+	"github.com/joaquinBrassinne/MOVO/internal/search/app/queries"
 )
 
 func TestProfileListsOnlyTheBenefitsOfferedRightNowBestFirstWithoutLimits(t *testing.T) {
@@ -101,5 +108,40 @@ func TestSearchCardsHaveABenefitLabelOrNull(t *testing.T) {
 	}
 	if !strings.Contains(res.Body.String(), `"benefit_label":null`) {
 		t.Errorf("the field must be present as null when there is no benefit: %s", res.Body)
+	}
+}
+
+func TestSearchCardsHaveACoverURLOrNull(t *testing.T) {
+	t.Parallel()
+
+	pool := dbtest.New(t)
+	branches := searchpostgres.NewBranches(pool)
+	h := httpx.NewRouter(nil, nil, searchhttp.New(queries.NewNearbyBranches(branches), queries.NewFeaturedBranches(branches, nil), nil).
+		WithCovers(storage.NewMemory()).Mount)
+	with := addBranch(t, pool, 1, 1_000)
+	addBranch(t, pool, 2, 2_000)
+	exec(t, pool, `INSERT INTO business_images (business_id, object_key, position)
+		SELECT business_id, 'businesses/1/cover.jpg', 0 FROM branches WHERE id = $1`, with)
+
+	res := get(h, "lat=-32.17&lng=-64.11&radius_m=20000")
+	var body struct {
+		Results []struct {
+			BranchID int64   `json:"branch_id"`
+			CoverURL *string `json:"cover_url"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil || len(body.Results) != 2 {
+		t.Fatalf("search = %d %s", res.Code, res.Body)
+	}
+	for _, card := range body.Results {
+		switch {
+		case card.BranchID == with && (card.CoverURL == nil || !strings.Contains(*card.CoverURL, "businesses/1/cover.jpg")):
+			t.Errorf("card with a photo = %v, want the URL of the cover", card.CoverURL)
+		case card.BranchID != with && card.CoverURL != nil:
+			t.Errorf("card without a photo = %q, want null", *card.CoverURL)
+		}
+	}
+	if !strings.Contains(res.Body.String(), `"cover_url":null`) {
+		t.Errorf("the field must be present as null when there is no photo: %s", res.Body)
 	}
 }

@@ -2,6 +2,7 @@
 package searchhttp
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"math"
@@ -31,6 +32,8 @@ type Handlers struct {
 	// limiter, when set, caps the requests of GET /search and GET /home/featured per client.
 	limiter Limiter
 	log     *slog.Logger
+	// covers presigns the cover photo of the cards; nil leaves cover_url null.
+	covers search.ImageURLs
 }
 
 // New builds the handlers. A nil logger discards logs.
@@ -58,6 +61,12 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Get("/r/wa/{branch_id}", h.handleWhatsApp)
 		r.Head("/r/wa/{branch_id}", h.handleWhatsApp)
 	}
+}
+
+// WithCovers puts the cover photo of each business on the search and featured cards.
+func (h *Handlers) WithCovers(urls search.ImageURLs) *Handlers {
+	h.covers = urls
+	return h
 }
 
 // WithWhatsApp enables GET /r/wa/{branch_id}, the redirect behind the WhatsApp button.
@@ -88,6 +97,8 @@ type branchJSON struct {
 	// BenefitLabel is the short label of the best benefit the business offers right now
 	// ("-15%", "-$2.000", "Beneficio"), null when it offers none.
 	BenefitLabel *string `json:"benefit_label"`
+	// CoverURL is a short-lived URL of the first photo of the business, null when it has none.
+	CoverURL *string `json:"cover_url"`
 }
 
 func (h *Handlers) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +119,7 @@ func (h *Handlers) handleSearch(w http.ResponseWriter, r *http.Request) {
 		n := q.Offset + len(page.Items)
 		next = &n
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"results": cards(page.Items), "next_offset": next})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"results": h.cards(r.Context(), page.Items), "next_offset": next})
 }
 
 // handleFeatured serves "Destacados cerca tuyo". It takes lat, lng, radius_m and
@@ -126,10 +137,10 @@ func (h *Handlers) handleFeatured(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"results": cards(items)})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"results": h.cards(r.Context(), items)})
 }
 
-func cards(branches []search.Branch) []branchJSON {
+func (h *Handlers) cards(ctx context.Context, branches []search.Branch) []branchJSON {
 	items := make([]branchJSON, 0, len(branches))
 	for _, b := range branches {
 		items = append(items, branchJSON{
@@ -138,6 +149,7 @@ func cards(branches []search.Branch) []branchJSON {
 			Lat: b.Lat, Lng: b.Lng, DistanceM: int(math.Round(b.DistanceM)),
 			RatingAvg: b.RatingAvg, RatingCount: b.RatingCount, Verified: b.Verified, Featured: b.Featured,
 			CategorySlug: b.CategorySlug, CategoryName: b.CategoryName, BenefitLabel: nilIfEmpty(b.BenefitLabel),
+			CoverURL: h.coverURL(ctx, b.CoverKey),
 		})
 	}
 	return items
@@ -217,4 +229,17 @@ func parseQuery(r *http.Request) (q search.Query, field, reason string) {
 func invalid(w http.ResponseWriter, field, reason string) {
 	httpx.WriteError(w, http.StatusUnprocessableEntity, CodeValidationFailed, "the "+field+" is not valid",
 		map[string]string{"field": field, "reason": reason})
+}
+
+// coverURL presigns the cover key. A card without a photo, or whose URL cannot be signed, has none.
+func (h *Handlers) coverURL(ctx context.Context, key string) *string {
+	if h.covers == nil || key == "" {
+		return nil
+	}
+	url, err := h.covers.PresignDownload(ctx, key)
+	if err != nil {
+		h.log.Warn("cover url failed", "error", err)
+		return nil
+	}
+	return &url
 }

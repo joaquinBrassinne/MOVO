@@ -34,7 +34,7 @@ func Invalidate(ctx context.Context, store Store) error {
 
 // keyPrefix versions the cached shape: bump it when search.Branch changes so old entries are
 // never decoded into the new struct.
-const keyPrefix = "search:nearby:v1"
+const keyPrefix = "search:nearby:v2"
 
 // Finder serves Nearby from the store and falls back to the wrapped finder on a miss. The
 // origin is snapped to a grid cell so nearby users share one entry; the search then runs from

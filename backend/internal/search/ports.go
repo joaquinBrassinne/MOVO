@@ -64,6 +64,8 @@ type Branch struct {
 	// BenefitLabel is the label of the best benefit the business offers (a percent over
 	// an amount over a custom one), empty when it offers none.
 	BenefitLabel string
+	// CoverKey is the object key of the first photo of the business, empty when it has none.
+	CoverKey string
 }
 
 // BranchFinder lists the visible branches around a point, ordered by distance band,
