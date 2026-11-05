@@ -41,11 +41,11 @@ SELECT v.branch_id, v.business_id, v.business_name, v.business_slug, v.branch_na
        ST_Y(v.location::geometry), ST_X(v.location::geometry),
        ST_Distance(v.location, o.p) AS distance_m,
        v.rating_avg::float8, v.rating_count, v.verified_at IS NOT NULL, v.featured, c.slug, c.name,
-       bb.type, bb.percent, bb.amount_ars
+       bb.type, bb.percent, bb.amount_ars, cv.object_key
 FROM near n
 JOIN visible_branches v ON v.branch_id = n.id
 JOIN categories c ON c.id = v.category_id
-CROSS JOIN origin o` + bestBenefitLateral + `
+CROSS JOIN origin o` + bestBenefitLateral + coverLateral + `
 WHERE ($5::text = '' OR v.category_id = (SELECT id FROM categories WHERE slug = $5::text))
   AND ($8::float8 = 0 OR (v.rating_count >= $9::int AND v.rating_avg::float8 >= $8::float8))
 ORDER BY floor(ST_Distance(v.location, o.p) / $4::float8), v.featured DESC,
@@ -71,16 +71,20 @@ func collect(rows pgx.Rows) ([]search.Branch, error) {
 	branches := []search.Branch{}
 	for rows.Next() {
 		var (
-			b    search.Branch
-			best bestBenefit
+			b     search.Branch
+			best  bestBenefit
+			cover *string
 		)
 		if err := rows.Scan(&b.BranchID, &b.BusinessID, &b.BusinessName, &b.BusinessSlug, &b.BranchName,
 			&b.Address, &b.City, &b.Reference, &b.Lat, &b.Lng, &b.DistanceM,
 			&b.RatingAvg, &b.RatingCount, &b.Verified, &b.Featured, &b.CategorySlug, &b.CategoryName,
-			&best.kind, &best.percent, &best.amount); err != nil {
+			&best.kind, &best.percent, &best.amount, &cover); err != nil {
 			return nil, fmt.Errorf("postgres: scan branch: %w", err)
 		}
 		b.BenefitLabel = best.label()
+		if cover != nil {
+			b.CoverKey = *cover
+		}
 		branches = append(branches, b)
 	}
 	if err := rows.Err(); err != nil {

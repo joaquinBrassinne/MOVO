@@ -57,6 +57,7 @@ func newSearchRoutes(log *slog.Logger, pool *pgxpool.Pool, images search.ImageUR
 		WithDeduper(searchmemory.NewDeduper(metricDedupeWindow, metricDedupeMaxKeys, nil))
 	return searchhttp.New(queries.NewNearbyBranches(nearby), queries.NewFeaturedBranches(branches, nil), log).
 		WithRateLimit(limiter).
+		WithCovers(images).
 		WithWhatsApp(commands.NewOpenWhatsApp(branches, record, log)).
 		WithProfile(queries.NewBusinessProfile(branches, images, nil)).
 		WithProfileView(commands.NewRecordProfileView(branches, record, log)).

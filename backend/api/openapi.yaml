@@ -4170,7 +4170,7 @@ components:
     SearchBranchCard:
       type: object
       description: Light branch card for the map and lists. It never carries the WhatsApp number.
-      required: [branch_id, business_name, business_slug, branch_name, address, city, reference, lat, lng, distance_m, rating_avg, rating_count, verified, featured, category_slug, category_name, benefit_label]
+      required: [branch_id, business_name, business_slug, branch_name, address, city, reference, lat, lng, distance_m, rating_avg, rating_count, verified, featured, category_slug, category_name, benefit_label, cover_url]
       properties:
         branch_id:
           type: integer
@@ -4215,6 +4215,10 @@ components:
           nullable: true
           description: Short label of the best benefit offered right now (for example "-15%"), null when there is none.
           example: '-15%'
+        cover_url:
+          type: string
+          nullable: true
+          description: Short-lived URL of the first photo of the business, null when it has none.
     SearchResults:
       type: object
       required: [results, next_offset]
