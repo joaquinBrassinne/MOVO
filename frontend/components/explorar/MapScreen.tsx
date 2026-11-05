@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useState } from "react";
 
+import { CoverTile } from "@/components/CoverImage";
 import { Logo } from "@/components/Logo";
 import { StarRating } from "@/components/reviews/StarRating";
 import { ArrowLeftIcon, ArrowRightIcon, StarIcon } from "@/components/socios/icons";
@@ -17,7 +18,7 @@ import type { Point, SearchResult } from "@/lib/search/types";
 import { AccountLink, AppFrame } from "./AppFrame";
 import { BenefitPill } from "./BenefitPill";
 import { CategoryChips } from "./CategoryChips";
-import { CategoryIcon, VerifiedIcon } from "./icons";
+import { VerifiedIcon } from "./icons";
 
 // Leaflet necesita `window`: el mapa se carga solo en el navegador.
 const SearchMap = dynamic(() => import("./SearchMap"), {
@@ -220,20 +221,12 @@ function ResultCard({
         selected && "ring-2 ring-movo-accent",
       )}
     >
-      <span className="relative grid size-20 shrink-0 place-items-center overflow-hidden rounded-2xl bg-movo-card text-movo-accent">
-        {item.cover_url ? (
-          // Las URLs son prefirmadas y de otro origen: next/image no las optimiza.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={item.cover_url}
-            alt=""
-            loading="lazy"
-            className="absolute inset-0 size-full object-cover"
-          />
-        ) : (
-          <CategoryIcon slug={item.category_slug} className="size-9" />
-        )}
-      </span>
+      <CoverTile
+        src={item.cover_url}
+        categorySlug={item.category_slug}
+        className="size-20 rounded-2xl bg-movo-card"
+        iconClassName="size-9"
+      />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap gap-2">
           {item.featured ? (
