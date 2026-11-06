@@ -6,6 +6,7 @@
 #
 # El `migrate` corre una vez y termina antes de que arranquen la API y el worker.
 # Todos los valores salen del .env de la raíz (plantilla: deploy/.env.production.example).
+# ENV_FILE cambia el archivo de entorno de los contenedores (por defecto ../.env).
 # Variables extra que usa este archivo: API_IMAGE, WORKER_IMAGE, MIGRATE_IMAGE, WEB_IMAGE.
 #
 # IP real del cliente: la red tiene subred fija para que TRUSTED_PROXIES sea predecible y
@@ -16,7 +17,7 @@ name: movo
 
 x-app: &app
   restart: unless-stopped
-  env_file: ../.env
+  env_file: ${ENV_FILE:-../.env}
   networks: [movo]
   logging:
     driver: json-file
