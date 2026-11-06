@@ -1,0 +1,225 @@
+// Package postgres implements the business ports on top of PostgreSQL.
+package postgres
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/joaquinBrassinne/MOVO/internal/business"
+	"github.com/joaquinBrassinne/MOVO/internal/business/domain"
+)
+
+const (
+	uniqueViolation     = "23505"
+	exclusionViolation  = "23P01"
+	foreignKeyViolation = "23503"
+)
+
+const selectBusiness = `
+SELECT id, owner_user_id, category_id, name, slug, description, whatsapp_number, status,
+       pilot, verified_at, verified_by, mp_payer_email, mp_payer_name, mp_return_params, created_at,
+       average_ticket_ars
+FROM businesses`
+
+// Businesses implements business.BusinessRepository.
+type Businesses struct {
+	pool *pgxpool.Pool
+}
+
+// NewBusinesses builds the repository over pool.
+func NewBusinesses(pool *pgxpool.Pool) *Businesses {
+	return &Businesses{pool: pool}
+}
+
+// Create stores b and returns it with ID and CreatedAt set.
+func (r *Businesses) Create(ctx context.Context, b domain.Business) (domain.Business, error) {
+	err := r.pool.QueryRow(ctx, `
+INSERT INTO businesses (owner_user_id, category_id, name, slug, description, whatsapp_number, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, created_at`,
+		b.OwnerID, b.CategoryID, b.Name, b.Slug, b.Description, b.WhatsApp, string(b.Status),
+	).Scan(&b.ID, &b.CreatedAt)
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		switch {
+		case pgErr.Code == uniqueViolation && pgErr.ConstraintName == "businesses_owner_user_id_key":
+			return domain.Business{}, business.ErrOwnerHasBusiness
+		case pgErr.Code == uniqueViolation && pgErr.ConstraintName == "businesses_slug_key":
+			return domain.Business{}, business.ErrSlugTaken
+		case pgErr.Code == foreignKeyViolation && pgErr.ConstraintName == "businesses_category_id_fkey":
+			return domain.Business{}, business.ErrCategoryNotFound
+		}
+	}
+	if err != nil {
+		return domain.Business{}, fmt.Errorf("postgres: insert business: %w", err)
+	}
+	return b, nil
+}
+
+// FindByOwner returns the business of the owner.
+func (r *Businesses) FindByOwner(ctx context.Context, ownerID int64) (domain.Business, error) {
+	return scanBusiness(r.pool.QueryRow(ctx, selectBusiness+` WHERE owner_user_id = $1`, ownerID))
+}
+
+// scanBusiness reads one row of selectBusiness, reporting a missing row as
+// business.ErrBusinessNotFound.
+func scanBusiness(row pgx.Row) (domain.Business, error) {
+	var (
+		b      domain.Business
+		status string
+		by     *int64
+		payer  payerColumns
+	)
+	err := row.Scan(
+		&b.ID, &b.OwnerID, &b.CategoryID, &b.Name, &b.Slug, &b.Description, &b.WhatsApp, &status,
+		&b.Pilot, &b.VerifiedAt, &by, &payer.email, &payer.name, &payer.params, &b.CreatedAt,
+		&b.AverageTicketARS,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Business{}, business.ErrBusinessNotFound
+	}
+	if err != nil {
+		return domain.Business{}, fmt.Errorf("postgres: select business: %w", err)
+	}
+
+	// The CHECK constraint keeps the column to the known statuses.
+	b.Status = domain.Status(status)
+	if by != nil {
+		b.VerifiedBy = *by
+	}
+	payer.applyTo(&b)
+	return b, nil
+}
+
+// AverageTicket returns the average ticket of the business in whole pesos, nil when its owner
+// never loaded one, or business.ErrBusinessNotFound.
+func (r *Businesses) AverageTicket(ctx context.Context, businessID int64) (*int, error) {
+	var ticket *int
+	err := r.pool.QueryRow(ctx, `SELECT average_ticket_ars FROM businesses WHERE id = $1`, businessID).Scan(&ticket)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, business.ErrBusinessNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("postgres: select average ticket: %w", err)
+	}
+	return ticket, nil
+}
+
+// Save persists the profile, status and declared payer of b. The slug and
+// the owner are deliberately not part of the UPDATE.
+func (r *Businesses) Save(ctx context.Context, b domain.Business) error {
+	params, err := encodeReturnParams(b.MPReturnParams)
+	if err != nil {
+		return err
+	}
+	tag, err := r.pool.Exec(ctx, `
+UPDATE businesses
+SET category_id = $2, name = $3, description = $4, whatsapp_number = $5, status = $6,
+    mp_payer_email = NULLIF($7, ''), mp_payer_name = NULLIF($8, ''), mp_return_params = $9, updated_at = now()
+WHERE id = $1`,
+		b.ID, b.CategoryID, b.Name, b.Description, b.WhatsApp, string(b.Status), b.MPPayerEmail, b.MPPayerName, params)
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == foreignKeyViolation && pgErr.ConstraintName == "businesses_category_id_fkey" {
+		return business.ErrCategoryNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("postgres: update business: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return business.ErrBusinessNotFound
+	}
+	return nil
+}
+
+// IsPilot reports whether the business is part of the pilot. It is not part of
+// business.BusinessRepository: the billing module declares the port that needs it.
+func (r *Businesses) IsPilot(ctx context.Context, businessID int64) (bool, error) {
+	var pilot bool
+	err := r.pool.QueryRow(ctx, `SELECT pilot FROM businesses WHERE id = $1`, businessID).Scan(&pilot)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, business.ErrBusinessNotFound
+	}
+	if err != nil {
+		return false, fmt.Errorf("postgres: select pilot flag: %w", err)
+	}
+	return pilot, nil
+}
+
+// payerColumns holds the nullable columns with what the owner declared about the
+// Mercado Pago payment.
+type payerColumns struct {
+	email  *string
+	name   *string
+	params map[string]string
+}
+
+func (p payerColumns) applyTo(b *domain.Business) {
+	if p.email != nil {
+		b.MPPayerEmail = *p.email
+	}
+	if p.name != nil {
+		b.MPPayerName = *p.name
+	}
+	b.MPReturnParams = p.params
+}
+
+// encodeReturnParams turns the hint parameters into the jsonb value, NULL when empty.
+func encodeReturnParams(params map[string]string) ([]byte, error) {
+	if len(params) == 0 {
+		return nil, nil
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: encode return params: %w", err)
+	}
+	return raw, nil
+}
+
+// SaveProfile updates only the profile fields and appends the audit entry in the same
+// transaction, so a change that cannot be recorded is not applied either.
+func (r *Businesses) SaveProfile(ctx context.Context, b domain.Business, entry business.AuditEntry) error {
+	metadata, err := json.Marshal(entry.Metadata)
+	if err != nil {
+		return fmt.Errorf("postgres: encode audit metadata: %w", err)
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("postgres: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	tag, err := tx.Exec(ctx, `
+UPDATE businesses
+SET category_id = $2, name = $3, description = $4, whatsapp_number = $5, average_ticket_ars = $6, updated_at = now()
+WHERE id = $1`,
+		b.ID, b.CategoryID, b.Name, b.Description, b.WhatsApp, b.AverageTicketARS)
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == foreignKeyViolation && pgErr.ConstraintName == "businesses_category_id_fkey" {
+		return business.ErrCategoryNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("postgres: update business profile: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return business.ErrBusinessNotFound
+	}
+
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO audit_log (actor_id, action, entity, entity_id, metadata) VALUES ($1, $2, $3, $4, $5)`,
+		entry.ActorID, entry.Action, entry.Entity, entry.EntityID, metadata); err != nil {
+		return fmt.Errorf("postgres: append audit entry: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("postgres: commit: %w", err)
+	}
+	return nil
+}

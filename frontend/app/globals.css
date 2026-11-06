@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50: oklch(0.97 0.02 165);
+  --color-brand-100: oklch(0.94 0.04 165);
+  --color-brand-600: oklch(0.55 0.12 165);
+  --color-brand-700: oklch(0.47 0.11 165);
+
+  /* Portal de socios: valores tomados del diseño entregado para la Fase 1. */
+  --color-movo-page: #262649;
+  --color-movo-card: #1e1c3e;
+  --color-movo-tabs: #181733;
+  --color-movo-field: #14132b;
+  --color-movo-accent: #fcd34d;
+  --color-movo-muted: #b7b5cf;
+  --color-movo-ink: #23213f;
+  --color-movo-error: #ff9aa2;
+  --color-movo-error-bg: #4e4560;
+
+  /* Onboarding y panel del dueño: valores tomados de los diseños de la Fase 2. */
+  --color-movo-cream: #faf6f3;
+  --color-movo-sand: #f2edeb;
+  --color-movo-slate: #6f6d83;
+  --color-movo-gold: #7c5d00;
+  --color-movo-danger: #c62828;
+  --color-movo-ok: #1f9d55;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--color-slate-50);
+  color: var(--color-slate-900);
+}
+
+/* Filas que se desplazan de costado (chips de categoría, destacados) sin barra visible. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

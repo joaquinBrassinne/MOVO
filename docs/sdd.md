@@ -1,0 +1,800 @@
+# Software Design Document (SDD) — Plataforma MOVO
+
+> Versión 3 · Estado: alcance del MVP cerrado
+> Principio rector: **primero el lazo de valor (buscar → obtener cupón → canjear), después el cobro manual, después la automatización y la escala.**
+
+---
+
+## 1. Visión y alcance
+
+### 1.1 Descripción
+Plataforma SaaS (B2B2C) que conecta personas con actividades físicas y de bienestar (gimnasios, pilates, yoga, entrenadores, estética, natación, clubes de pádel y guías y empresas de trekking y outdoor: trekking, cabalgatas, kayak, mountain bike y escalada). Los establecimientos pagan una suscripción mensual mediante un **plan de suscripción de Mercado Pago (cobro automático)** para aparecer en un mapa y ofrecer cupones de descuento canjeables en el local. Los clientes contactan al local por WhatsApp para reservar clases.
+
+### 1.2 Principios del MVP
+1. **Cero proveedores externos de mensajería o pagos.** No se integra la API de Mercado Pago, ni WhatsApp Business, ni email, ni push. El contacto con el local es un enlace `wa.me`.
+2. **Contar, no seguir.** Las métricas salen de contadores agregados sin datos personales (sin IP, user-agent, identificadores ni recorridos individuales). Se rotulan como "vistas", no como "personas".
+3. **El cliente no tiene cuenta.** Solo deja nombre y WhatsApp cuando genera un cupón.
+4. **Vistas y backend se construyen juntos por fase** (desarrollo vertical), para ver el flujo de punta a punta.
+5. **Glosario de interfaz:** se usa "cupón" en la interfaz y el marketing; el código alfanumérico es el "código del cupón"; en base de datos la tabla es `benefit_codes`.
+
+### 1.3 Actores
+| Actor | Qué hace |
+|---|---|
+| **Cliente (sin cuenta)** | Busca por cercanía/categoría, contacta al local por WhatsApp, genera cupones dejando nombre y WhatsApp (sin registro ni verificación) y deja reseñas si canjeó un cupón |
+| **Dueño/Admin de local** | Contrata un plan, se registra, completa su perfil, administra sedes y servicios, define beneficios y cupo mensual, canjea cupones, ve métricas |
+| **Super Admin** | Confirma pagos, aprueba/pausa/elimina locales, marca perfiles verificados, modera reseñas, resuelve incidencias |
+
+### 1.4 Objetivos del MVP
+1. Un usuario encuentra un local cercano y obtiene un cupón en menos de 3 clics.
+2. Un local canjea ese cupón en segundos desde el celular.
+3. Un local solo es visible si tiene suscripción vigente (o es piloto).
+4. Desplegable con `docker compose up` y con CI verde.
+
+### 1.5 Fuera de alcance del MVP (post-MVP)
+- Reserva con estados y agenda con cupos o capacidad: la reserva se resuelve por WhatsApp.
+- Integración por API de Mercado Pago (webhooks, reconciliación): el cobro es automático por el plan de suscripción, pero el registro en MOVO es manual.
+- Subida y revisión de DNI: en el MVP la verificación es manual.
+- Benchmarking de zona y alertas de "alta demanda" y "franjas con poca demanda".
+- Notificaciones push, email o WhatsApp automáticos; reseteo de contraseña por email.
+- Respuesta del dueño a las reseñas.
+- Seguimiento de ubicación en vivo (se usa pin fijo).
+- App móvil nativa, pagos del usuario final, réplicas de lectura, multi-región, Kubernetes.
+- Favoritos ("Guardados") del cliente.
+
+### 1.6 Métricas de éxito (piloto)
+- 5–10 locales de Almafuerte/Río Tercero activos.
+- ≥ 50 cupones generados y ≥ 30 % canjeados en el primer mes.
+- p95 de búsqueda < 300 ms.
+- 0 cupones canjeados dos veces.
+
+---
+
+## 2. Stack tecnológico
+
+| Capa | Elección | Justificación / nota |
+|---|---|---|
+| Backend | Go 1.22+ (`net/http` + `chi`) | Idiomático, poco acoplamiento al framework |
+| Acceso a datos | `pgx` + `sqlc` | SQL explícito, tipado, sin magia de ORM |
+| Migraciones | `goose` (SQL puro) | Versionadas en el repo, up/down en un archivo |
+| DB | PostgreSQL 16 + **PostGIS** | Búsqueda por cercanía con índice espacial |
+| Tareas diarias | Loop simple en `cmd/worker` con lock consultivo de Postgres | Sin cola de jobs en el MVP; visibilidad y vencimientos se calculan al leer |
+| Caché | Redis (**Fase 7**, cuando haya métricas) | Cache-aside con TTL; también rate limiting distribuido |
+| Frontend | Next.js (App Router) + Tailwind | SSR para SEO de fichas de locales |
+| Mapas | React Leaflet + capa vectorial MapLibre GL (`@maplibre/maplibre-gl-leaflet`), estilo configurable por variable de entorno | Piloto: OpenFreeMap; producción: Protomaps (PMTiles) o proveedor (sección 12.3) |
+| Storage | S3 compatible: RustFS en local, gestionado (R2/B2/S3) en prod | URLs prefirmadas |
+| Cobros | Planes de suscripción de Mercado Pago (links por env) | Sin API ni webhooks en el MVP |
+| Contacto | Enlace `wa.me` con mensaje prearmado | Sin Twilio ni WhatsApp Business |
+| Infra | Docker + docker compose; VPS al inicio | Simple y barato |
+| CI | GitHub Actions | lint, tests, build, chequeo de migraciones |
+
+> **Storage:** el código no habla con un servidor de objetos concreto, habla con el puerto `Storage` sobre la **API S3**. El servidor es un detalle de entorno: en desarrollo corre un S3 local (RustFS, con la imagen pineada), en producción un servicio gestionado (Cloudflare R2, Backblaze B2 o AWS S3). Cambiar de servidor es cambiar configuración, no código.
+
+> Si preferís Gin (como en otros proyectos) es válido; lo importante es que los handlers HTTP sean una capa fina y reemplazable.
+
+---
+
+## 3. Arquitectura
+
+### 3.1 Estilo: monolito modular (no microservicios)
+Un solo repositorio, un solo despliegue, con **módulos con fronteras estrictas**. Se puede extraer un módulo a servicio más adelante si hay una razón real.
+
+Binarios, misma base de código:
+- `cmd/api`: servidor HTTP stateless (JWT), escalable detrás de un balanceador.
+- `cmd/worker`: tareas diarias mínimas (marcado de cupones vencidos, alerta de cupones sin canjear). Se crea cuando la primera de esas tareas lo requiera.
+- `cmd/migrate`: herramienta de un solo uso que aplica las migraciones SQL embebidas (`goose`) con `up`, `down`, `status` y `version`. Se ejecuta antes de desplegar, no queda corriendo.
+
+### 3.2 Estructura del repositorio
+```
+movo/
+├── backend/
+│   ├── go.mod
+│   ├── go.sum
+│   ├── cmd/
+│   │   ├── api/main.go
+│   │   ├── worker/main.go
+│   │   └── migrate/main.go
+│   ├── internal/
+│   │   ├── platform/          # config, logger, db, httpx, clock, id
+│   │   ├── identity/          # users, auth, roles
+│   │   ├── business/          # negocios, sedes, servicios, categorías, horarios, imágenes, planes y entitlements
+│   │   ├── search/            # búsqueda geoespacial y destacados del Home (solo lectura)
+│   │   ├── benefits/          # beneficios y cupones
+│   │   ├── reviews/           # reseñas verificadas por canje
+│   │   ├── billing/           # suscripciones manuales (vigencia y gracia)
+│   │   ├── metrics/           # contadores agregados y alertas
+│   │   └── admin/             # casos de uso de super admin
+│   ├── migrations/
+│   └── sqlc.yaml
+├── frontend/                  # Next.js
+├── deploy/
+│   ├── docker-compose.yml
+│   └── docker-compose.prod.yml
+├── docs/
+│   ├── sdd.md
+│   └── adr/                   # decisiones de arquitectura (1 archivo c/u)
+├── CLAUDE.md
+└── Makefile
+```
+
+### 3.3 Estructura interna de cada módulo (hexagonal liviana)
+```
+internal/benefits/
+├── domain/            # entidades, value objects, errores, reglas (sin imports de infra)
+├── app/
+│   ├── commands/      # GenerateCode, RedeemCode  (escrituras)
+│   └── queries/       # ListMyCodes               (lecturas)
+├── ports.go           # interfaces que el módulo NECESITA (repos, clock, otros módulos)
+└── adapters/
+    ├── postgres/      # implementación con sqlc/pgx
+    └── http/          # handlers, DTOs, validación
+```
+
+Reglas de dependencia (se validan con `depguard`/`go-arch-lint` en CI):
+1. `domain` no importa nada del proyecto salvo otros `domain` compartidos mínimos.
+2. `app` depende de `domain` y de **interfaces** (`ports.go`), nunca de `adapters`.
+3. Un módulo **no importa internals de otro**; se comunica por interfaces expuestas o eventos de dominio.
+4. Las interfaces se definen **del lado del consumidor** (idiom de Go), no "una interfaz por struct".
+5. Los servicios externos reales (geocoding, storage) siempre van detrás de una interfaz con un fake para tests. Mercado Pago **no** se integra por API en el MVP.
+
+### 3.4 CQRS ligero (sin sobreingeniería)
+- Comandos y queries separados en `app/commands` y `app/queries`.
+- Las queries pueden usar un repositorio de lectura propio (SQL con joins directos o una vista SQL).
+- **La caché es un decorador** de la interfaz de query (`CachedBusinessSearch` envuelve a `BusinessSearch`). Se agrega en Fase 7 sin tocar el dominio.
+- No hay event sourcing ni bus de mensajes externo; los eventos de dominio son llamadas en proceso.
+
+### 3.5 Concurrencia y tareas
+- `context.Context` en toda la cadena, con timeouts y cancelación en el apagado (`graceful shutdown`).
+- Las tareas diarias corren en `cmd/worker` con un lock consultivo de Postgres para que no se ejecuten dos veces si hay más de una instancia.
+- Nada depende de goroutines sueltas para trabajo que no se pueda perder.
+
+### 3.6 Stateless
+- Sin sesiones en memoria. Auth con JWT de acceso corto (≈15 min) + refresh token rotativo guardado (hasheado) en DB, **solo para dueños/admins de local y super admin**. Los clientes no tienen cuenta: acceden a sus cupones con un enlace con token no adivinable (ver 5.2).
+- Configuración por variables de entorno (12-factor). Logs a stdout.
+
+### 3.7 Escalabilidad: qué se hace ahora y qué se posterga
+| Elemento | Ahora | Cuándo agregarlo |
+|---|---|---|
+| Índice GIST en PostGIS | ✅ MVP | — |
+| Servidor stateless | ✅ MVP | — |
+| Redis cache-aside | ❌ | Fase 7, si p95 de búsqueda lo justifica |
+| CDN para imágenes | ❌ (servir desde el bucket) | Fase 7 |
+| Réplica de lectura | ❌ | Solo si CPU/IO de lecturas lo requiere (hay métricas) |
+| Balanceador / múltiples instancias | ❌ (1 instancia) | Cuando haya tráfico real |
+| Webhooks de Mercado Pago | ❌ | Post-MVP, cuando la revisión mensual deje de ser razonable (≈15–20 locales) |
+
+> Un local en Almafuerte/Río Tercero no necesita réplicas ni CDN. Diseñar *preparado* para escalar (stateless, interfaces) alcanza; implementarlo antes es costo sin retorno.
+
+---
+
+## 4. Modelo de datos (alto nivel)
+
+Todas las tablas con `id` (UUID v7 o `bigserial`), `created_at`, `updated_at`. Migraciones en SQL puro.
+
+| Tabla | Campos clave |
+|---|---|
+| `users` | email (único), password_hash (argon2id), role (`business_admin`/`super_admin`) — solo personal de locales y admins |
+| `refresh_tokens` | user_id, token_hash, expires_at, revoked_at, replaced_by |
+| `customers` | name, phone (WhatsApp, normalizado), created_at — contacto declarado, **sin verificación ni contraseña** |
+| `categories` | slug, name — seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel; y `trekking-outdoor` ("Trekking y outdoor"), agregada en una migración aparte. En esa categoría la **sede es el punto de encuentro** de la salida y **cada salida se carga como un servicio** (con sus días y horarios) |
+| `businesses` | owner_user_id (único: un dueño, un negocio), category_id, name, slug (único), description (≤ 500 caracteres), whatsapp_number (solo dígitos con código de país, validado), status (`draft`/`pending_review`/`active`/`paused`/`deleted`), pilot, verified_at, verified_by, mp_payer_email (email con el que pagó en Mercado Pago, obligatorio al enviar a revisión), mp_payer_name (nombre completo del titular, obligatorio, mínimo 3 caracteres), mp_return_params (parámetros de la URL de retorno, solo pista para el admin), monthly_coupon_limit (entero > 0, nullable: null es sin límite; tope de cupones generados en el mes calendario, en hora de Argentina, para todo el negocio; lo configura el dueño), average_ticket_ars (entero > 0, nullable: ticket promedio en pesos que el dueño carga en "Datos del negocio"; solo se ofrece a negocios con permiso Pro y alimenta el retorno estimado de §4.3) |
+| `branches` | business_id, name, address, city, reference (opcional, ≤ 100), `location geography(Point,4326)`, external_booking_url (opcional), rating_avg, rating_count, active — **la búsqueda se hace por sede** |
+| `business_hours` | branch_id, weekday, opens_at, closes_at (varias franjas por día; no se pisan, no cruzan la medianoche; sin franjas = cerrado) |
+| `business_images` | business_id, object_key, position |
+| `services` | business_id, branch_id (opcional), name, description, price (opcional, pesos enteros; sin duración porque el MVP no tiene agenda), active — lo que el negocio ofrece (clase de yoga, alquiler de cancha, etc.) |
+| `service_schedules` | service_id, weekday, starts_at, ends_at |
+| `subscriptions` | business_id, plan (`starter`/`pro`, lo fija el super admin al confirmar el pago, nunca el dueño), paid_until (vigencia inicial que elige el admin al activar), mp_subscription_ref (opcional: referencia de la suscripción en el panel de Mercado Pago, la que figura en el mail "nuevo suscriptor"), confirmed_by, confirmed_at, notes |
+| `benefits` | business_id, type (`percent`/`amount`/`custom`), percent (entero 1–100, solo `percent`), amount_ars (entero > 0, solo `amount`), title (texto plano de 1 a 80, obligatorio en `custom`, ausente en los otros), conditions (opcional, hasta 120), active (lo maneja el dueño), admin_paused (lo maneja el super admin; el dueño lo ve en su panel pero no lo puede cambiar). Un CHECK fija la forma de cada tipo. Se ofrece solo si `active` y no `admin_paused` |
+| `benefit_codes` | code (único), benefit_id, business_id, customer_id, access_token_hash, status (`pending`/`redeemed`/`expired`), expires_at (= creación + 48 h), redeemed_at, redeemed_branch_id, redeemed_by |
+| `reviews` | branch_id, business_id, benefit_code_id (único), customer_id, rating 1–5, comment (≤ 500, opcional), display_name, show_name, status (`visible`/`reported`/`hidden`), created_at |
+| `metric_daily` | business_id, branch_id (nullable), service_id (nullable), date, metric (`profile_view`/`service_view`/`whatsapp_click`), count — contadores agregados, **sin datos personales**. La forma la fija un CHECK: `profile_view` va con `branch_id` y `service_id` nulos (la ficha es por negocio); `whatsapp_click` exige `branch_id` (el servicio es opcional); `service_view` exige ambos. El día se cuenta en hora de Argentina (UTC-3) |
+| `alerts` | business_id, type, payload (jsonb), created_at, read_at |
+| `audit_log` | actor_id, action, entity, entity_id, metadata, created_at |
+
+Los planes **no son una tabla**: se definen por configuración (precio para mostrar, URL del plan de Mercado Pago y límites), ver 4.2 y 7.5.
+
+**Baja lógica.** Las sedes y los negocios no se borran: se dan de baja de forma lógica (`branches.active = false`, `businesses.status = 'deleted'`), porque las métricas, los canjes y las reseñas los referencian y son historial que el local y el admin siguen leyendo. En la base, `metric_daily` apunta a `branches` con `ON DELETE RESTRICT`, así que un `DELETE` físico de una sede con historial falla en lugar de borrar sus contadores en silencio. En la API, `DELETE /me/business/branches/{id}` desactiva la sede (es idempotente y conserva el historial); volver a mostrarla es `PUT …/active`, que revisa el límite del plan.
+
+Índices importantes:
+- `GIST (location)` en `branches`.
+- `UNIQUE (code)` en `benefit_codes`; índice por `(customer_id, status)` y `(business_id, status)`.
+- Índice único parcial para la regla *un cupón pendiente por cliente y local*: `UNIQUE (customer_id, business_id) WHERE status = 'pending'`.
+- `UNIQUE (benefit_code_id)` en `reviews`.
+- `UNIQUE NULLS NOT DISTINCT (business_id, branch_id, service_id, date, metric)` en `metric_daily` (upsert con incremento). `NULLS NOT DISTINCT` es necesario: con un `UNIQUE` común, los `NULL` de `branch_id` y `service_id` se considerarían distintos y el upsert crearía una fila nueva por cada vista.
+
+### 4.1 Regla de visibilidad
+La visibilidad **se calcula al leer**, no se guarda. Una vista SQL (`visible_branches`) expone las sedes visibles: un local aparece en la búsqueda pública si y solo si:
+```
+business.status = 'active'
+AND (business.pilot = true
+     OR today <= subscription.paid_until + SUBSCRIPTION_GRACE_DAYS)
+```
+Con `SUBSCRIPTION_GRACE_DAYS = 7` por defecto.
+
+> **Evolución de la vista.** En la Fase 3 (tarea 3.1) `visible_branches` nace en una versión mínima: sede con `active = true` de un negocio con `status = 'active'`. Durante el piloto (Fases 0 a 4) todo negocio aprobado es visible, y `pilot` y el pago no intervienen. La Fase 5 (tarea 5.4) la extiende con una migración `CREATE OR REPLACE VIEW` que agrega la condición de arriba, sin cambiar las columnas, así que las consultas no cambian.
+
+### 4.2 Planes y entitlements
+
+Cualquier negocio (comercio o profesional) puede contratar cualquier plan; el tipo de negocio no restringe la elección.
+
+| Característica | Starter ($19.800/mes) | Pro ($29.800/mes) |
+|---|---|---|
+| Perfil verificado | ✅ | ✅ |
+| Servicios activos | hasta 3 | ilimitados |
+| Horarios por servicio | según servicios | ilimitados |
+| Sedes | 2 | 4 |
+| Botón de WhatsApp (reservar clases) | ✅ | ✅ |
+| Ubicación en el mapa (pin fijo) | ✅ | ✅ |
+| Cupones (porcentaje, monto fijo u otro beneficio, definidos por el dueño) | ✅ | ✅ |
+| Reseñas y puntuación | ✅ | ✅ |
+| Métricas | esenciales (§4.3, 1 a 4) | **inteligencia comercial** (§4.3, 5 a 15: conversión, mapa de calor, rendimiento por beneficio, tiempo hasta el canje, clientes que volvieron, proyección del cupo, retorno estimado, comparativa por sede, reseñas en el tiempo, récords y una alerta) |
+| Soporte | estándar | prioritario |
+| Visibilidad destacada (prioridad en el inicio, búsquedas y pin destacado en el mapa) | — | ✅ |
+
+Pro incluye todo lo de Starter.
+
+Reglas de implementación:
+- **Límites desde configuración.** Los límites (servicios, sedes) se leen de variables de entorno a través de un puerto `PlanCatalog` (hoy `ConfigPlanCatalog`; mañana podría ser un `DBPlanCatalog` editable desde el panel sin tocar el dominio). El dominio consume un value object `Entitlements` (ej. `ent.CanAddBranch(current)`); **nunca** se pregunta `if plan == "pro"`.
+- Los límites se validan al **crear o activar**, no al listar.
+- **Downgrade o baja de límites** (Pro → Starter, o cambio de variable): no se borra nada. Se mantienen activos los elementos más antiguos hasta el nuevo límite y el resto pasa a `inactive`, con aviso al dueño.
+- **Visibilidad destacada (Pro):**
+  - Sello "Destacado" claramente etiquetado en tarjetas y ficha.
+  - **Inicio:** sección "Destacados cerca tuyo" solo con locales Pro dentro del radio, con rotación entre ellos para repartir la exposición.
+  - **Búsquedas:** el orden es por tramo de distancia (ej. cada 2 km), luego destacado, luego distancia exacta; así un Pro lejano no le gana a un local muy cercano.
+  - **Mapa:** marcador distintivo para el pin destacado.
+- **Perfil verificado (MVP):** lo marca el super admin a mano (`verified_at`, `verified_by`) después de comprobar la identidad por su cuenta (en persona o videollamada). La subida del DNI es post-MVP. El sello se puede revocar.
+- **Botón de WhatsApp:** el dueño carga su número al registrarse. El botón pasa por `GET /r/wa/{branch_id}?service=`, que incrementa el contador `whatsapp_click` y redirige a `https://wa.me/<número>?text=<mensaje prearmado>` (ej. "Hola, vi tu perfil en MOVO y quiero reservar Yoga"). El número no se expone en la API pública. En la API la ruta es `/api/v1/r/wa/{branch_id}` y responde `302` con `Cache-Control: no-store`. Solo redirige sedes visibles (si no, `404`); un `service` que no es del local, está inactivo o es de otra sede no es un error: se usa el mensaje genérico ("…quiero hacer una consulta") y el clic se cuenta sin servicio. Los bots se redirigen pero no se cuentan, y un fallo del contador nunca impide la redirección. `HEAD` devuelve el mismo `302` sin contar (los previsualizadores de enlaces lo usan) y la respuesta lleva `Referrer-Policy: no-referrer`.
+- **Métricas Pro:** son una capacidad de `Entitlements` (`advanced_metrics`), nunca un `if plan == "pro"`. Un negocio piloto usa las capacidades del plan del piloto. El permiso se comprueba una sola vez, antes de cualquier consulta, y el detalle de las métricas está en §4.3.
+- **Soporte prioritario:** es principalmente un proceso (canal y tiempos de respuesta definidos); en el sistema se refleja con una marca de prioridad en la bandeja del admin.
+
+### 4.3 Métricas
+Principio: **contar, no seguir**. No se guardan IP, user-agent ni identificadores; se ignoran los bots.
+
+- **Starter, "Métricas esenciales":**
+  1. Vistas al perfil (`profile_view`).
+  2. Cupones generados (desde `benefit_codes`).
+  3. Cupones canjeados (desde `benefit_codes`).
+  4. Actividades más demandadas (vistas del servicio + clics a WhatsApp por servicio).
+- **Pro, "Inteligencia comercial" (incluye todo Starter):**
+  5. **Tasas de conversión** (vistas → cupones, cupones → canjes) con tendencia contra el período anterior y desglose por sede y actividad. No hay "embudo" como función aparte.
+  6. **Mapa de calor de canjes:** cantidad de canjes por día de la semana × franja horaria, desde `redeemed_at`.
+  7. **Rendimiento por beneficio:** por cada beneficio, cupones generados, canjeados, vencidos y tasa de canje.
+  8. **Tiempo hasta el canje:** cuántos canjes ocurrieron el mismo día de generarse el cupón, hasta 24 h después y hasta 48 h después.
+  9. **Clientes que volvieron:** cuántos clientes canjearon una vez y cuántos dos o más en el negocio. Solo conteos, calculados en SQL; nunca se devuelve un cliente.
+  10. **Proyección del cupo mensual:** estimación lineal del día en que se agota el cupo (`monthly_coupon_limit`). Solo si el negocio tiene cupo.
+  11. **Retorno estimado:** canjes del período × `average_ticket_ars`. Siempre rotulado "estimado", junto al precio del plan y con el texto de cómo se calcula. Si el negocio no cargó el ticket promedio, no se muestra.
+  12. **Comparativa por sede:** vistas de servicio, clics a WhatsApp y canjes (`redeemed_branch_id`) de cada sede.
+  13. **Reseñas en el tiempo:** promedio de puntuación del período contra el anterior y porcentaje de canjes que dejan reseña.
+  14. **Tus récords:** mejor mes calendario por canjes de los últimos 12 (el mes en curso no entra en el ranking), avance del mes actual contra el mejor ("vas al 65 %", o "récord en curso" si lo supera), día y franja fuertes (del mapa de calor) y beneficio estrella del período. Solo con al menos 2 meses completos de historia y 20 canjes en el mejor mes; si no, `insufficient_data`. Desempate: gana el mes más reciente.
+  15. **Una alerta: "Cupones sin canjear"** (la tasa de canje de los últimos 30 días queda bajo un umbral, con una cantidad mínima de cupones generados). Se muestra en el panel, como máximo una por semana.
+- **Reglas comunes de las métricas Pro:**
+  - **Contar, no seguir.** Todo es agregado: ninguna respuesta lleva nombres, teléfonos ni datos individuales.
+  - **Período.** `period` es 7, 30 o 90 (días terminados hoy, hoy incluido); cualquier otro valor es `422 validation_failed` con `details.field` `period`. La comparación es contra el período anterior de la misma duración, inmediatamente antes. Los días, meses y franjas se cuentan en `America/Argentina/Cordoba`. "Tus récords" no usa `period`.
+  - **Muestra mínima.** Con menos de 20 cupones generados en el período, la métrica responde `{"status": "insufficient_data"}` en lugar de porcentajes.
+  - **Tasa de canje.** Es por cohorte: de los cupones generados en el período, cuántos ya fueron canjeados.
+  - **Vencido.** Un cupón es vencido si su estado es `expired` o si sigue `pending` con `expires_at` pasada; se calcula en la consulta, sin depender de ninguna tarea.
+  - **Franjas del mapa de calor** *(supuesto a confirmar)*: madrugada 00:00–05:59, mañana 06:00–11:59, tarde 12:00–17:59 y noche 18:00–23:59.
+  - **Permiso.** Todo lo de Pro se verifica en el servidor con la capacidad `advanced_metrics` de `Entitlements` (los pilotos usan el plan del piloto). Starter recibe `403` con el código estable `plan_upgrade_required` y un mensaje para mejorar el plan, sin datos.
+  - **Fuera de alcance:** exportar a CSV, benchmarking de zona, ocupación o capacidad, y las alertas "Alta demanda" y "Franjas con poca demanda".
+- **Cómo se cuenta una vista de perfil.** `GET /businesses/{slug}` no cuenta nada: lo llama también el render del servidor (rastreadores y vistas previas de enlaces). La ficha, ya cargada en el navegador, avisa con `POST /businesses/{slug}/view` desde un componente de cliente, una sola vez por carga (`navigator.sendBeacon` o `fetch` con `keepalive`). El endpoint responde siempre `204` sin cuerpo y sin cookies, también cuando el negocio no existe o no es visible (así no revela qué locales existen), suma `profile_view` con `branch_id` nulo e ignora los bots por user-agent.
+- **Las vistas de perfil son por negocio.** La ficha `/businesses/[slug]` es del negocio, así que `profile_view` se guarda sin sede. El desglose por sede de Pro aplica a los clics a WhatsApp, las vistas de servicio y los canjes (`redeemed_branch_id`). La tasa "vistas → cupones" se calcula solo a nivel negocio; "cupones → canjes" sí admite desglose por sede.
+- **Post-MVP:** benchmarking anónimo de zona (solo con ≥ 5 locales activos por categoría y zona; solo medianas y percentiles) y las alertas "Alta demanda" y "Franjas con poca demanda". La demanda por actividad se mide con los contadores de servicio; MOVO no conoce ocupación ni capacidad.
+- Los contadores se registran **desde la Fase 3** para tener historial cuando se construya el panel.
+
+---
+
+## 5. Flujos principales
+
+### 5.1 Búsqueda por cercanía y Home
+1. El cliente (sin cuenta) envía `lat`, `lng`, `radius_m`, `category`, paginación (keyset o limit/offset acotado).
+2. Query sobre `visible_branches` con `ST_DWithin(location, point, radius)`, ordenada por tramo de distancia → destacado → distancia exacta.
+3. Respuesta con DTO liviano (sin campos internos).
+4. **Home:** además de "Cerca tuyo", una query de "Destacados cerca tuyo" (solo Pro dentro del radio, con rotación).
+
+### 5.2 Generación y canje de cupones
+**Beneficio** (lo define libremente el dueño del local)
+- `percent`: porcentaje entero de 1 a 100. Los botones 10, 15 y 20 de la interfaz son solo atajos, no un límite.
+- `amount`: monto fijo en pesos, entero mayor que 0.
+- `custom` ("Otro beneficio"): `title` obligatorio, texto plano de 1 a 80 caracteres.
+- Todos pueden llevar `conditions` (opcional, hasta 120 caracteres). `title` y `conditions` son texto plano: se rechazan las URLs y los teléfonos con un error claro.
+- Etiqueta corta para tarjetas y pills: `percent` "-15%", `amount` "-$2.000", `custom` "Beneficio". El cupón y la vista previa del canje muestran el título completo y las condiciones.
+- El super admin puede pausar cualquier beneficio con `admin_paused`, aparte de `active`: el dueño no puede deshacer esa pausa. Queda en `audit_log`.
+
+**Generar** (cliente sin cuenta)
+1. El cliente elige un beneficio de un local visible y completa **nombre y WhatsApp** (obligatorios). Sin verificación.
+2. Se valida: beneficio activo y no pausado por el super admin, **un solo cupón pendiente por cliente y local** (índice único parcial), y que el local no haya superado su `monthly_coupon_limit` (tope de cupones generados por local en el mes calendario, hora de Argentina; sin límite si es null). El chequeo del cupo y el alta van en la misma transacción, con la fila del negocio bloqueada (`SELECT ... FOR UPDATE`), así dos generaciones simultáneas no superan el tope.
+3. Código aleatorio criptográficamente seguro (`crypto/rand`), alfabeto sin caracteres ambiguos (sin `0/O/1/I`), 8 caracteres; si hay colisión por `UNIQUE`, se reintenta.
+4. Se guarda `pending` con `expires_at = now() + 48 h` y se devuelve el código en pantalla junto con un enlace de acceso (token no adivinable, se guarda solo su hash) para volver a verlo.
+5. **Anti-abuso (porque no hay verificación):** límite de intentos por IP (en memoria, interfaz lista para Redis), normalización del teléfono para detectar duplicados y el cupo mensual del local como tope de daño. Si aparece abuso real se agrega captcha o verificación.
+
+**Canjear** (el `business_id` sale del token/permisos del admin, **nunca** del body)
+```sql
+UPDATE benefit_codes
+SET status = 'redeemed', redeemed_at = now(), redeemed_by = $1, redeemed_branch_id = $4
+WHERE code = $2
+  AND business_id = $3
+  AND status = 'pending'
+  AND expires_at > now()
+RETURNING id;
+```
+Si no devuelve filas → inválido, vencido, ya canjeado o de otro local. Un solo `UPDATE` atómico evita doble canje por concurrencia.
+
+**Canje con QR escaneado dentro de la app.** El cupón se puede canjear escaneando su QR sin salir del panel, y el ingreso manual del código sigue siempre disponible.
+1. El QR del cupón contiene **únicamente el código** (o una URL de la pantalla "Canjear" con el código precargado), sin datos personales: ni nombre, ni teléfono, ni identificadores del cliente.
+2. En "Canjear" hay un botón **"Escanear QR"** que abre la cámara dentro del panel (`getUserMedia`). Si la cámara no está disponible o el permiso se niega, el dueño escribe el código a mano.
+3. **Escanear no canjea.** Tanto el código escaneado como el escrito muestran primero una **vista previa** (nombre del cliente, beneficio, vencimiento y estado) leída con `GET /me/business/codes/{code}`, y el dueño confirma con **"Confirmar canje"**.
+4. La autoridad del canje no cambia: la confirmación llama a `POST /me/business/codes/redeem` y el `UPDATE ... RETURNING` atómico de arriba es lo único que canjea. La vista previa es informativa; entre verla y confirmar el cupón puede haberse canjeado o vencido, y en ese caso el canje responde como siempre (inválido, vencido o ya canjeado).
+5. La vista previa es solo lectura (sin efectos secundarios), devuelve datos únicamente si el cupón es del negocio del token (404 si no, igual que un código inexistente) y nunca incluye el teléfono del cliente.
+
+El vencimiento se evalúa por `expires_at` al leer; una tarea diaria marca como `expired` en bloque los vencidos.
+
+### 5.3 Contacto y reserva por WhatsApp
+1. En la ficha del local y en cada servicio hay un botón "Reservar por WhatsApp".
+2. El botón pasa por `/r/wa/{branch_id}?service=`, que cuenta el clic y redirige a `wa.me` con un mensaje prearmado.
+3. La conversación y la confirmación ocurren por fuera de MOVO, en el WhatsApp del dueño. Esa es también su "notificación" de nueva consulta.
+4. Clubes con sistema propio de reservas (ej. pádel) pueden cargar `external_booking_url` para mostrar un botón adicional "Reservar cancha".
+
+### 5.4 Alta y suscripción con Mercado Pago (cobro automático, registro manual)
+1. La landing muestra los planes con botones "Contratar Starter" y "Contratar Pro". Cada botón abre el **link del plan de suscripción de Mercado Pago** (`MP_STARTER_URL`, `MP_PRO_URL`).
+2. El dueño abre el link una vez, elige el medio de pago y autoriza: **Mercado Pago cobra automáticamente cada mes**.
+3. Tras pagar, Mercado Pago redirige a `/onboarding` (a verificar en la configuración del plan; si no se pudiera, el admin envía el enlace de `/onboarding` por WhatsApp al confirmar el pago).
+4. En `/onboarding` el dueño crea su cuenta, carga su número de WhatsApp y completa sus datos (negocio, sede con pin en el mapa, servicios, horarios, fotos). Mercado Pago no entrega comprobante ni número de operación al pagador, así que en el último paso declara, obligatorios, el **email con el que pagó** (`mp_payer_email`) y el **nombre completo del titular** (`mp_payer_name`). El onboarding **no pregunta qué plan pagó**. Si la URL de retorno trae un parámetro `plan`, y cualquier otro que Mercado Pago agregue, se guarda solo como pista visible para el admin (`mp_return_params`); **nunca es un dato confiable ni prueba de pago**. El super admin cruza el email y el nombre declarados con el mail "nuevo suscriptor" de Mercado Pago y **fija el plan al activar**.
+5. El negocio queda en `pending_review`.
+6. Al cobrador, Mercado Pago le envía el mail "¡Tienes un nuevo suscriptor en <plan>!" con nombre completo, email, plan, monto y frecuencia del suscriptor y un enlace a "Detalles de la suscripción": **ese mail funciona como alerta** de que hay un alta para revisar. Con los tres chequeos hechos (mail con el mismo email, plan y monto correctos, perfil revisado), el super admin activa el negocio: elige el plan y la vigencia inicial y se crea la `subscription` con `paid_until`.
+7. **Cada mes** el super admin revisa en Mercado Pago qué locales cobraron y presiona "Registrar pago", que extiende `paid_until`. Si un cobro falla o el dueño cancela, el local sigue visible durante la gracia (7 días) y luego deja de aparecer.
+8. El panel muestra los locales "por vencer" (7 días) y arma un enlace `wa.me` con un recordatorio prearmado para el dueño.
+9. Cambio de plan, cancelación y actualización de precios por inflación son acciones manuales del super admin (el precio se actualiza en el plan de Mercado Pago y en la configuración).
+
+### 5.5 Reseñas (Fase 4C)
+1. Solo puede reseñar quien **canjeó un cupón** en esa sede; **una reseña por cupón canjeado**. El cliente accede con su enlace/token.
+2. El formulario solo pide puntuación (1–5) y comentario opcional (≤ 500). **No pide nombre:** se toma del cliente asociado al cupón (primer nombre + inicial del apellido, guardado en `display_name`). Con "Mostrar mi nombre" desactivado se publica como "Cliente de MOVO".
+3. Se muestra como "Reseña verificada por canje". Plazo: 30 días desde el canje.
+4. Se muestran promedio y cantidad (`rating_avg`, `rating_count` en `branches`, recalculados en la misma transacción que cambia la reseña). Con menos de 3 reseñas se muestra "Nuevo".
+5. El local puede **reportar** una reseña; solo el super admin puede **ocultarla**. El dueño no borra reseñas.
+6. La puntuación sirve como filtro opcional (puntuación mínima) y **no** se usa para ordenar.
+7. La API pública nunca expone teléfono; solo el super admin ve el vínculo con el cliente, para moderar. Ante un pedido de borrado de datos se anonimiza `display_name`.
+
+### 5.6 Actividad en el panel (notificaciones dentro de la app)
+- No hay push, email ni WhatsApp automáticos.
+- El panel del dueño tiene **"Actividad reciente"** (cupones generados, canjes, reseñas nuevas) con contador de novedades, consultado cada 30–60 segundos mientras el panel está abierto (`GET /me/business/activity`).
+- El canje lo realiza el propio local, por eso no hay alerta de canje.
+- El reseteo de contraseña es asistido: el super admin genera un enlace temporal y se lo envía al dueño por WhatsApp.
+
+### 5.7 Panel Super Admin
+- Alta, pausa, reactivación y baja lógica de locales; marcar verificado; marcar piloto (siempre con `audit_log`).
+- Suscripciones: confirmar pago, registrar pago mensual, suspender, cambiar de plan, ver "por vencer".
+- Moderación de reseñas y reseteo de contraseña asistido.
+
+---
+
+## 6. API (contrato inicial, `/api/v1`)
+
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| POST | `/auth/register` · `/auth/login` · `/auth/refresh` · `/auth/logout` | público | Autenticación de dueños |
+| GET | `/plans` | público | Planes con precio y URL de contratación |
+| GET | `/search/businesses` | público | Búsqueda geoespacial; cada tarjeta lleva `benefit_label` (la etiqueta del beneficio activo más alto: porcentaje sobre monto, monto sobre personalizado; `null` si no tiene) |
+| GET | `/home/featured` | público | Destacados cerca tuyo; con `benefit_label` igual que la búsqueda |
+| GET | `/businesses/{slug}` | público | Ficha del local (solo sedes públicas y servicios activos; 404 `business_not_found` si no es público; sin número de WhatsApp; con `benefits`: solo los activos y no pausados, con id, tipo, valor, título, condiciones y etiqueta corta, sin datos de cupo; no cuenta vistas) |
+| POST | `/businesses/{slug}/view` | público | Cuenta una vista de la ficha (`profile_view`, sin sede). Siempre `204` sin cuerpo ni cookies, aunque el negocio no sea visible; ignora bots |
+| GET | `/r/wa/{branch_id}` | público | Cuenta el clic y redirige a WhatsApp |
+| POST/PUT | `/me/business` | business_admin | Crear/editar mi negocio |
+| POST/PUT/DELETE | `/me/business/branches` | business_admin | Sedes (según límite del plan) |
+| POST/PUT | `/me/business/services` | business_admin | Servicios y horarios (según límite del plan) |
+| POST | `/me/business/images/presign` | business_admin | URL prefirmada de subida |
+| GET/POST/PUT | `/me/business/benefits` | business_admin | Beneficios, con generados y canjeados del mes |
+| GET/PUT | `/me/business/coupon-quota` | business_admin | Cupo mensual del local: `{limit, generated_this_month, resets_on}`; PUT acepta un entero > 0 o `null` y rechaza uno menor a lo ya generado |
+| GET | `/me/business/overview` | business_admin | Panel de inicio: cupones activos, canjes de hoy, vistas de perfil y clics a WhatsApp de los últimos 7 días |
+| PUT | `/admin/benefits/{id}/paused` | super_admin | Pausar o reanudar un beneficio |
+| GET | `/me/business/activity` | business_admin | Actividad reciente |
+| GET | `/me/business/metrics?period=7\|30\|90` | business_admin | Métricas esenciales (vistas al perfil y cupones generados y canjeados); todos los planes |
+| GET | `/me/business/metrics/activities?period=` | business_admin | Las 5 actividades más demandadas; todos los planes |
+| GET | `/me/business/metrics/{conversion,heatmap,benefits,time-to-redeem,returning-customers,quota-projection,estimated-return,branches,reviews}?period=` | business_admin (Pro) | Métricas de inteligencia comercial (§4.3, 5 a 13). Starter: `403` `plan_upgrade_required`; muestra insuficiente: `{"status": "insufficient_data"}` |
+| GET | `/me/business/metrics/records` | business_admin (Pro) | Tus récords (§4.3, 14); no usa `period` |
+| POST | `/branches/{branch_id}/services/{service_id}/view` | público | Beacon de vista de servicio; siempre `204` |
+| POST | `/benefits/{id}/codes` | público (rate limit) | Generar cupón con nombre y WhatsApp |
+| GET | `/access/{token}` | token del cliente | Ver mis cupones |
+| POST | `/access/{token}/reviews` | token del cliente | Dejar reseña |
+| GET | `/branches/{id}/reviews` | público | Reseñas paginadas |
+| POST | `/me/business/reviews/{id}/report` | business_admin | Reportar reseña |
+| GET | `/me/business/codes/{code}` | business_admin | Vista previa del cupón antes de canjear (solo lectura; estado, beneficio, nombre del cliente y vencimiento; 404 si no es de mi negocio; sin teléfono) |
+| POST | `/me/business/codes/redeem` | business_admin | Canjear cupón |
+| * | `/admin/...` | super_admin | Locales, verificación, suscripciones, moderación, reseteo de contraseña |
+
+Convenciones: errores en el sobre JSON único de §7.2 (`code`, `message`, `details`), validación de entrada en la capa HTTP, paginación consistente, OpenAPI generado o mantenido en `docs/openapi.yaml`.
+
+---
+
+## 7. Requisitos no funcionales
+
+### 7.1 Seguridad
+- Contraseñas con argon2id (o bcrypt con costo adecuado); rate limiting en login, generación y canje.
+- **IP del cliente para los límites por origen (login y generación de cupones):** la API usa el middleware `platform/clientip`. Por defecto la IP es la de la conexión y `X-Forwarded-For` se ignora, porque cualquier cliente puede escribirla. Con `TRUSTED_PROXIES` (lista de IPs o CIDR separados por coma, validada al arrancar; vacía = nadie) y solo si la conexión viene de uno de esos proxies, se lee `X-Forwarded-For` de derecha a izquierda y se toma la primera IP que no sea de un proxy de confianza; si la cadena no se puede seguir (entrada vacía o inválida) se queda en el último proxy de confianza, nunca en una IP elegida por el cliente. El servidor de Next reenvía la cadena que recibe sin reemplazarla. El canje no tiene límite por IP: exige sesión del dueño y es atómico.
+- JWT firmado con rotación de claves planificada; refresh tokens hasheados y rotativos.
+- Autorización por recurso (un admin solo toca **su** local): se verifica `owner_user_id`/`business_id` en cada comando.
+- Validación de uploads (tipo MIME real, tamaño máx.), URLs prefirmadas con expiración corta.
+- Clientes sin cuenta: tokens de acceso aleatorios de ≥ 128 bits guardados hasheados, con expiración; rate limit en endpoints públicos que escriben.
+- El número de WhatsApp del dueño no se expone en la API pública (solo en el redirect).
+- Confirmación de pagos solo por el super admin; nada que llegue por URL de retorno se toma como prueba de pago ni define el plan.
+- CORS restrictivo, cabeceras de seguridad, secretos solo por variables de entorno, nada en el repo.
+- Dependencias auditadas (`govulncheck`, `npm audit`) en CI.
+- Tratamiento de datos personales conforme a la **Ley 25.326** (política de privacidad, mínimo dato necesario).
+
+### 7.2 Observabilidad
+- Logs estructurados (`log/slog`) con `request_id`.
+- Endpoints `/healthz` (liveness) y `/readyz` (DB lista).
+- Todas las respuestas de error usan el mismo sobre JSON: `{"error":{"code":"...","message":"...","details":...}}`, con un `code` estable para el frontend, `details` opcional para errores por campo y sin filtrar detalles internos (el detalle técnico va al log).
+- Cada request lleva `X-Request-Id`: se reusa el del cliente si es válido y, si no, se genera uno nuevo; el id viaja en el log de la request.
+- Métricas (Prometheus) y trazas (OpenTelemetry) en Fase 8 o antes si hace falta.
+
+### 7.3 Rendimiento
+- Búsqueda p95 < 300 ms con 10k locales de prueba.
+- Backups diarios de PostgreSQL con **prueba de restauración**.
+
+### 7.4 Calidad de código
+- `golangci-lint` (incl. `errcheck`, `govet`, `staticcheck`, `depguard`).
+- Errores siempre manejados y envueltos (`fmt.Errorf("...: %w", err)`); errores de dominio tipados.
+- Sin variables globales mutables; dependencias inyectadas por constructor (`main.go` es la raíz de composición).
+
+### 7.5 Configuración (variables de entorno)
+```
+# Planes y límites
+PLAN_STARTER_MAX_BRANCHES=2
+PLAN_STARTER_MAX_ACTIVE_SERVICES=3
+PLAN_PRO_MAX_BRANCHES=4
+PLAN_PRO_MAX_ACTIVE_SERVICES=0        # 0 = ilimitado
+PLAN_STARTER_PRICE=19800
+PLAN_PRO_PRICE=29800
+PLAN_STARTER_ADVANCED_METRICS=false   # opcional: el plan incluye las métricas Pro (§4.3); por defecto false
+PLAN_PRO_ADVANCED_METRICS=true        # opcional: por defecto true; Pro no puede ofrecer menos que Starter
+PLAN_STARTER_PRIORITY_SUPPORT=false   # opcional: el plan incluye soporte prioritario (marca en la bandeja del admin); por defecto false
+PLAN_PRO_PRIORITY_SUPPORT=true        # opcional: por defecto true; Pro no puede ofrecer menos que Starter
+MP_STARTER_URL=                       # link https del plan de suscripción de Mercado Pago (obligatorio)
+MP_PRO_URL=
+# La gracia (7 días) no es variable: vive fija en la vista visible_branches y en
+# billing/domain.GraceDays, y un test verifica que coinciden (decisión de la Fase 5).
+
+# Búsqueda y cupones
+SEARCH_DISTANCE_BUCKET_M=2000         # tramo de distancia para ordenar destacados
+CODE_TTL_HOURS=48
+
+# Reseñas y alertas
+REVIEW_WINDOW_DAYS=30
+REVIEW_MIN_COUNT_FOR_RATING=3
+ALERT_MIN_CODES=20
+ALERT_MIN_REDEEM_RATE=0.2
+```
+Todas las instancias de la API deben tener los mismos valores; cambiarlos requiere reiniciar. Se validan al arrancar (el proceso falla si faltan o son inválidos).
+
+---
+
+## 8. Estrategia de testing
+
+| Nivel | Qué cubre | Herramientas |
+|---|---|---|
+| Unitarios | Reglas de dominio (generación de cupón, visibilidad, vigencia y gracia, entitlements, reglas de reseñas) | `testing`, `testify` |
+| Integración | Repositorios y queries reales (PostGIS incluido), adaptador de Storage contra el S3 local | `testcontainers-go` |
+| Fakes | Storage y Geocoder con implementaciones fake | interfaces + fakes |
+| Concurrencia | Canje simultáneo del mismo cupón (debe canjear exactamente 1) | tests con `errgroup` |
+| API | Endpoints con DB de test | `httptest` |
+| Frontend | Hooks y componentes clave | Vitest + Testing Library |
+| E2E (mínimo) | Buscar → generar cupón → canjear | Playwright |
+
+Meta de cobertura: ≥ 70 % global y ≥ 90 % en `domain` y `billing`.
+
+---
+
+## 9. Plan por fases
+
+Convenciones de trabajo:
+- **Una fase por prompt.** Las fases 4 y 5 pueden partirse en dos mitades.
+- **Una tarea = un commit pequeño y revisable** (idealmente < 400 líneas), en la rama de la fase, con la tarea tildada en este documento.
+- **El estado es este documento:** la primera tarea sin tildar es por donde se sigue.
+- **Vistas y backend juntos:** cada fase lista las vistas que necesita; no se inventa ninguna vista, se pide la imagen del diseño al llegar a su tarea.
+- Cada fase termina con una *Definition of Done* verificable y un tag de git.
+- Tamaños: **S** (≤ 0,5 día) · **M** (≈ 1 día) · **L** (2–3 días).
+- Flujo por tarea: leer SDD/CLAUDE.md → escribir test → implementar → lint+tests → commit.
+
+---
+
+### Fase 0 — Fundaciones
+**Objetivo:** repo listo para trabajar con calidad desde el primer commit.
+
+- [x] 0.1 Monorepo, `Makefile`, `.editorconfig`, `.gitignore` (S)
+- [x] 0.2 `docker-compose` con Postgres+PostGIS y object storage S3 (RustFS) (S)
+- [x] 0.3 `internal/platform`: config por env, `slog`, apagado ordenado (M)
+- [x] 0.4 Conexión DB con `pgx` + migraciones + primera migración (extensión PostGIS) (S)
+- [x] 0.5 Servidor HTTP con `chi`, `request_id`, `/healthz`, `/readyz`, formato de error (M)
+- [x] 0.6 CI (lint + test + build + chequeo de migraciones) (M)
+- [x] 0.7 `docs/adr/0001` con las decisiones de la sección 3 y `docs/adr/0002` de object storage (puerto `Storage` con API S3; RustFS pineado **sólo en desarrollo**, Garage como plan B, servicio gestionado en producción), y `CLAUDE.md` actualizado (S)
+- [x] 0.8 Frontend Next.js + Tailwind base, ESLint/Prettier, layout (S)
+
+**DoD:** `make up` levanta todo; CI verde; `/readyz` responde con la DB conectada.
+
+---
+
+### Fase 1 — Identidad y autorización (dueños y super admin)
+**Objetivo:** login seguro para dueños de local y super admin. Los clientes no tienen cuenta.
+
+- [x] 1.1 Migraciones `users`, `refresh_tokens` (S)
+- [x] 1.2 Dominio `identity`: entidad User, validaciones, hashing (M)
+- [x] 1.3 Casos de uso Register / Login / Refresh / Logout (M)
+- [x] 1.4 Middleware JWT + middleware de roles (S)
+- [x] 1.5 Límite de intentos de login (en memoria, interfaz lista para Redis) (S)
+- [x] 1.6 Primer super admin por seed/variables de entorno (S)
+- [x] 1.7 Frontend: login y registro de dueños, manejo de sesión en hooks (M)
+
+**Vistas:** Login y registro del dueño.
+**DoD:** tests unitarios + integración de auth; un dueño no accede a rutas de super admin ni a datos de otro negocio.
+
+---
+
+### Fase 2 — Negocios, servicios y onboarding (sin cobro todavía)
+**Objetivo:** que un local pueda existir, completar su perfil y ser aprobado manualmente.
+
+- [x] 2.1 Migraciones `categories` (con seed: gimnasios, pilates, yoga, entrenadores, estética, natación, pádel; luego se sumó `trekking-outdoor` con la migración 00011, sin tocar el seed original), `businesses`, `branches`, `business_hours`, `business_images` (con PostGIS) (S)
+- [x] 2.2 Dominio `business`: estados, slug, validación y normalización del número de WhatsApp (M)
+- [x] 2.3 Casos de uso: crear/editar mi negocio, agregar/editar sedes y horarios (un dueño = un negocio) (M)
+- [x] 2.4 Puerto `Storage` + adaptador S3 (RustFS en local, R2/B2/S3 en prod) con URL prefirmada y validación; endpoint, región y modo path-style configurables; test de integración (tag `integration`) que sube y baja un objeto con URL prefirmada contra el servidor local (M)
+- [x] 2.5 Puerto `PlanCatalog` + `ConfigPlanCatalog` (env), value object `Entitlements` y política de downgrade sin borrar datos (M)
+- [x] 2.6 Migraciones y dominio de `services` y `service_schedules` (CRUD, activar/desactivar, límites del plan) (M)
+- [x] 2.7 Super admin: aprobar / pausar / reactivar / baja lógica, marcar verificado, marcar piloto + `audit_log` (M)
+- [x] 2.7b Capa HTTP de la fase: endpoints `/me/business...`, `/admin/businesses...` y `/plans`, con rol por grupo de rutas, y cableado en `cmd/api` (M)
+- [x] 2.8 Frontend `/onboarding`: crear cuenta y completar datos, WhatsApp, sede con pin en el mapa, fotos y, en el paso 4, email y nombre completo del titular en Mercado Pago (obligatorios; sin número de operación ni comprobante); estado "en revisión" (L)
+- [x] 2.9 Frontend: Servicios y horarios y Sedes, con contador del límite del plan (M)
+- [x] 2.10 Frontend super admin: lista de locales y acciones; en el cajón, email y nombre declarados, pista de plan si existe y checklist de confirmación ("Mail de Mercado Pago con el mismo email", "Plan y monto correctos", "Perfil revisado") (M)
+- [x] 2.11 Horarios cortados: `business_hours` admite varias franjas por sede y día sin superponerse (restricción de exclusión con `btree_gist`; las franjas no cruzan la medianoche y "cerrado" es no tener franjas), `ReplaceHours` las guarda en una transacción y devuelve `ErrSlotsOverlap` si se pisan, la ficha pública calcula "abierto ahora / cierra a las HH:MM / abre a las HH:MM" en `America/Argentina/Cordoba`, y el editor de Sedes carga varias franjas por día con "Copiar a otros días" (M). *Entra tarde porque en la Fase 2 el editor era de una franja por día y la base solo impedía repetir la hora de apertura; el turno cortado (gimnasios, pilates) se vio al diseñar la ficha de la Fase 3.*
+- [x] 2.12 Galería de fotos del negocio: pantalla "Fotos" del panel (agregar con la URL prefirmada, borrar, reordenar y elegir portada), máximo configurable por env (4 por defecto) con tipo y tamaño validados, y baja del objeto al borrar con reintento registrado si falla (M). Hecho en el backend: el máximo sale de `MAX_BUSINESS_IMAGES` (4 por defecto, de 1 a 30), el panel lo recibe como `max_images`, y al borrar una foto el borrado del objeto queda en la cola `object_cleanup` (en la misma transacción) y se reintenta con `PurgeObjects`; pantalla "Fotos" del panel (grilla, portada, subir y bajar, menú por foto, confirmación al eliminar). *Entra tarde porque en el onboarding solo se cargan fotos una vez y el panel no permitía cambiarlas; la ficha de la Fase 3 las muestra. En el MVP las fotos son por negocio; las fotos por sede quedan para después del MVP (§13, punto 10).*
+
+**Vistas:** Onboarding, Servicios y horarios, Sedes, Super admin → Locales.
+**DoD:** un dueño crea su local, el admin lo activa y lo marca verificado, y queda en estado `active`.
+
+---
+
+### Fase 3 — Búsqueda, mapa y contacto por WhatsApp
+**Objetivo:** el usuario encuentra locales cercanos y contacta al local.
+
+- [x] 3.1 Crea la versión mínima de `visible_branches` (sede activa de un negocio `active`; sin pilot ni pago) y la query sobre ella con `ST_DWithin`, orden por tramo de distancia → destacado → distancia exacta, y filtros por categoría (M)
+- [x] 3.2 Endpoint de búsqueda con paginación y DTO liviano (S)
+- [x] 3.3 Query y endpoint `/home/featured` con rotación entre locales Pro (S)
+- [x] 3.4 Seed de 10k locales falsos y medición p95 con `EXPLAIN ANALYZE` (S)
+- [x] 3.5 Puerto `Geocoder` con fake, adaptador Nominatim con limitador (1 req/s) + caché y User-Agent identificatorio; tiles configurables por env (M)
+- [x] 3.6 Contadores `metric_daily` (migración, upsert, filtrado básico de bots, sin datos personales) (M)
+- [x] 3.7 Endpoint `GET /r/wa/{branch_id}?service=` que cuenta el clic y redirige a `wa.me` con mensaje prearmado (S)
+- [x] 3.8b Endpoint público `GET /businesses/{slug}`: ficha con sedes y horarios públicos, servicios activos con su agenda, fotos (URLs prefirmadas) y sello de verificado; sin el número de WhatsApp (S)
+- [x] 3.8 Frontend: Home y Mapa (React Leaflet, marcadores, geolocalización del navegador) (L)
+- [x] 3.9 Backend y frontend: `POST /businesses/{slug}/view` (204 sin cuerpo ni cookies, ignora bots y no revela si el negocio es visible; suma `profile_view` con `branch_id` nulo) y la ficha SSR del local `/businesses/[slug]` con metadatos SEO, servicios, horarios con "abierto ahora", sello de verificado y botón de WhatsApp; un componente de cliente dispara la vista una sola vez por carga, después de montar (M)
+
+**Vistas:** Home, Mapa, Ficha del local (opcionales: Explorar, Splash).
+**DoD:** búsqueda p95 < 300 ms; la ficha se renderiza del lado del servidor; el botón de WhatsApp abre la conversación y suma el contador.
+
+---
+
+### Fase 4 — Beneficios y cupones (el lazo de valor)
+**Objetivo:** generar y canjear cupones de forma segura y atómica, sin cuenta de cliente.
+
+- [x] 4.1 Migraciones `customers`, `benefits`, `benefit_codes` + índice único parcial (el cupo mensual pasa a `businesses` en 4.4b); `benefits` con tipos `percent` (1–100), `amount` y `custom` (título), `conditions` y `admin_paused` (ajuste en 4.1b) (S)
+- [x] 4.2 Dominio `benefits`: tipos (`percent` 1–100, `amount`, `custom`), textos libres sin URLs ni teléfonos, etiqueta corta, TTL de 48 h, estados; el cupo mensual es del local (M)
+- [x] 4.3 CRUD de beneficios desde el panel del local, y pausa de cualquier beneficio por el super admin (M)
+- [x] 4.1b Ajuste del tipo de beneficio: migración `00015` con down (reemplaza `welcome_gift` y 10/15/20 por lo de §5.2 sin perder datos; el down se niega si hay montos fijos o porcentajes fuera de 10/15/20), dominio con validación de textos sin URLs ni teléfonos, etiqueta corta, y `PUT /admin/benefits/{id}/paused` del super admin con `audit_log` (M)
+- [x] 4.4 Comando `GenerateCode`: nombre y WhatsApp, un pendiente por cliente y local, cupo del local (con la fila del negocio bloqueada, ver 4.4b), reintento por colisión, token de acceso (M)
+- [x] 4.4b Cupo mensual por local: columna `businesses.monthly_coupon_limit` (migración `00016` con down, sin migrar valores: el local arranca sin límite) y se saca `monthly_limit` de `benefits`; los generados del mes (calendario, hora de Argentina) se cuentan para todo el negocio en la misma transacción que el alta, con la fila del negocio bloqueada; `GET/PUT /me/business/coupon-quota`. Tests: con cupo 1 y dos generaciones simultáneas se genera exactamente una (M)
+- [x] 4.5 Anti-abuso: límite por IP en memoria + normalización de contacto (S)
+- [x] 4.6 Comando `RedeemCode` atómico + test de concurrencia (M)
+- [x] 4.6b Query de vista previa `GET /me/business/codes/{code}` (solo lectura, `business_admin`): estado, beneficio, nombre del cliente y vencimiento solo si el cupón es de ese negocio (404 si no), sin teléfono y sin efectos secundarios. Tests: la vista previa no canjea, no filtra datos de otro negocio y no devuelve el teléfono; el canje sigue siendo atómico (el test de concurrencia de 4.6 se mantiene) (S)
+- [x] 4.7 Query `GET /access/{token}`: devuelve solo el cupón de ese token (no los demás del mismo teléfono, que no está verificado), sin teléfono ni token en la respuesta (S)
+- [x] 4.8 Vencimiento de cupones al leer y marcado diario en bloque: la lectura y el canje ya muestran un cupón vencido como `expired`; `cmd/worker` lo marca en bloque una vez por día con lock consultivo (`make run-worker`) (S)
+- [x] 4.9 `GET /me/business/activity?since=`: últimos 20 eventos (cupón generado, cupón canjeado) del negocio de la sesión y cuántos son posteriores a `since`; sin teléfono. Las reseñas nuevas se suman en la fase de reseñas (S)
+- [x] 4.9b Estadísticas simples: por beneficio, generados y canjeados este mes en `GET /me/business/benefits`; `GET /me/business/overview` con cupones activos, canjes de hoy y la suma de 7 días de vistas de perfil y clics a WhatsApp desde `metric_daily`; la vista previa de un código suma cuántos cupones canjeó ese cliente en el negocio. El resto de las métricas sigue en la Fase 6 (S)
+- [x] 4.9c La ficha pública `GET /businesses/{slug}` suma `benefits` (activos y no pausados, sin datos de cupo) y las tarjetas de `/search/businesses` y `/home/featured` suman `benefit_label`, que Home y Mapa muestran como pill (S)
+- [x] 4.9d Pantalla "Datos del negocio" dentro de Mi local: nombre, categoría, descripción (500) y WhatsApp; cada cambio queda en `audit_log` (M)
+- [x] 4.10 Frontend del dueño: Beneficios y cupo (tarjeta de cupo del local, formulario Porcentaje/Monto fijo/Otro beneficio, hoja de cupo), Panel de inicio con actividad, Canjear cupón con vista previa, y después el escáner de QR dentro del panel (cámara con `getUserMedia`), con ingreso manual siempre disponible (L)
+- [x] 4.11 Frontend del cliente: beneficios en la ficha, Obtener cupón (nombre y WhatsApp, sin cuenta), Cupón generado y Mis cupones (los guardados en este dispositivo, cada uno con su enlace de acceso), con el QR del cupón (solo el código) (L)
+
+> **Dependencias nuevas de frontend (QR):** esta fase suma dos paquetes, un generador de QR (para "Cupón generado" y "Mis cupones") y un lector de QR (para el escáner de "Canjear"). Ninguno se instala sin aprobación explícita del responsable del proyecto y con versión exacta fijada en `frontend/package.json` (sin `^` ni `~`). Para escanear, el navegador exige HTTPS en producción (Fase 8, tarea 8.4); en desarrollo `localhost` alcanza.
+
+**Vistas:** Beneficios y cupo mensual, Panel de inicio, Canjear cupón, Obtener cupón, Cupón generado, Mis cupones.
+**DoD:** test de concurrencia demuestra un único canje; el flujo completo funciona de punta a punta y los intentos de abuso quedan frenados por el límite por IP y el cupo.
+
+> **Hito de piloto:** con las Fases 0–4 podés cargar 5–10 locales reales marcados como `pilot` y **validar el producto antes de activar cobros**.
+
+---
+
+### Fase 4C — Reseñas verificadas por canje (cortable si el tiempo aprieta)
+**Objetivo:** confianza para el cliente sin abrir la puerta a reseñas falsas.
+
+- [x] 4C.1 Migración `reviews` (`00018`; `rating_avg` y `rating_count` ya existían en `branches` desde `00003`): la FK compuesta a `benefit_codes (id, redeemed_branch_id)` hace que la base rechace una reseña de un cupón no canjeado o de otra sede (S)
+- [x] 4C.2 Dominio `reviews`: reglas (cupón canjeado, una por cupón, plazo de 30 días, nombre a mostrar) (M)
+- [x] 4C.3 Comando crear reseña por token de acceso: `POST /access/{token}/reviews` con `rating`, `comment` y `show_name` (activado si se omite); la sede, el negocio y el cliente salen del cupón (M)
+- [x] 4C.4 Query de listado paginado: `GET /branches/{id}/reviews?cursor=&limit=` (cursor opaco por `(created_at, id)`, 20 por página y máximo 50, más nuevas primero); una reseña reportada se sigue mostrando y solo la oculta el super admin (S)
+- [x] 4C.5 Actualización de agregados: al crear la reseña, en la misma transacción, se bloquea la fila de la sede y se recalcula `rating_avg` y `rating_count` desde las reseñas que no están ocultas (una reportada cuenta); recalcular en vez de sumar uno lo hace idempotente, y el bloqueo evita perder reseñas simultáneas. Al ocultar, 4C.6 reutiliza el mismo recálculo (S)
+- [x] 4C.6 Reportar (dueño) y ocultar (super admin) con `audit_log`: `POST /me/business/reviews/{id}/report` (el negocio sale de la sesión; una reportada sigue pública y cuenta) y `PUT /admin/reviews/{id}/status` con `hidden` o `visible` (restaurar también descarta un reporte); ocultar recalcula la puntuación de la sede en la misma transacción y cada cambio deja `review.report`, `review.hide` o `review.restore` en `audit_log` (M)
+- [x] 4C.6c Purga de reseñas ocultas: migración `00019` (`hidden_at` y `purged_at`); a las 72 h de ocultada, la tarea diaria del worker (`purge-hidden-reviews`, con lock consultivo) borra el comentario y el nombre y deja la fila, porque `benefit_code_id` es `UNIQUE` y borrarla dejaría reseñar de nuevo el mismo cupón; la puntuación no cambia (una oculta nunca contó) y una purgada ya no se puede restaurar (`409 review_purged`) (M)
+- [x] 4C.6b Listados de moderación para el frontend: reseñas del dueño con `id`, sede y estado (`GET /me/business/reviews`, sin las ocultas) y cola del super admin (`GET /admin/reviews?status=reported|hidden`, reportadas por defecto; las ocultas ya purgadas no se listan), ambas con el cursor y los límites del listado público. Las reseñas nuevas no entran en `GET /me/business/activity`: ese listado es del módulo `benefits` y leerlas ahí rompería la frontera entre módulos, así que el frontend junta las dos listas (M)
+- [x] 4C.7 Filtro de puntuación mínima en la búsqueda: `min_rating` de 0 a 5 en `GET /search` (0 u omitido es sin filtro); solo filtra, no ordena, y deja afuera a los locales con menos de 3 reseñas porque su tarjeta dice "Nuevo" y no muestra estrellas (S)
+- [x] 4C.6d Resumen y filtros de "Reseñas del local": `GET /branches/{id}/reviews/summary` (promedio y cantidad por cada número de estrellas, con el mismo criterio que el listado: una reportada cuenta y una oculta no) y filtros `rating=5` (exactas) y `min_rating=4` (esas o más) en `GET /branches/{id}/reviews` (S)
+- [x] 4C.6e Contexto del formulario "Dejá tu reseña": `GET /access/{token}/review` devuelve el local, la sede, el código, la fecha del canje, el día en que vencen los 30 días, el nombre con el que se mostraría la reseña ("Ana G.") y el estado (`open`, `reviewed`, `window_closed` o `not_redeemed`) para dibujar Formulario o Ya reseñado sin esperar un 409 (S)
+- [x] 4C.8 Frontend: estrellas en tarjetas y ficha (con "Nuevo" bajo 3 reseñas), Dejá tu reseña (`/coupon/{token}/review`, con sus estados Formulario, Confirmada, Ya reseñado, plazo vencido y no canjeado, y el enlace desde el cupón canjeado), Reseñas del local (`/businesses/{slug}/reviews`, con resumen por estrellas, filtros y paginación; sin el botón público "Reportar" que muestra el diseño, porque solo reporta el dueño), moderación en el admin (`/admin/reviews`, con pestañas Reportadas y Ocultas, sin las métricas, el CSV, los motivos ni el WhatsApp del cliente que muestra el diseño) y el nuevo diseño del escáner de QR (mismo comportamiento); `make seed-dev` suma reseñas y los enlaces de prueba de cada estado del formulario (L)
+- [x] 4C.9 Reseñas del dueño con "Reportar" (`/owners/reviews`, pestaña nueva del panel): lista de `GET /me/business/reviews` con la sede de cada una, cursor, "Reportar" con confirmación (una reportada sigue pública y queda marcada "en revisión") y los estados vacío, cargando y error; el diseño lo definió el equipo de desarrollo siguiendo los patrones del panel, sin imagen (M)
+
+**Vistas:** Dejá tu reseña, Reseñas del local, moderación de reseñas.
+**DoD:** solo se puede reseñar con un cupón canjeado; los agregados se actualizan al crear u ocultar; el teléfono nunca se expone.
+
+---
+
+### Fase 5 — Suscripción con Mercado Pago (cobro automático, registro manual)
+**Objetivo:** cobrar a los locales y controlar su visibilidad sin integrar la API de Mercado Pago.
+
+- [x] 5.1 Migración `subscriptions` (S)
+- [x] 5.2 Dominio `billing`: vigencia, gracia y estados derivados (M)
+- [x] 5.3 Configuración de planes por env y endpoint público `GET /plans` con precio y URL de contratación (S)
+- [x] 5.4 Extiende `visible_branches` (creada en 3.1) con una migración nueva (`CREATE OR REPLACE VIEW`) que agrega la condición "pilot o hoy <= paid_until + gracia"; el down restaura la versión mínima. Tests: activo, en gracia, vencido y piloto (M)
+- [x] 5.5 Super admin: confirmar pago (el admin elige el plan y la vigencia inicial; el plan nunca sale del onboarding ni de la URL de retorno), registrar pago mensual, suspender, cambiar de plan + `audit_log` (M) — "confirmar pago" activa el negocio y crea la suscripción en una sola transacción; "suspender" es la acción `pause` que ya existe (se oculta al instante, sin esperar la gracia)
+- [x] 5.6 Vista "por vencer en 7 días" y enlace `wa.me` de recordatorio (S)
+- [x] 5.7 Aplicar límites del plan al cambiarlo (downgrade sin borrar datos) (M) — el aviso es una alerta `plan_downgrade` (tabla `alerts`) que el dueño lee en `GET /me/alerts` y descarta con `POST /me/alerts/{id}/read`; un piloto no se recorta
+- [x] 5.8 Frontend: landing con planes y botones de Mercado Pago, Plan y suscripción del dueño (vigencia y aviso de gracia), Super admin → Suscripciones (L)
+
+**Vistas:** Landing con planes, Plan y suscripción, Super admin → Suscripciones.
+**DoD:** con los casos de vigencia (al día, en gracia, vencido, piloto, cambio de plan) el estado y la visibilidad son siempre correctos; el flujo pago → `/onboarding` → revisión → activación funciona de punta a punta.
+
+---
+
+### Fase 6 — Panel Super Admin y métricas
+**Objetivo:** que el admin opere sin tocar la base y que el dueño vea resultados.
+
+- [x] 6.1 Super admin: listados y filtros de locales y suscripciones (M) — `GET /admin/subscriptions` suma `plan`, `q` (nombre del local), `limit`/`offset` y `total`; sin `limit` devuelve todo, para no recortar la vista actual (la de locales ya filtraba y paginaba)
+- [x] 6.2 Reseteo de contraseña asistido (enlace temporal para enviar por WhatsApp) (M) — `POST /admin/password-resets` (super admin, solo dueños) devuelve un token de un solo uso y 24 h; `POST /auth/reset-password` lo canjea, cambia la clave y cierra todas las sesiones; solo se guarda el hash del token y cada paso queda en `audit_log`. Las pantallas van en 6.20
+- [x] 6.3 Métricas del super admin: locales activos, cupones generados y canjeados (S) — `GET /admin/metrics`: locales activos y cupones generados/canjeados, acumulado y del mes en curso (el mes cambia en hora de Argentina)
+- [x] 6.3b Anti-inflado de métricas: descartar el mismo clic o vista repetido desde la misma IP en una ventana corta, en memoria (interfaz lista para Redis) y sin persistir la IP; se aplica a `profile_view`, `service_view` y `whatsapp_click` antes de mostrar métricas en el panel (S) — ventana de 30 min, hasheada con sal por proceso y acotada a 100 000 claves (llena, deja pasar sin recordar); la IP viaja por el contexto (`search.WithClient`) y nunca se guarda
+- [x] 6.4 Métricas esenciales del local (Starter) sobre `metric_daily` y las tablas de cupones (M) — `GET /me/business/metrics?period=7|30|90` (30 por defecto): vistas al perfil y cupones generados/canjeados de los últimos N días, hoy incluido, en calendario de Argentina; disponible en todos los planes
+- [x] 6.5 Actividades más demandadas (vistas del servicio + clics a WhatsApp por servicio) (S) — `POST /branches/{branch_id}/services/{service_id}/view` (beacon, siempre 204) y `GET /me/business/metrics/activities?period=7|30|90`: las 5 con más vistas más clics, sin servicios borrados; todos los planes. La ficha pública debe enviar el beacon al mostrar un servicio (va en 6.20)
+- [x] 6.6 Base de las métricas Pro: capacidad `advanced_metrics` en `Entitlements` (los pilotos usan el plan del piloto), un único chequeo de permiso en el servidor que responde 403 `plan_upgrade_required` sin datos, y migración con down de los índices de `benefit_codes` que hagan falta (comprobados con `EXPLAIN` en 90 días y agregación mensual) (M) — capacidad en `Entitlements` desde `PLAN_*_ADVANCED_METRICS` (Starter false, Pro true por defecto), `ProGate` en `benefits` como único chequeo, 403 `plan_upgrade_required`, y migración `00026` con dos índices (el test con `EXPLAIN` sobre 40 000 cupones exige que se usen); el cableado con el plan real llega con la primera métrica Pro (6.8)
+- [x] 6.7 `average_ticket_ars` en `businesses`: migración con down, validación (entero > 0, opcional), edición en "Datos del negocio" solo para negocios con permiso Pro y registro del cambio en `audit_log` (S) — migración `00027`; se edita con `PUT /me/business` (campo ausente conserva, `null` borra, número lo fija); fijar uno nuevo sin `advanced_metrics` da 403 `plan_upgrade_required`, conservarlo o borrarlo siempre se permite; `GET /me/plan` y `GET /plans` suman `advanced_metrics` para que la vista sepa si ofrecer el campo
+- [x] 6.8 Tasas de conversión con tendencia y desglose por sede y actividad (Pro). Las vistas de perfil son por negocio (§4.3): "vistas → cupones" se calcula solo a nivel negocio; el desglose por sede aplica a clics a WhatsApp, vistas de servicio y canjes (`redeemed_branch_id`) (M) — `GET /me/business/metrics/conversion?period=` (Pro): vistas → cupones y cupones → canjes (por cohorte) con la tasa del período anterior y su cambio, y desglose por sede (canjes por clic) y por actividad (clics por vista); menos de 20 cupones: `insufficient_data`; el cableado del permiso con el plan real (pilotos incluidos) llega acá
+- [x] 6.9 Mapa de calor de canjes: día de la semana × franja horaria, desde `redeemed_at` (S) — `GET /me/business/metrics/heatmap?period=` (Pro): 7 días × 4 franjas de 6 h (madrugada, mañana, tarde, noche) en hora de Argentina, con ceros incluidos, el total y el del período anterior; menos de 20 cupones: `insufficient_data`
+- [x] 6.10 Rendimiento por beneficio: generados, canjeados, vencidos y tasa de canje (S) — `GET /me/business/metrics/benefits?period=` (Pro): por beneficio con cupones en el período, generados, canjeados, vencidos (marcados o pendientes fuera de plazo, calculado en la consulta), pendientes y tasa de canje contra el período anterior; ordenado por cupones generados
+- [x] 6.11 Tiempo hasta el canje: mismo día, hasta 24 h, hasta 48 h (S) — `GET /me/business/metrics/time-to-redeem?period=` (Pro): de los canjes del período, la parte canjeada el mismo día calendario de Argentina, otro día pero a menos de 24 h, y después (hasta las 48 h que dura el cupón); buckets sin solapar, cada uno con la parte del período anterior
+- [x] 6.12 Clientes que volvieron: clientes con 1 canje vs 2 o más en el negocio, solo conteos calculados en SQL (S) — `GET /me/business/metrics/returning-customers?period=` (Pro): clientes distintos con un canje y con dos o más en el período (el conteo es en SQL, nunca se devuelve un cliente) y la parte que volvió contra la del período anterior
+- [x] 6.13 Proyección del cupo mensual: día estimado en que se agota, solo si el negocio tiene cupo (S) — `GET /me/business/metrics/quota-projection` (Pro, sin `period`): estimación lineal con el ritmo del mes en curso (hoy cuenta como día transcurrido); estados `no_quota`, `insufficient_data` (menos de 3 días o sin cupones), `exhausted`, `on_track` y `will_run_out` con el día en que se agota
+- [x] 6.14 Retorno estimado: canjes del período × `average_ticket_ars`, rotulado "estimado" y junto al precio del plan; sin ticket cargado no se muestra (S) — `GET /me/business/metrics/estimated-return?period=` (Pro): `estimated: true`, canjes × ticket y el precio del plan en que está el negocio (un piloto, el de Pro); `no_ticket` si no cargó uno (no se muestra nada), `insufficient_data` con menos de 20 cupones; el texto de cómo se calcula lo pone la vista (6.20)
+- [x] 6.15 Comparativa por sede: vistas de servicio, clics a WhatsApp y canjes por `redeemed_branch_id` (M) — `GET /me/business/metrics/branches?period=` (Pro): por sede, vistas de servicio, clics a WhatsApp y canjes, cada uno con el valor del período anterior y el crecimiento (null sin base: período anterior con menos de 20 cupones o valor cero); sedes activas aunque no tengan actividad, las retiradas solo si la tuvieron
+- [x] 6.16 Reseñas en el tiempo: promedio del período contra el anterior y porcentaje de canjes que dejan reseña (la 4C ya está implementada) (S) — `GET /me/business/metrics/reviews?period=` (Pro): promedio de las reseñas escritas en el período contra el anterior (las ocultas no cuentan, las reportadas sí) y parte de los canjes del período que tienen reseña; migración `00028` con un índice por negocio y fecha, comprobado con `EXPLAIN`
+- [x] 6.17 Tus récords: mejor mes calendario de los últimos 12 por canjes (el mes en curso no entra), avance del mes actual contra el mejor, día y franja fuertes y beneficio estrella (M) — `GET /me/business/metrics/records` (Pro, sin `period`): ranking de los 12 meses completos anteriores (el mes en curso no entra; empate: gana el más reciente), avance del mes en curso (`progress`, `record_in_progress`), día y franja fuertes y beneficio estrella de esos mismos 12 meses; exige 2 meses completos de historia (los que empiezan desde el primer cupón) y 20 canjes en el mejor mes, si no `insufficient_data`
+- [x] 6.18 Alerta "Cupones sin canjear" (tarea diaria, umbral y muestra mínima por env, máximo una por semana) + bandeja en el panel (M) — tarea `unredeemed-alerts` del worker (lock 4004): alerta `unredeemed_coupons` en la tabla `alerts` para los negocios con `advanced_metrics`, cohorte de los últimos 30 días (con hoy), `ALERT_MIN_CODES` y `ALERT_MIN_REDEEM_RATE` (por defecto 20 y 0,2), una por semana aunque la anterior esté leída; la bandeja es `GET /me/alerts` de 5.7
+- [x] 6.19 Marca de prioridad en la bandeja del admin para locales con soporte prioritario (S) — capacidad `priority_support` de `Entitlements` (`PLAN_STARTER_PRIORITY_SUPPORT` / `PLAN_PRO_PRIORITY_SUPPORT`, por defecto false y true) y campo `priority_support` en cada entrada de `GET /admin/subscriptions`; un piloto recibe la del plan Pro
+- [x] 6.20 Frontend: Métricas (Starter y Pro con candado, incluidas las vistas de 6.8 a 6.17), alertas, admin completo, reseteo de contraseña y el beacon de vista de servicio en la ficha pública (L) — `/owners/metrics`, ticket promedio en Datos del negocio, alerta `unredeemed_coupons` en el plan, `/admin/metrics`, filtros y marca de prioridad en Suscripciones, reseteo asistido en la ficha del local y `/owners/reset-password`; `make seed-dev` carga un año de historial Pro y un super admin (`admin@seed.movo.test`); la clave mínima es de 10 caracteres (la captura decía 8)
+
+**Vistas:** Métricas, Super admin completo.
+**DoD:** el admin puede resolver un problema de cobro o de cuenta sin tocar la base de datos; las métricas coinciden con los datos reales.
+
+---
+
+### Fase 7 — Rendimiento y escala (opcional, guiada por métricas)
+- [x] 7.1 Decorador de caché Redis (cache-aside, TTL, clave por geocelda/categoría) (M) — decora `BranchFinder.Nearby` (`search/adapters/cache`) sobre un puerto `Store` con adaptador `platform/cache`. Es opcional: sin `REDIS_URL` todo sigue igual; si Redis falla en runtime, la búsqueda cae a Postgres. El origen se redondea a una celda (`SEARCH_CACHE_CELL_DEG`, 0,002° ≈ 220 m) y la consulta corre desde el centro de la celda, así una respuesta cacheada es idéntica a una fresca; las distancias mostradas pueden diferir ≤ ~150 m del punto exacto. TTL `SEARCH_CACHE_TTL` (1 min). Hasta 7.2 la invalidación es solo por TTL. La línea base de la Fase 3 ya cumple (p95 47 ms peor caso): medir la mejora real es la tarea 7.5
+- [x] 7.2 Invalidación al cambiar un local o su visibilidad (M) — las claves llevan un contador de generación en Redis (`search:nearby:generation`); invalidar es un `INCR` y deja inalcanzables todas las entradas anteriores (vencen por TTL). Un middleware en el borde HTTP (`InvalidateOnWrite`) lo sube tras toda escritura exitosa bajo `/me/business` y `/admin`, y tras una reseña nueva; no lo sube el canje/generación de cupones, el geocoding, el presign ni las vistas. Es global y no por celda: los cambios son raros frente a las lecturas y evita que un módulo conozca las claves del buscador. Si Redis falla al invalidar, el TTL acota lo viejo
+- [x] 7.3 Rate limiting distribuido con Redis (S) — con `REDIS_URL`, los límites de login, alta y cupones cuentan en Redis (ventana fija con Lua atómico, claves hasheadas con SHA-256, sin emails ni IPs en claro) sobre la misma conexión del caché; sin ella siguen en memoria. Si Redis falla, deja pasar (falla abierta) y registra el límite, nunca la clave. También limita la búsqueda pública (`/search` y `/home/featured`, mismo cupo): `SEARCH_RATE_LIMIT` pedidos por minuto por IP (300 por defecto, 0 lo apaga), 429 con `Retry-After`; detrás de un proxy exige `TRUSTED_PROXIES` (8.4) y para `make load-search` hay que ponerlo en 0. Ver `docs/work/fase-7-rate-limit.md`
+- [x] 7.4 CDN delante del bucket de imágenes y optimización de imágenes (M) — con `IMAGES_CDN_URL`, las lecturas salen por la CDN como URL pública sin firma (las subidas siguen al bucket, que entonces debe ser de lectura pública); las fotos se suben con `Cache-Control: public, max-age=31536000, immutable`, seguro porque cada subida usa una clave aleatoria nueva. Redimensionado y WebP quedan a cargo de la CDN, sin librería en Go. Ver `docs/work/fase-7-cdn-imagenes.md`
+- [x] 7.5 Prueba de carga (k6) y ajuste de pool de conexiones (M) — `make load-search` (`backend/loadtest/search.js`, p95 < 300 ms y < 1 % de errores; con `SEARCH_RATE_LIMIT=0`) y pool por env (`DB_MAX_CONNS`, `DB_MIN_CONNS`, `DB_MAX_CONN_LIFETIME`, `DB_MAX_CONN_IDLE_TIME`). Medido con 15 sedes: API directa ~4 500 rps con p95 de ~15 ms; el pool por defecto alcanza (4 conexiones pierde un 22 %, de 12 a 40 no cambia); el caché acierta 99,9 % pero a este volumen no baja la latencia; **el cuello de botella es el proxy de Next** (~1 000 rps). Detalle en `docs/work/fase-7-carga.md`
+- [x] 7.6 Evaluar réplica de lectura **solo si las métricas lo exigen** (ADR) — decidido **no** agregarla: Postgres no es el límite. `docs/adr/0004-replica-de-lectura.md`, con las señales para reabrirla
+- [x] 7.7 Mapa propio con PMTiles (Protomaps) en lugar de OpenFreeMap, para que el fondo del mapa no dependa de un tercero (M) — opt-in con `NEXT_PUBLIC_MAP_PMTILES_URL`; tipografías e íconos propios (`scripts/map-assets.sh`); verificado en local con Córdoba (66 MB). Falta subir el archivo al bucket y probar Range y CORS en la CDN real (8.4). `docs/work/fase-7-mapa.md`
+
+**DoD:** mejora medible y documentada contra la línea base de la Fase 3. *Resultado:* con el volumen actual no hay mejora que medir en la búsqueda (la API ya cumple holgada: p95 ~15 ms contra 300 ms); lo que sí quedó documentado y resuelto es dónde están los límites reales (proxy de Next, memoria de Next en un VPS chico, límite de pedidos por IP y mapa de un tercero). Repetir la medición con 10 000 negocios queda para cuando haya volumen real.
+
+---
+
+### Fase 8 — Hardening y lanzamiento
+- [ ] 8.1 Checklist de seguridad (sección 7.1) y `govulncheck`/`npm audit` en CI (M)
+- [ ] 8.2 Observabilidad: métricas y trazas (M)
+- [ ] 8.3 Backups automáticos + prueba de restauración (M)
+- [ ] 8.4 Despliegue en VPS con `docker-compose.prod.yml`, HTTPS y proxy reverso; el escáner de QR del panel necesita HTTPS en producción porque el navegador solo da la cámara en contextos seguros; detrás del proxy, la API toma la IP real del cliente con `TRUSTED_PROXIES` (ver 7.1), que en producción debe listar **todos** los saltos entre el cliente y la API: el proxy HTTPS (que debe agregar la IP que ve a `X-Forwarded-For`, no confiar en la que trae el cliente) y el servidor de Next, que no debe quedar expuesto sin ese proxy delante. Sin la variable los límites cuentan al último salto y ponen a todos los clientes en el mismo cupo. Verificar con dos clientes distintos que los contadores de login y de cupones son independientes. **Exigencias medidas en la Fase 7:** el proxy HTTPS manda `/api/v1/search` y `/api/v1/home/featured` (solo GET/HEAD) directo a la API Go sin pasar por Next (Next se satura cerca de 1 000 pedidos por segundo; por Caddy la búsqueda rinde ~2 300 en la prueba local, contra ~4 500 de Go directo). El `deploy/caddy/Caddyfile` ya está hecho y probado (enrutamiento, `/auth/*` sin exponer, IP falsificada, error JSON); falta incluirlo en `docker-compose.prod.yml` con el dominio real y la imagen fijada; en un VPS de 1 GB, Next corre con `NODE_OPTIONS=--max-old-space-size=200` (sin tope llegó a 1,1 GB), `DB_MAX_CONNS` en 10 o menos y 1–2 GB de swap, y no se compila nada en el VPS; el límite `SEARCH_RATE_LIMIT` exige `TRUSTED_PROXIES` bien puesto (L)
+- [ ] 8.5 Términos y condiciones (incluyendo reglas de moderación de reseñas), política de privacidad, definición de facturación (S)
+- [ ] 8.6 Runbook: operación manual mensual de pagos (revisar Mercado Pago y registrar pagos), cómo confirmar un alta con los tres chequeos (el mail "nuevo suscriptor" de Mercado Pago tiene el mismo email que declaró el dueño; plan y monto correctos; perfil revisado), cómo restaurar un backup; y, para las actividades outdoor (categoría `trekking-outdoor`), confirmar que el guía esté habilitado y tenga seguro antes de activar el alta (S)
+- [x] 8.7 Investigar costos y mejores opciones de hosting para volúmenes chicos, antes de contratar (S) — comparar con precios vigentes (verificarlos, no estimarlos): **VPS** (2 GB de RAM como punto de partida; la Fase 7 midió que 1 GB entra justo con Next acotado a 200 MB), **bucket** gestionado para imágenes y el archivo del mapa (R2, B2, S3: costo de almacenamiento, de salida de datos y plan gratuito; requiere lectura pública con Range y CORS), **CDN**, **dominio y DNS**, y **respaldos fuera del servidor** (8.3). Resultado: una tabla de costo mensual por opción con el volumen esperado del piloto (5 a 10 locales) y el criterio para pasar de un VPS a algo mayor **Hecho:** decisión y tabla en `docs/work/fase-8-hosting.md` (Hetzner CX23 + Cloudflare R2/CDN/DNS, ≈ USD 7 a 8 por mes).
+- [x] 8.13 Paths en inglés: hecho en la Fase 5, antes del lanzamiento y por eso **sin redirecciones** (todavía no circulan enlaces reales). `/socios` → `/owners` (`sign-in`, `sign-up`, `dashboard`, `redeem`, `benefits`, `business`, `business/details`, `branches`, `branches/new`, `services`, `photos`), `/locales` → `/businesses`, `/admin/locales` → `/admin/businesses`, `/cupon` → `/coupon`, `/cupones` → `/coupons`, `/mapa` → `/map`, y los grupos de ruta `(acceso)` → `(auth)` y `(explorar)` → `(explore)`. El texto visible sigue en español. Las carpetas de componentes (`components/socios`, `components/locales`, `components/explorar`) no son rutas y conservan su nombre (M)
+
+**DoD:** sistema en producción, monitoreado y con piloto activo.
+
+---
+
+### Correcciones de frontend pendientes
+Problemas detectados probando a mano; se arreglan con test que los reproduzca y no pertenecen a una fase puntual.
+
+- [x] F.1 Mapa de búsqueda (`/map`): al volver atrás desde la ficha el mapa rompía (`appendChild` en `<TileLayer>`). Corregido: con `cacheComponents` la página queda oculta en `<Activity>` y Leaflet perdía su nodo; `MountWhileVisible` monta el mapa solo mientras la página se ve (commits 474aefa, 4f9d967, PR #31). Confirmado a mano: ir y volver sin que reaparezca. (M)
+- [x] F.2 Home (`/`, `localhost:3000`): rediseñar la portada con una cara más cuidada. Hecho sin imagen de diseño, a pedido: hero con buscador, categorías, destacados y cercanos con la foto de portada del local (`cover_url` en `/search` y `/home/featured`), "Cómo funciona" y banner para locales; la ficha y la lista del mapa siguen el mismo estilo, con avatar y apartado "Fotos" en la ficha. (M)
+
+---
+
+## 10. Definition of Done global (por tarea)
+- Compila, pasa lint y todos los tests.
+- Tests nuevos para la lógica agregada.
+- Sin secretos ni TODOs críticos.
+- Migración reversible (up/down) cuando aplica.
+- Documentación actualizada (README/ADR/OpenAPI) si cambia el comportamiento.
+- La tarea queda tildada en este documento en el mismo commit.
+
+---
+
+## 11. Riesgos y mitigaciones
+
+| Riesgo | Mitigación |
+|---|---|
+| Servidor público de **Nominatim** (1 req/s por aplicación, sin autocompletado) y **tiles públicos de OSM** (bloquean el uso sin política; ya no se usan para el mapa) | Puerto `Geocoder` y estilo del mapa configurable por env (`NEXT_PUBLIC_MAP_STYLE_URL`); geocodificar solo al dar de alta una sede, con caché; en producción usar Protomaps/proveedor (sección 12.3) |
+| Error humano al registrar pagos manualmente y falta de escala | Vista "por vencer", gracia de 7 días, runbook y automatización con webhooks cuando haya ≈15–20 locales |
+| Alguien llega a `/onboarding` sin haber pagado | El negocio queda en `pending_review` y solo el super admin lo activa tras confirmar el pago |
+| Doble canje de cupón | `UPDATE` atómico + test de concurrencia |
+| Captura de pantalla compartida del cupón o de su QR (el código circula como imagen) | El QR lleva solo el código, sin datos personales; la vista previa muestra el nombre del cliente para que el dueño lo confronte antes de confirmar; el canje es de un solo uso y atómico, así que una captura reenviada no se puede canjear dos veces |
+| Abuso de cupones al no haber cuenta ni verificación | Límite por IP, normalización de contacto, un pendiente por cliente y local, cupo mensual; si hay abuso real, agregar captcha o verificación por WhatsApp |
+| Reseñas falsas, autoreseña del dueño y contenido de terceros | Solo con cupón canjeado, límite por IP, moderación del super admin, detección por contacto del dueño y reglas en los términos |
+| Revelar la identidad de un competidor con pocos datos (benchmarking, post-MVP) | Mínimo de 5 locales por categoría y zona; solo medianas y percentiles |
+| Precios fijos en ARS con inflación | Precios en configuración y plan de Mercado Pago; proceso manual de actualización documentado |
+| Sobreingeniería temprana (réplicas, CDN, microservicios, webhooks) | Fase 7 solo con métricas; ADRs para cada decisión |
+| Los locales no ven valor y no pagan | Piloto gratuito antes de activar cobros, medir canjes y reseñas |
+| Facturación/impuestos de la suscripción | Cobrar recurrentemente requiere inscripción fiscal y facturas: definirlo con un contador antes del lanzamiento (Fase 8) |
+| Datos personales de usuarios | Mínimo dato necesario, política de privacidad, Ley 25.326 |
+| Borrar una sede o un negocio y perder su historial (métricas, canjes, reseñas) | Baja lógica (§4): las sedes se desactivan y los negocios pasan a `deleted`; las claves foráneas del historial son `RESTRICT` donde corresponde, así que un `DELETE` físico falla |
+| Inflar las métricas: `/r/wa` y las vistas son públicos y cuentan en cada GET, y el filtro de bots solo descarta agentes automáticos | Tarea 6.3b: descartar el mismo clic o vista repetido desde la misma IP en una ventana corta, en memoria y sin persistir la IP. Hasta entonces, las métricas se rotulan como "vistas" y "clics", no como personas |
+
+---
+
+## 12. Decisiones
+
+### 12.1 Decisiones tomadas
+| # | Tema | Decisión |
+|---|---|---|
+| 1 | Producto | Cupones de descuento y contacto por WhatsApp; la reserva se resuelve por WhatsApp, sin estados ni agenda en el MVP |
+| 2 | Cupones | Un cupón pendiente por cliente y local, válido 48 h; el dueño configura el cupo mensual (tope de cupones generados por local por mes) |
+| 3 | Beneficios | Porcentaje (1–100 %), monto fijo u otro beneficio con título propio, definidos por el dueño; el super admin puede pausar cualquiera; un local puede tener todos los que quiera; valen en todas las sedes |
+| 4 | Cuenta del cliente | No existe; deja nombre y WhatsApp (obligatorios) al generar un cupón; sin verificación |
+| 5 | Planes | Starter $19.800 · Pro $29.800; cualquier negocio puede contratar cualquiera |
+| 6 | Sedes y servicios | Un dueño = un negocio con sedes: Starter 2, Pro 4; Starter hasta 3 servicios activos, Pro ilimitados; límites por variable de entorno |
+| 7 | Cobros | Plan de suscripción de Mercado Pago (cobro automático) con links por env; sin API ni webhooks; el super admin confirma el alta y registra cada pago mensual |
+| 8 | Gracia | 7 días tras vencer la vigencia |
+| 9 | Verificación del perfil | Manual por el super admin en el MVP; subida de DNI post-MVP |
+| 10 | Mapas y geocoding | Ver 12.3 |
+| 11 | Ubicación | Pin fijo en el mapa; seguimiento en vivo queda fuera |
+| 12 | Visibilidad destacada (Pro) | Prioridad en el inicio, búsquedas y pin destacado en el mapa, con sello "Destacado" |
+| 13 | WhatsApp | El dueño carga su número; botón `wa.me` con mensaje prearmado; sin proveedores |
+| 14 | Notificaciones | Solo dentro de la app (actividad reciente con consulta periódica); sin push, email ni WhatsApp automáticos |
+| 15 | Reseñas | En el MVP, solo con cupón canjeado, una por cupón, nombre tomado del cupón, moderación del super admin |
+| 16 | Métricas | Contadores agregados sin datos personales; Starter esenciales, Pro tasas de conversión y una alerta; sin embudo |
+| 17 | Sin captcha ni cola de jobs | Se agregan solo si aparece abuso o necesidad real |
+
+### 12.2 Pendientes de confirmar
+- **Sedes de Starter:** se interpretó "una sede más" como 2 sedes en total (principal + 1).
+- **Redirección post-pago:** verificar al crear los planes si Mercado Pago permite configurar la URL de retorno a `/onboarding`; si no, el admin envía el enlace por WhatsApp.
+- **Verificación con DNI:** se pospuso a después del piloto; confirmar si se mantiene así.
+- **Facturación:** definir con un contador antes del lanzamiento.
+
+### 12.3 Mapas y geocodificación (decisión recomendada)
+| Necesidad | Piloto (Fases 2–4) | Producción |
+|---|---|---|
+| Tiles del mapa | OpenFreeMap (estilo vectorial MapLibre, sin API key) con URL en `NEXT_PUBLIC_MAP_STYLE_URL` y atribución visible | Protomaps (archivo PMTiles propio en el bucket) o proveedor como MapTiler: solo cambia la URL del estilo |
+| Geocodificar la dirección de una sede | Nominatim público, solo al dar de alta una sede, con User-Agent propio, caché y limitador global de 1 req/s | Mismo adaptador, o Nominatim/Photon autoalojado si el volumen crece |
+| Ubicación del cliente | `navigator.geolocation` del navegador (sin geocoding) | Igual |
+| Buscar "mi ciudad/barrio" | Lista local de localidades cargada en DB | Igual, o API Georef del Estado argentino si sigue activa |
+| Autocompletado de direcciones | No (la política de Nominatim público lo prohíbe) | Photon autoalojado, solo si se justifica |
+
+---
+
+## 13. Post-MVP (backlog)
+1. Automatizar cobros con webhooks de Mercado Pago (cuando haya ≈15–20 locales).
+2. Subida y revisión de DNI con storage privado.
+3. Benchmarking anónimo de zona y alertas de demanda.
+4. Respuesta del dueño a reseñas.
+5. Reseteo de contraseña por email y notificaciones por email/push.
+6. Reserva con estados o agenda con cupos, si el piloto lo justifica.
+7. Favoritos del cliente.
+8. Captcha o verificación del cliente, si aparece abuso.
+9. Sede principal: hoy ninguna sede se distingue de las demás ("principal + 1" en 12.2 es solo una forma de contar). Hay que poder marcar cuál es la sede principal de cada local (por ejemplo `branches.is_primary`, una sola por negocio) y usarla donde se necesite una sede única, como la ficha o la tarjeta del Home.
+10. Fotos por sede: en el MVP las fotos pertenecen al negocio (`business_images`) y la ficha las muestra todas juntas. Más adelante cada sede puede tener las suyas (por ejemplo `branch_id` opcional en `business_images`) para mostrar la fachada y el interior de cada local.
+11. Revisar Protomaps para el mapa: un archivo PMTiles de Argentina en el bucket de `Storage`, sin servidor de tiles ni dependencia de terceros. Hoy el piloto usa OpenFreeMap (sin SLA) vía `NEXT_PUBLIC_MAP_STYLE_URL`, así que el cambio es solo la URL del estilo. Evaluar antes del lanzamiento: generar y actualizar el archivo, CORS y Range en el bucket, y el estilo con la marca de MOVO (ver 12.3 y `docs/work/map-openfreemap.md`).
+
+---
+
+## 14. Glosario
+- **B2B2C:** el negocio paga, el consumidor final usa.
+- **Plan de suscripción (Mercado Pago):** link de cobro recurrente automático; el dueño lo autoriza una vez.
+- **Cupón:** beneficio que el cliente genera y canjea en el local mediante un código alfanumérico (`benefit_codes`).
+- **Gracia:** días posteriores al vencimiento durante los cuales el local sigue visible.
+- **Idempotencia:** procesar el mismo evento dos veces produce el mismo resultado.
+- **Cache-aside:** la app consulta la caché, y si falla, lee de la DB y completa la caché.
+- **ADR:** Architecture Decision Record, documento corto que registra una decisión y su motivo.

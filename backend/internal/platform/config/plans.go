@@ -1,0 +1,176 @@
+package config
+
+import (
+	"errors"
+	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
+)
+
+// Environment variables understood by LoadPlans (SDD §7.5).
+const (
+	envStarterMaxBranches = "PLAN_STARTER_MAX_BRANCHES"
+	envStarterMaxServices = "PLAN_STARTER_MAX_ACTIVE_SERVICES"
+	envStarterPrice       = "PLAN_STARTER_PRICE"
+	envProMaxBranches     = "PLAN_PRO_MAX_BRANCHES"
+	envProMaxServices     = "PLAN_PRO_MAX_ACTIVE_SERVICES"
+	envProPrice           = "PLAN_PRO_PRICE"
+	envStarterURL         = "MP_STARTER_URL"
+	envProURL             = "MP_PRO_URL"
+
+	// Optional: whether the plan includes the Pro metrics. They default to off for Starter
+	// and on for Pro, so an existing environment keeps working.
+	envStarterAdvancedMetrics = "PLAN_STARTER_ADVANCED_METRICS"
+	envProAdvancedMetrics     = "PLAN_PRO_ADVANCED_METRICS"
+
+	// Optional: whether the plan includes the priority support. Off for Starter, on for Pro.
+	envStarterPrioritySupport = "PLAN_STARTER_PRIORITY_SUPPORT"
+	envProPrioritySupport     = "PLAN_PRO_PRIORITY_SUPPORT"
+)
+
+// PlanSettings are the limits and the display price of one plan.
+type PlanSettings struct {
+	// MaxBranches is at least 1.
+	MaxBranches int
+	// MaxActiveServices is 0 for unlimited.
+	MaxActiveServices int
+	// Price is the monthly price shown to owners, in whole pesos.
+	Price int
+	// CheckoutURL is the Mercado Pago subscription link of the plan (https).
+	CheckoutURL string
+	// AdvancedMetrics is whether the plan includes the Pro metrics (SDD 4.3).
+	AdvancedMetrics bool
+	// PrioritySupport is whether the plan includes the priority support (SDD 4.2).
+	PrioritySupport bool
+}
+
+// Plans holds the settings of both plans. Every API instance must run with the
+// same values; they are validated at startup and never reloaded.
+type Plans struct {
+	Starter PlanSettings
+	Pro     PlanSettings
+}
+
+// LoadPlans builds Plans from get, normally os.Getenv. Every variable is
+// required: a missing limit would silently turn into "unlimited" or "none".
+func LoadPlans(get func(string) string) (Plans, error) {
+	if get == nil {
+		return Plans{}, errors.New("config: environment lookup must not be nil")
+	}
+
+	var (
+		plans Plans
+		err   error
+	)
+	if plans.Starter.MaxBranches, err = requiredInt(get, envStarterMaxBranches, 1); err != nil {
+		return Plans{}, err
+	}
+	if plans.Starter.MaxActiveServices, err = requiredInt(get, envStarterMaxServices, 0); err != nil {
+		return Plans{}, err
+	}
+	if plans.Starter.Price, err = requiredInt(get, envStarterPrice, 1); err != nil {
+		return Plans{}, err
+	}
+	if plans.Pro.MaxBranches, err = requiredInt(get, envProMaxBranches, 1); err != nil {
+		return Plans{}, err
+	}
+	if plans.Pro.MaxActiveServices, err = requiredInt(get, envProMaxServices, 0); err != nil {
+		return Plans{}, err
+	}
+	if plans.Pro.Price, err = requiredInt(get, envProPrice, 1); err != nil {
+		return Plans{}, err
+	}
+
+	if plans.Starter.CheckoutURL, err = requiredHTTPSURL(get, envStarterURL); err != nil {
+		return Plans{}, err
+	}
+	if plans.Pro.CheckoutURL, err = requiredHTTPSURL(get, envProURL); err != nil {
+		return Plans{}, err
+	}
+
+	if plans.Starter.AdvancedMetrics, err = planFlag(get, envStarterAdvancedMetrics, false); err != nil {
+		return Plans{}, err
+	}
+	if plans.Pro.AdvancedMetrics, err = planFlag(get, envProAdvancedMetrics, true); err != nil {
+		return Plans{}, err
+	}
+
+	if plans.Starter.PrioritySupport, err = planFlag(get, envStarterPrioritySupport, false); err != nil {
+		return Plans{}, err
+	}
+	if plans.Pro.PrioritySupport, err = planFlag(get, envProPrioritySupport, true); err != nil {
+		return Plans{}, err
+	}
+	if plans.Starter.PrioritySupport && !plans.Pro.PrioritySupport {
+		return Plans{}, fmt.Errorf("config: %s is off but %s is on: Pro cannot offer less than Starter",
+			envProPrioritySupport, envStarterPrioritySupport)
+	}
+
+	// Pro includes everything Starter has, so it can never offer less.
+	if plans.Starter.AdvancedMetrics && !plans.Pro.AdvancedMetrics {
+		return Plans{}, fmt.Errorf("config: %s is off but %s is on: Pro cannot offer less than Starter",
+			envProAdvancedMetrics, envStarterAdvancedMetrics)
+	}
+	if plans.Pro.MaxBranches < plans.Starter.MaxBranches {
+		return Plans{}, fmt.Errorf("config: %s %d must not be lower than %s %d",
+			envProMaxBranches, plans.Pro.MaxBranches, envStarterMaxBranches, plans.Starter.MaxBranches)
+	}
+	if lowerLimit(plans.Pro.MaxActiveServices, plans.Starter.MaxActiveServices) {
+		return Plans{}, fmt.Errorf("config: %s %d must not be lower than %s %d",
+			envProMaxServices, plans.Pro.MaxActiveServices, envStarterMaxServices, plans.Starter.MaxActiveServices)
+	}
+
+	return plans, nil
+}
+
+// planFlag reads true or false; an absent variable is fallback and anything else is an
+// error, so a typo never silently switches a plan feature.
+func planFlag(get func(string) string, name string, fallback bool) (bool, error) {
+	raw := strings.TrimSpace(get(name))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("config: %s %q must be true or false: %w", name, raw, err)
+	}
+	return value, nil
+}
+
+// lowerLimit reports whether limit a offers less than b, where 0 means unlimited.
+func lowerLimit(a, b int) bool {
+	if a == 0 {
+		return false
+	}
+	return b == 0 || a < b
+}
+
+// requiredHTTPSURL reads a link that is shown to owners and opened in their browser, so
+// it must be an absolute https URL: anything else would be a broken or unsafe button.
+func requiredHTTPSURL(get func(string) string, name string) (string, error) {
+	raw := strings.TrimSpace(get(name))
+	if raw == "" {
+		return "", fmt.Errorf("config: %s is required and must not be empty", name)
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return "", fmt.Errorf("config: %s must be an absolute https URL", name)
+	}
+	return raw, nil
+}
+
+func requiredInt(get func(string) string, name string, minimum int) (int, error) {
+	raw := strings.TrimSpace(get(name))
+	if raw == "" {
+		return 0, fmt.Errorf("config: %s is required and must not be empty", name)
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("config: %s %q must be a whole number: %w", name, raw, err)
+	}
+	if value < minimum {
+		return 0, fmt.Errorf("config: %s %d must be at least %d", name, value, minimum)
+	}
+	return value, nil
+}

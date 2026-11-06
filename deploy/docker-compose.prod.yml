@@ -1,0 +1,120 @@
+# Producción en un VPS (SDD 8.4). Nada se compila acá: las imágenes se construyen aparte
+# (backend/Dockerfile y frontend/Dockerfile), se suben a un registro y el VPS solo las baja.
+#
+#   docker compose --env-file .env -f deploy/docker-compose.prod.yml pull
+#   docker compose --env-file .env -f deploy/docker-compose.prod.yml up -d --wait
+#
+# El `migrate` corre una vez y termina antes de que arranquen la API y el worker.
+# Todos los valores salen del .env de la raíz (plantilla: deploy/.env.production.example).
+# ENV_FILE cambia el archivo de entorno de los contenedores (por defecto ../.env).
+# Variables extra que usa este archivo: API_IMAGE, WORKER_IMAGE, MIGRATE_IMAGE, WEB_IMAGE.
+#
+# IP real del cliente: la red tiene subred fija para que TRUSTED_PROXIES sea predecible y
+# liste a TODOS los saltos (Caddy y Next). Next y la API no publican puertos: solo Caddy
+# queda expuesto. Postgres y Redis tampoco.
+
+name: movo
+
+x-app: &app
+  restart: unless-stopped
+  env_file: ${ENV_FILE:-../.env}
+  networks: [movo]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.6
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?definir POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definir POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?definir POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [movo]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    networks: [movo]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    <<: *app
+    restart: "no"
+    image: ${MIGRATE_IMAGE:?definir MIGRATE_IMAGE}
+    command: ["up"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *app
+    image: ${API_IMAGE:?definir API_IMAGE}
+    environment:
+      TRUSTED_PROXIES: 172.30.0.0/24
+      HTTP_ADDR: ":8080"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    <<: *app
+    image: ${WORKER_IMAGE:?definir WORKER_IMAGE}
+    depends_on:
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+
+  web:
+    <<: *app
+    image: ${WEB_IMAGE:?definir WEB_IMAGE}
+    environment:
+      API_URL: http://api:8080
+      # VPS chico: tope de memoria de Node (medido en la Fase 7).
+      NODE_OPTIONS: --max-old-space-size=200
+    depends_on:
+      api: { condition: service_started }
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?definir SITE_ADDRESS}
+      API_UPSTREAM: api:8080
+      WEB_UPSTREAM: web:3000
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [movo]
+    depends_on:
+      - api
+      - web
+
+networks:
+  movo:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

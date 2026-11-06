@@ -1,0 +1,69 @@
+# Infra local de MOVO — solo desarrollo (Fase 0, tarea 0.2).
+#
+#   make up     # levanta y espera los healthchecks
+#   make down   # baja conservando volúmenes
+#
+# Los valores salen del .env de la raíz (ver .env.example).
+# Redis entra en la Fase 7 (§3.7 del SDD) y es opcional.
+
+name: movo
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.6
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-movo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-movo}
+      POSTGRES_DB: ${POSTGRES_DB:-movo}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  rustfs:
+    # Object storage S3 de desarrollo. La imagen va pineada a propósito: el
+    # proyecto es joven (1.0.x) y sólo se usa en local — en producción el puerto
+    # `Storage` apunta a un servicio gestionado (R2, B2 o S3). Plan B: Garage.
+    image: ${RUSTFS_IMAGE:-rustfs/rustfs:1.0.3}
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-movo}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-movo12345}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "${RUSTFS_API_PORT:-9000}:9000"
+      - "${RUSTFS_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - objectdata:/data
+    healthcheck:
+      # Endpoint de salud de la API S3 (la imagen trae curl).
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/health >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    # Caché de la búsqueda (Fase 7, tarea 7.1). Opcional: la API arranca sin ella
+    # si REDIS_URL no está definida.
+    image: ${REDIS_IMAGE:-redis:7.4-alpine}
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
+  objectdata:

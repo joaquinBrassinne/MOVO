@@ -1,0 +1,13 @@
+# Normaliza fin de línea a LF en el repo y en el checkout.
+# Sin esto, un checkout Windows con autocrlf rompe el Makefile y los scripts.
+* text=auto eol=lf
+
+# Binarios
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
