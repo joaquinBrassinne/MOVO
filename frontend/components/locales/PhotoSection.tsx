@@ -5,15 +5,15 @@ import { useRef, useState } from "react";
 import { PhotoImage } from "@/components/CoverImage";
 import { ArrowLeftIcon, ArrowRightIcon } from "@/components/socios/icons";
 
+import { BUTTON_FOCUS, HEADING, SECTION } from "./profileStyles";
+
 interface Props {
   images: string[];
   name: string;
 }
 
-const FOCUS = "outline-none focus-visible:ring-2 focus-visible:ring-movo-ink";
-
 /**
- * Apartado "Fotos" de la ficha: una grilla de miniaturas cuadradas, como la del alta del local, y al tocar una se abre entera en un visor (con flechas y Esc para cerrar).
+ * Apartado "Fotos" de la ficha: una tira de fotos que se desplaza de costado y, al tocar una, se abre entera en un visor (con flechas y Esc para cerrar).
  * Sin fotos no se dibuja nada.
  */
 export function PhotoSection({ images, name }: Props) {
@@ -30,24 +30,19 @@ export function PhotoSection({ images, name }: Props) {
   const label = (index: number) => `${name}, foto ${index + 1} de ${images.length}`;
 
   return (
-    <section aria-labelledby="photos" className="mt-8">
-      <div className="flex items-baseline justify-between">
-        <h2 id="photos" className="font-display text-xl font-bold">
-          Fotos
-        </h2>
-        <span className="text-sm text-movo-slate">
-          {images.length} {images.length === 1 ? "foto" : "fotos"}
-        </span>
-      </div>
+    <section id="section-photos" aria-labelledby="photos" className={SECTION}>
+      <h2 id="photos" className={HEADING}>
+        Fotos · {images.length}
+      </h2>
 
-      <ul className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-[repeat(auto-fill,7rem)] sm:gap-3">
+      <ul className="no-scrollbar -mx-5 mt-3.5 flex snap-x gap-2.5 overflow-x-auto px-5">
         {images.map((src, index) => (
-          <li key={src}>
+          <li key={src} className="shrink-0 snap-start">
             <button
               type="button"
               onClick={() => open(index)}
               aria-label={`Ver ${label(index)} en grande`}
-              className={`block aspect-square w-full cursor-pointer overflow-hidden rounded-2xl bg-movo-sand shadow-sm ${FOCUS}`}
+              className={`block h-60 w-[12.5rem] cursor-pointer overflow-hidden rounded-[1.125rem] bg-movo-card ${BUTTON_FOCUS}`}
             >
               <PhotoImage
                 src={src}

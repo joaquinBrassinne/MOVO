@@ -1,10 +1,11 @@
 import Link from "next/link";
 
-import { CategoryIcon, Icon, VerifiedIcon } from "@/components/explorar/icons";
 import { CoverTile } from "@/components/CoverImage";
+import { Icon, VerifiedIcon } from "@/components/explorar/icons";
 import { Logo } from "@/components/Logo";
 import { StarRating } from "@/components/reviews/StarRating";
 import { ArrowLeftIcon } from "@/components/socios/icons";
+import { cn } from "@/lib/cn";
 import { formatPrice } from "@/lib/business/price";
 import { describeSchedule } from "@/lib/business/schedule";
 import {
@@ -16,8 +17,10 @@ import {
 
 import { PhotoSection } from "./PhotoSection";
 import { ProfileBenefits } from "./ProfileBenefits";
+import { ProfileTabs, type ProfileTab } from "./ProfileTabs";
 import { ProfileViewBeacon } from "./ProfileViewBeacon";
 import { ServiceViewBeacon } from "./ServiceViewBeacon";
+import { BUTTON_FOCUS, DIVIDER, HEADING, SECTION } from "./profileStyles";
 
 /** El botón de WhatsApp pasa por la API, que cuenta el clic y redirige a la conversación. */
 const whatsappHref = (branchId: number, serviceId?: number) =>
@@ -26,102 +29,89 @@ const whatsappHref = (branchId: number, serviceId?: number) =>
 const directionsHref = (branch: ProfileBranch) =>
   `https://www.google.com/maps/dir/?api=1&destination=${branch.lat},${branch.lng}`;
 
-const BUTTON_FOCUS = "outline-none focus-visible:ring-2 focus-visible:ring-movo-ink";
-
 /** La ficha pública del local, del lado del servidor. Los números salen de la API, nunca el WhatsApp. */
 export function ProfilePage({ profile, today }: { profile: Profile; today: number }) {
   // Todavía no hay "sede principal" (SDD §13): la ficha usa la más antigua.
   const main = profile.branches[0];
 
-  return (
-    <div className="min-h-dvh bg-movo-cream pb-32 font-sans text-movo-ink">
-      <div className="relative overflow-hidden bg-gradient-to-br from-movo-page via-movo-card to-movo-tabs pb-24">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-24 -right-12 size-72 rounded-full bg-movo-accent/25 blur-3xl"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute top-10 -left-20 size-56 rounded-full bg-white/5 blur-3xl"
-        />
-        <CategoryIcon
-          slug={profile.category.slug}
-          className="pointer-events-none absolute right-5 bottom-4 size-32 text-white/10"
-        />
-        <header className="relative flex items-center justify-between px-4 pt-4">
-          <Link
-            href="/"
-            aria-label="Volver al mapa"
-            className="grid size-11 place-items-center rounded-full bg-movo-cream/90 text-movo-ink outline-none focus-visible:ring-2 focus-visible:ring-movo-accent"
-          >
-            <ArrowLeftIcon />
-          </Link>
-          <Link href="/" aria-label="MOVO, ir al inicio" className="outline-none">
-            <Logo className="h-10" />
-          </Link>
-          <span className="size-11" aria-hidden="true" />
-        </header>
-      </div>
+  // Solo hay pestaña para los apartados que se dibujan.
+  const tabs: ProfileTab[] = [
+    ...(profile.description ? [{ id: "section-about", label: "Info" }] : []),
+    ...(profile.benefits.length > 0 ? [{ id: "section-benefits", label: "Beneficios" }] : []),
+    ...(profile.images.length > 0 ? [{ id: "section-photos", label: "Fotos" }] : []),
+    ...(profile.services.length > 0 ? [{ id: "section-services", label: "Servicios" }] : []),
+    { id: "section-hours", label: "Horarios" },
+  ];
 
-      <main className="relative -mt-8 rounded-t-[2rem] bg-movo-cream px-4 pt-0">
-        <div className="-mt-12 flex items-end gap-4">
+  return (
+    <div className="min-h-dvh bg-movo-tabs pb-28 font-sans text-white">
+      <header className="flex items-center justify-between px-4 py-3.5">
+        <Link
+          href="/"
+          aria-label="Volver al mapa"
+          className={cn(
+            "grid size-[2.625rem] place-items-center rounded-[0.875rem] bg-movo-page",
+            BUTTON_FOCUS,
+          )}
+        >
+          <ArrowLeftIcon />
+        </Link>
+        <Link href="/" aria-label="MOVO, ir al inicio" className={cn("rounded", BUTTON_FOCUS)}>
+          <Logo className="h-7" />
+        </Link>
+        <span className="size-[2.625rem]" aria-hidden="true" />
+      </header>
+
+      <main>
+        <div className="flex items-center gap-4 px-5 pt-1.5">
           <CoverTile
             src={profile.images[0] ?? null}
             categorySlug={profile.category.slug}
-            className="size-24 rounded-3xl bg-movo-card shadow-lg ring-4 ring-movo-cream"
-            iconClassName="size-10"
+            className="size-[4.75rem] shrink-0 rounded-[1.375rem] bg-movo-card"
+            iconClassName="size-9"
           />
-          <div className="flex min-w-0 flex-wrap items-center gap-2 pb-1">
-            <p className="inline-flex rounded-full bg-movo-ink px-3 py-1.5 text-xs font-bold text-white">
+          <div className="min-w-0">
+            <h1 className="font-display text-[1.75rem] leading-[1.05] font-extrabold tracking-tight text-balance">
+              {profile.name}
+            </h1>
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[0.8125rem] text-movo-muted">
               {profile.category.name}
+              {profile.verified ? (
+                <span className="inline-flex items-center gap-1 font-bold text-movo-accent">
+                  <VerifiedIcon className="size-3.5" />
+                  Verificado
+                </span>
+              ) : null}
             </p>
-            {profile.verified ? (
-              <p className="inline-flex items-center gap-1 rounded-full bg-movo-accent px-3 py-1.5 text-xs font-bold text-movo-ink">
-                <VerifiedIcon className="size-4" />
-                Verificado
-              </p>
-            ) : null}
           </div>
         </div>
 
-        <h1 className="mt-4 font-display text-3xl leading-tight font-extrabold text-balance">
-          {profile.name}
-        </h1>
+        <Stats branch={main} today={today} slug={profile.slug} benefits={profile.benefits.length} />
 
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <StarRating
-            average={main.rating_avg}
-            count={main.rating_count}
-            showCount
-            starClassName="size-5"
-          />
-          <Link
-            href={`/businesses/${profile.slug}/reviews`}
-            className="text-sm font-semibold underline outline-none focus-visible:ring-2 focus-visible:ring-movo-ink"
-          >
-            Ver todas las reseñas
-          </Link>
-        </div>
-
-        <OpenStatus branch={main} today={today} />
-
-        <div className="mt-5 flex gap-3">
+        <div className="grid grid-cols-2 gap-2.5 px-5 pt-[1.125rem]">
           <a
             href={whatsappHref(main.branch_id)}
             target="_blank"
             rel="noopener noreferrer"
-            className={`flex h-14 flex-1 items-center justify-center gap-2 rounded-full bg-movo-accent font-display text-base font-bold ${BUTTON_FOCUS}`}
+            aria-label="Reservar por WhatsApp"
+            className={cn(
+              "flex h-[3.25rem] items-center justify-center gap-2 rounded-[0.875rem] bg-movo-accent font-bold text-movo-ink",
+              BUTTON_FOCUS,
+            )}
           >
-            <Icon name="chat" className="size-5" />
-            Reservar por WhatsApp
+            <Icon name="chat" className="size-[1.125rem]" />
+            WhatsApp
           </a>
           <a
             href={directionsHref(main)}
             target="_blank"
             rel="noopener noreferrer"
-            className={`flex h-14 items-center justify-center gap-2 rounded-full bg-white px-6 font-display text-base font-bold shadow-sm ${BUTTON_FOCUS}`}
+            className={cn(
+              "flex h-[3.25rem] items-center justify-center gap-2 rounded-[0.875rem] font-bold ring-[1.5px] ring-movo-muted/35",
+              BUTTON_FOCUS,
+            )}
           >
-            <Icon name="route" className="size-5" />
+            <Icon name="route" className="size-[1.125rem]" />
             Llegar
           </a>
         </div>
@@ -131,19 +121,26 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
             href={main.external_booking_url}
             target="_blank"
             rel="noopener noreferrer"
-            className={`mt-3 flex h-12 items-center justify-center gap-2 rounded-full bg-movo-sand text-sm font-semibold ${BUTTON_FOCUS}`}
+            className={cn(
+              "mx-5 mt-2.5 flex h-12 items-center justify-center gap-2 rounded-[0.875rem] bg-movo-page text-sm font-semibold",
+              BUTTON_FOCUS,
+            )}
           >
             <Icon name="calendar" className="size-5" />
             Reservar cancha
           </a>
         ) : null}
 
+        <ProfileTabs tabs={tabs} />
+
         {profile.description ? (
-          <section aria-labelledby="about" className="mt-8">
-            <h2 id="about" className="font-display text-xl font-bold">
+          <section id="section-about" aria-labelledby="about" className={SECTION}>
+            <h2 id="about" className={HEADING}>
               Sobre el lugar
             </h2>
-            <p className="mt-3 whitespace-pre-line text-movo-slate">{profile.description}</p>
+            <p className="mt-3 text-[1.0625rem] leading-relaxed whitespace-pre-line">
+              {profile.description}
+            </p>
           </section>
         ) : null}
 
@@ -152,32 +149,31 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
         <PhotoSection images={profile.images} name={profile.name} />
 
         {profile.services.length > 0 ? (
-          <section aria-labelledby="services" className="mt-8">
-            <div className="flex items-baseline justify-between">
-              <h2 id="services" className="font-display text-xl font-bold">
-                Servicios
-              </h2>
-              <span className="text-sm font-semibold text-movo-slate">
-                {profile.services.length}{" "}
-                {profile.services.length === 1 ? "disponible" : "disponibles"}
-              </span>
-            </div>
-            <ul className="mt-3 space-y-3">
+          <section id="section-services" aria-labelledby="services" className={SECTION}>
+            <h2 id="services" className={HEADING}>
+              Servicios · {profile.services.length}
+            </h2>
+            <ul className="mt-1">
               {profile.services.map((service) => (
                 <li
                   key={service.id}
-                  className="relative flex items-center justify-between gap-3 rounded-3xl bg-white p-4 shadow-sm"
+                  className={cn(
+                    "relative flex items-center justify-between gap-3 border-b py-4",
+                    DIVIDER,
+                  )}
                 >
                   <ServiceViewBeacon
                     branchId={service.branch_id ?? main.branch_id}
                     serviceId={service.id}
                   />
                   <div className="min-w-0">
-                    <h3 className="font-display text-lg font-bold">{service.name}</h3>
+                    <h3 className="font-display text-base font-bold">{service.name}</h3>
                     {service.description ? (
-                      <p className="mt-0.5 text-sm text-movo-slate">{service.description}</p>
+                      <p className="mt-0.5 text-[0.8125rem] text-movo-muted">
+                        {service.description}
+                      </p>
                     ) : null}
-                    <p className="mt-0.5 text-sm text-movo-slate">
+                    <p className="mt-0.5 text-[0.8125rem] text-movo-muted">
                       {[
                         service.price ? formatPrice(service.price) : "",
                         describeSchedule(service.schedule),
@@ -191,7 +187,10 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label={`Consultar por ${service.name} por WhatsApp`}
-                    className={`shrink-0 rounded-full bg-movo-sand px-4 py-2 text-sm font-bold ${BUTTON_FOCUS}`}
+                    className={cn(
+                      "inline-flex min-h-11 shrink-0 items-center rounded-[0.625rem] bg-movo-page px-3.5 text-[0.8125rem] font-bold",
+                      BUTTON_FOCUS,
+                    )}
                   >
                     Consultar
                   </a>
@@ -201,11 +200,11 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
           </section>
         ) : null}
 
-        <section aria-labelledby="hours" className="mt-8">
-          <h2 id="hours" className="font-display text-xl font-bold">
+        <section id="section-hours" aria-labelledby="hours" className={SECTION}>
+          <h2 id="hours" className={HEADING}>
             Horarios
           </h2>
-          <div className="mt-3 space-y-3">
+          <div className="mt-1 space-y-4">
             {profile.branches.map((branch) => (
               <HoursCard
                 key={branch.branch_id}
@@ -216,31 +215,31 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
           </div>
         </section>
 
-        <section aria-labelledby="branches" className="mt-8">
-          <h2 id="branches" className="font-display text-xl font-bold">
+        <section aria-labelledby="branches" className={SECTION}>
+          <h2 id="branches" className={HEADING}>
             {profile.branches.length > 1 ? "Sedes" : "Dónde estamos"}
           </h2>
-          <ul className="mt-3 space-y-3">
+          <ul className="mt-3.5 space-y-3">
             {profile.branches.map((branch) => (
-              <li
-                key={branch.branch_id}
-                className="flex items-center justify-between gap-3 rounded-3xl bg-white p-4 shadow-sm"
-              >
-                <div className="min-w-0">
-                  <h3 className="font-display text-lg font-bold">{branch.name}</h3>
-                  <p className="text-sm text-movo-slate">
+              <li key={branch.branch_id} className="flex items-center justify-between gap-3">
+                <div className="min-w-0 text-[0.9375rem]">
+                  <p>
                     {branch.address}, {branch.city}
                   </p>
-                  {branch.reference ? (
-                    <p className="text-sm text-movo-slate">{branch.reference}</p>
-                  ) : null}
+                  <p className="mt-0.5 text-[0.8125rem] text-movo-muted">
+                    {branch.name}
+                    {branch.reference ? ` · ${branch.reference}` : ""}
+                  </p>
                 </div>
                 <a
                   href={directionsHref(branch)}
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={`Cómo llegar a ${branch.name}`}
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full bg-movo-sand px-4 py-2 text-sm font-bold ${BUTTON_FOCUS}`}
+                  className={cn(
+                    "inline-flex min-h-11 w-26 shrink-0 items-center justify-center gap-1.5 rounded-[0.875rem] text-sm font-bold ring-[1.5px] ring-movo-muted/35",
+                    BUTTON_FOCUS,
+                  )}
                 >
                   <Icon name="route" className="size-4" />
                   Llegar
@@ -251,19 +250,16 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
         </section>
       </main>
 
-      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-movo-sand bg-white px-4 py-3">
-        <div className="mx-auto flex max-w-md items-center justify-between gap-3">
-          <p className="min-w-0 leading-tight">
-            <span className="block text-xs text-movo-slate">Atención directa</span>
-            <span className="block truncate font-display text-lg font-extrabold">
-              {profile.name}
-            </span>
-          </p>
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-movo-muted/15 bg-movo-field px-4 pt-3 pb-5">
+        <div className="mx-auto max-w-md">
           <a
             href={whatsappHref(main.branch_id)}
             target="_blank"
             rel="noopener noreferrer"
-            className={`inline-flex h-14 shrink-0 items-center gap-2 rounded-full bg-movo-accent px-6 font-display font-bold ${BUTTON_FOCUS}`}
+            className={cn(
+              "flex h-[3.125rem] items-center justify-center gap-2 rounded-[0.875rem] bg-movo-accent font-bold text-movo-ink",
+              BUTTON_FOCUS,
+            )}
           >
             <Icon name="chat" className="size-5" />
             Reservar por WhatsApp
@@ -276,18 +272,58 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
   );
 }
 
-function OpenStatus({ branch, today }: { branch: ProfileBranch; today: number }) {
+/** Tres datos de un vistazo: calificación, si está abierto ahora y cuántos beneficios hay. */
+function Stats({
+  branch,
+  today,
+  slug,
+  benefits,
+}: {
+  branch: ProfileBranch;
+  today: number;
+  slug: string;
+  benefits: number;
+}) {
   const open = branch.open_now.open;
+  // "Cerrado · abre a las 09:00" → "Cerrado" arriba y el resto debajo.
+  const [state, ...rest] = describeOpenNow(branch.open_now, today).split(" · ");
+  const cell = cn("min-w-0 py-3.5 text-xs text-movo-muted");
   return (
-    <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-sm text-movo-slate shadow-sm">
-      <span
-        aria-hidden="true"
-        className={`size-2.5 shrink-0 rounded-full ${open ? "bg-movo-ok" : "bg-movo-slate/50"}`}
-      />
-      <span className={open ? "font-semibold text-movo-ok" : undefined}>
-        {describeOpenNow(branch.open_now, today)}
-      </span>
-    </p>
+    <div
+      className={cn(
+        "mx-5 mt-[1.375rem] grid divide-x border-y [&>*:not(:first-child)]:pl-4",
+        benefits > 0 ? "grid-cols-3" : "grid-cols-2",
+        DIVIDER,
+        "divide-movo-muted/15",
+      )}
+    >
+      <div className={cell}>
+        <StarRating
+          average={branch.rating_avg}
+          count={branch.rating_count}
+          onDark
+          className="mb-0.5 text-lg font-extrabold text-white"
+        />
+        <Link
+          href={`/businesses/${slug}/reviews`}
+          className={cn("block truncate rounded underline", BUTTON_FOCUS)}
+        >
+          Ver reseñas
+        </Link>
+      </div>
+      <div className={cell}>
+        <b className={cn("mb-0.5 block text-lg", open ? "text-movo-ok" : "text-movo-error")}>
+          {state}
+        </b>
+        {rest.join(" · ") || "\u00a0"}
+      </div>
+      {benefits > 0 ? (
+        <div className={cell}>
+          <b className="mb-0.5 block text-lg text-white">{benefits}</b>
+          {benefits === 1 ? "beneficio" : "beneficios"}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -296,16 +332,19 @@ function HoursCard({ branch, title }: { branch: ProfileBranch; title: string | n
   const hasHours = branch.hours.length > 0;
 
   return (
-    <div className="rounded-3xl bg-white p-4 shadow-sm">
-      {title ? <h3 className="mb-2 font-display text-base font-bold">{title}</h3> : null}
+    <div>
+      {title ? <h3 className="mt-3 font-display text-base font-bold">{title}</h3> : null}
       {hasHours ? (
-        <dl className="divide-y divide-movo-sand">
+        <dl>
           {groups.map((group) => (
-            <div key={group.label} className="flex justify-between gap-4 py-2.5 text-sm">
+            <div
+              key={group.label}
+              className={cn("flex justify-between gap-4 border-b py-3 text-sm", DIVIDER)}
+            >
               <dt className="font-semibold">{group.label}</dt>
-              <dd className="text-right text-movo-slate">
+              <dd className="text-right text-movo-muted">
                 {group.ranges.length === 0 ? (
-                  <span className="font-semibold text-movo-danger">Cerrado</span>
+                  <span className="font-semibold text-movo-error">Cerrado</span>
                 ) : (
                   group.ranges.map((range) => (
                     <span key={range} className="block">
@@ -318,7 +357,7 @@ function HoursCard({ branch, title }: { branch: ProfileBranch; title: string | n
           ))}
         </dl>
       ) : (
-        <p className="text-sm text-movo-slate">El local todavía no cargó sus horarios.</p>
+        <p className="py-3 text-sm text-movo-muted">El local todavía no cargó sus horarios.</p>
       )}
     </div>
   );
