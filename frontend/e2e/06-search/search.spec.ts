@@ -38,6 +38,7 @@ const TREKKING = {
   business_name: "Sierras Trekking",
   business_slug: "sierras-trekking",
   distance_m: 1420,
+  featured: true,
   category_slug: "trekking-outdoor",
   category_name: "Trekking y outdoor",
 };
@@ -70,6 +71,23 @@ test.describe("Search views", () => {
       await expect(nearby.getByRole("link", { name: /Alma Haus Training Club/ })).toBeVisible();
       await expect(nearby.getByText("Gimnasios · a 500 m")).toBeVisible();
       await expect(nearby.getByText("2 locales")).toBeVisible();
+      // Solo el local destacado lleva el sello; el lead (Alma Haus) no.
+      await expect(
+        nearby.getByRole("link", { name: /Sierras Trekking/ }).getByText("Destacado"),
+      ).toBeVisible();
+      await expect(
+        nearby.getByRole("link", { name: /Alma Haus/ }).getByText("Destacado"),
+      ).toHaveCount(0);
+
+      // Enfocar una fila no la vuelve la tarjeta grande: el foco se mantiene.
+      const row = nearby.getByRole("link", { name: /Sierras Trekking/ });
+      await row.focus();
+      await expect(row).toBeFocused();
+      await expect(row).toHaveAttribute("href", "/businesses/sierras-trekking");
+      await expect(nearby.getByRole("link", { name: /Alma Haus/ })).toHaveAttribute(
+        "href",
+        "/businesses/alma-haus",
+      );
 
       await page.getByRole("button", { name: "Trekking y outdoor" }).click();
       await expect(nearby.getByRole("link", { name: /Sierras Trekking/ })).toBeVisible();

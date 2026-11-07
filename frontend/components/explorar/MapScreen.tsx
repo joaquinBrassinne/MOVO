@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { CoverTile } from "@/components/CoverImage";
 import { StarRating } from "@/components/reviews/StarRating";
-import { ArrowRightIcon } from "@/components/socios/icons";
+import { ArrowRightIcon, StarIcon } from "@/components/socios/icons";
 import { useCategories } from "@/lib/business/hooks";
 import { cn } from "@/lib/cn";
 import { distanceBetween } from "@/lib/search/geo";
@@ -158,7 +158,7 @@ export function MapScreen() {
         </div>
 
         <div className="mt-3 flex-1 overflow-y-auto pb-4">
-          <ResultList results={results} selected={selected} onSelect={setSelected} />
+          <ResultList results={results} selected={selected} />
           <Link
             href="/plans"
             className={cn(
@@ -184,11 +184,9 @@ export function MapScreen() {
 function ResultList({
   results,
   selected,
-  onSelect,
 }: {
   results: ReturnType<typeof useNearby>;
   selected: number | null;
-  onSelect: (id: number) => void;
 }) {
   if (results.status === "loading") {
     return <p className="px-5 py-4 text-movo-muted">Buscando locales…</p>;
@@ -216,7 +214,7 @@ function ResultList({
       <ul className="mt-1 px-4">
         {rest.map((item) => (
           <li key={item.branch_id}>
-            <ResultRow item={item} onSelect={onSelect} />
+            <ResultRow item={item} />
           </li>
         ))}
       </ul>
@@ -225,6 +223,21 @@ function ResultList({
 }
 
 const profilePath = (item: SearchResult) => `/businesses/${item.business_slug}`;
+
+/** Sello "Destacado" del plan Pro (visibilidad destacada). */
+function FeaturedSeal({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex w-fit items-center gap-1 rounded-md bg-movo-accent/15 px-1.5 py-0.5 text-xs font-bold text-movo-accent",
+        className,
+      )}
+    >
+      <StarIcon className="size-3" aria-hidden="true" />
+      Destacado
+    </span>
+  );
+}
 
 function LeadCard({ item }: { item: SearchResult }) {
   return (
@@ -245,6 +258,7 @@ function LeadCard({ item }: { item: SearchResult }) {
         <span className="block truncate text-[0.8125rem] text-movo-muted">
           {item.category_name} · a {formatDistance(item.distance_m)}
         </span>
+        {item.featured ? <FeaturedSeal className="mb-1" /> : null}
         <span className="flex items-center gap-1.5">
           <span className="truncate font-display text-[1.0625rem] font-extrabold tracking-tight">
             {item.business_name}
@@ -267,7 +281,7 @@ function LeadCard({ item }: { item: SearchResult }) {
   );
 }
 
-function ResultRow({ item, onSelect }: { item: SearchResult; onSelect: (id: number) => void }) {
+function ResultRow({ item }: { item: SearchResult }) {
   return (
     <div className="flex items-center gap-3 border-b border-movo-muted/10 px-1 py-3">
       <CoverTile
@@ -276,15 +290,12 @@ function ResultRow({ item, onSelect }: { item: SearchResult; onSelect: (id: numb
         className="size-[3.25rem] shrink-0 rounded-xl bg-movo-field"
         iconClassName="size-6"
       />
-      <Link
-        href={profilePath(item)}
-        onFocus={() => onSelect(item.branch_id)}
-        className={cn("min-w-0 flex-1 rounded", FOCUS)}
-      >
+      <Link href={profilePath(item)} className={cn("min-w-0 flex-1 rounded", FOCUS)}>
         <span className="block truncate font-display text-base font-extrabold tracking-tight">
           {item.business_name}
         </span>
         <span className="mt-0.5 flex items-center gap-1.5 text-[0.8125rem] text-movo-muted">
+          {item.featured ? <FeaturedSeal /> : null}
           <span className="truncate">{item.category_name}</span>
           <StarRating
             average={item.rating_avg}
