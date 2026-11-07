@@ -20,6 +20,10 @@ import { categoryIconName, iconMarkup } from "./icons";
 
 const ZOOM = 14;
 
+/** Estrella del pin de un local destacado (plan Pro), en la esquina superior derecha. */
+const FEATURED_STAR =
+  '<span class="absolute -top-1.5 -right-1.5 grid size-4 place-items-center rounded-full bg-movo-ink text-movo-accent"><svg viewBox="0 0 24 24" class="size-2.5" fill="currentColor" aria-hidden="true"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.7 5.8 21l1.2-6.8-5-4.9 6.9-1L12 2Z"/></svg></span>';
+
 interface Props {
   center: Point;
   /** Cambia cuando hay que volver a llevar el mapa a `center` aunque no se haya movido. */
@@ -44,6 +48,7 @@ function pinIcon(result: SearchResult, selected: boolean): L.DivIcon {
     html: `<span class="relative flex size-full items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border-[1.5px] text-xs font-bold shadow-lg ${tone}">
       <svg viewBox="0 0 24 24" class="size-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconMarkup(categoryIconName(result.category_slug))}</svg>
       ${formatDistance(result.distance_m)}
+      ${result.featured ? FEATURED_STAR : ""}
       <span class="absolute top-full left-1/2 -mt-1.5 size-2.5 -translate-x-1/2 rotate-45 border-r-[1.5px] border-b-[1.5px] ${tone}"></span>
     </span>`,
   });
