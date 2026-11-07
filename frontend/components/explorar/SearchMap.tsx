@@ -36,12 +36,12 @@ function pinIcon(result: SearchResult, selected: boolean): L.DivIcon {
   const tone = selected
     ? "z-10 border-movo-accent bg-movo-accent text-movo-ink"
     : "border-movo-muted/35 bg-movo-page text-white";
-  // Un ancla de 0×0 en el punto del local; la píldora se alza sobre él con la punta abajo.
+  // Caja de tamaño fijo (clicable de verdad) con la punta de la píldora justo sobre el local.
   return L.divIcon({
     className: "",
-    iconSize: [0, 0],
-    iconAnchor: [0, 0],
-    html: `<span class="absolute bottom-2 left-0 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-xl border-[1.5px] px-2.5 py-1.5 text-xs font-bold shadow-lg ${tone}">
+    iconSize: [88, 32],
+    iconAnchor: [44, 38],
+    html: `<span class="relative flex size-full items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border-[1.5px] text-xs font-bold shadow-lg ${tone}">
       <svg viewBox="0 0 24 24" class="size-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconMarkup(categoryIconName(result.category_slug))}</svg>
       ${formatDistance(result.distance_m)}
       <span class="absolute top-full left-1/2 -mt-1.5 size-2.5 -translate-x-1/2 rotate-45 border-r-[1.5px] border-b-[1.5px] ${tone}"></span>
