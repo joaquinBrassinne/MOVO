@@ -11,6 +11,7 @@ import { CircleMarker, MapContainer, Marker, useMap, useMapEvents } from "react-
 
 import { MountedOnly } from "@/components/MountedOnly";
 import { PlusIcon } from "@/components/socios/icons";
+import { formatDistance } from "@/lib/search/format";
 import { MountWhileVisible } from "@/components/map/MountWhileVisible";
 import { VectorTileLayer } from "@/components/map/VectorTileLayer";
 import type { Point, SearchResult } from "@/lib/search/types";
@@ -28,32 +29,22 @@ interface Props {
   user: Point | null;
   onSelect: (branchId: number) => void;
   onMoved: (center: Point) => void;
-  onLocate: () => void;
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
 // El marcador se dibuja en HTML/SVG: así no depende de las imágenes que Leaflet busca por URL.
 function pinIcon(result: SearchResult, selected: boolean): L.DivIcon {
-  const size = selected ? 56 : 44;
-  const label = selected
-    ? `<span class="absolute bottom-full left-1/2 mb-2 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-white px-3 py-1.5 text-sm font-bold text-movo-ink shadow-md"><span class="size-2 rounded-full bg-movo-accent"></span>${escapeHtml(result.business_name)}</span>`
-    : "";
-  const star = result.featured
-    ? `<span class="absolute -top-1 -right-1 grid size-5 place-items-center rounded-full bg-movo-ink text-movo-accent"><svg viewBox="0 0 24 24" class="size-3" fill="currentColor"><path d="m12 2 3.100 6.300 6.900 1-5 4.900 1.200 6.800L12 17.700 5.800 21l1.200-6.800-5-4.900 6.900-1L12 2Z"/></svg></span>`
-    : "";
-  const ring = selected ? "ring-8 ring-movo-accent/30" : "";
-
+  const tone = selected
+    ? "z-10 border-movo-accent bg-movo-accent text-movo-ink"
+    : "border-movo-muted/35 bg-movo-page text-white";
+  // Un ancla de 0×0 en el punto del local; la píldora se alza sobre él con la punta abajo.
   return L.divIcon({
     className: "",
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-    html: `<span class="relative grid place-items-center rounded-full bg-movo-accent text-movo-ink shadow-lg ${ring}" style="width:${size}px;height:${size}px">
-      ${label}
-      <svg viewBox="0 0 24 24" class="${selected ? "size-7" : "size-6"}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconMarkup(categoryIconName(result.category_slug))}</svg>
-      ${star}
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+    html: `<span class="absolute bottom-2 left-0 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-xl border-[1.5px] px-2.5 py-1.5 text-xs font-bold shadow-lg ${tone}">
+      <svg viewBox="0 0 24 24" class="size-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconMarkup(categoryIconName(result.category_slug))}</svg>
+      ${formatDistance(result.distance_m)}
+      <span class="absolute top-full left-1/2 -mt-1.5 size-2.5 -translate-x-1/2 rotate-45 border-r-[1.5px] border-b-[1.5px] ${tone}"></span>
     </span>`,
   });
 }
@@ -74,7 +65,6 @@ function SearchMapView({
   user,
   onSelect,
   onMoved,
-  onLocate,
 }: Props) {
   return (
     <MountWhileVisible>
@@ -91,7 +81,7 @@ function SearchMapView({
           <CircleMarker
             center={[user.lat, user.lng]}
             radius={8}
-            pathOptions={{ color: "#ffffff", weight: 3, fillColor: "#3b82f6", fillOpacity: 1 }}
+            pathOptions={{ color: "#181733", weight: 3, fillColor: "#fcd34d", fillOpacity: 1 }}
           />
         ) : null}
         {results.map((result) => (
@@ -104,7 +94,7 @@ function SearchMapView({
             eventHandlers={{ click: () => onSelect(result.branch_id) }}
           />
         ))}
-        <Controls onLocate={onLocate} />
+        <Controls />
       </MapContainer>
     </MountWhileVisible>
   );
@@ -138,41 +128,19 @@ function MoveWatcher({ onMoved }: { onMoved: (center: Point) => void }) {
   return null;
 }
 
-function Controls({ onLocate }: { onLocate: () => void }) {
+function Controls() {
   const map = useMap();
   const button =
-    "grid size-12 place-items-center bg-white text-movo-ink shadow-md outline-none focus-visible:ring-2 focus-visible:ring-movo-accent";
+    "grid size-11 place-items-center bg-movo-page text-white shadow-md outline-none focus-visible:ring-2 focus-visible:ring-movo-accent";
 
   return (
-    <div className="absolute right-4 bottom-52 z-[1000] flex flex-col items-center gap-3">
-      <button
-        type="button"
-        aria-label="Usar mi ubicación"
-        onClick={onLocate}
-        className={`${button} rounded-full`}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          className="size-6"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeLinecap="round"
-          aria-hidden="true"
-        >
-          <circle cx="12" cy="12" r="3" />
-          <circle cx="12" cy="12" r="8" />
-          <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-        </svg>
+    <div className="absolute right-4 bottom-[18.5rem] z-[1000] flex flex-col overflow-hidden rounded-2xl shadow-md">
+      <button type="button" aria-label="Acercar" onClick={() => map.zoomIn()} className={button}>
+        <PlusIcon />
       </button>
-      <div className="flex flex-col overflow-hidden rounded-3xl shadow-md">
-        <button type="button" aria-label="Acercar" onClick={() => map.zoomIn()} className={button}>
-          <PlusIcon />
-        </button>
-        <button type="button" aria-label="Alejar" onClick={() => map.zoomOut()} className={button}>
-          <span aria-hidden="true" className="h-0.5 w-4 rounded bg-movo-ink" />
-        </button>
-      </div>
+      <button type="button" aria-label="Alejar" onClick={() => map.zoomOut()} className={button}>
+        <span aria-hidden="true" className="h-0.5 w-4 rounded bg-white" />
+      </button>
     </div>
   );
 }

@@ -50,7 +50,7 @@ export function ProfilePage({ profile, today }: { profile: Profile; today: numbe
         />
         <header className="relative flex items-center justify-between px-4 pt-4">
           <Link
-            href="/map"
+            href="/"
             aria-label="Volver al mapa"
             className="grid size-11 place-items-center rounded-full bg-movo-cream/90 text-movo-ink outline-none focus-visible:ring-2 focus-visible:ring-movo-accent"
           >

@@ -66,11 +66,10 @@ test.describe("Search views", () => {
       const searches = await mockApi(page);
       await page.goto("/");
 
-      const nearby = page.getByRole("region", { name: "Cerca tuyo" });
+      const nearby = page.getByRole("region", { name: "Locales cerca tuyo" });
       await expect(nearby.getByRole("link", { name: /Alma Haus Training Club/ })).toBeVisible();
       await expect(nearby.getByText("Gimnasios · a 500 m")).toBeVisible();
-      // Sin locales Pro todavía: la sección de destacados no se muestra.
-      await expect(page.getByRole("heading", { name: "Destacados cerca tuyo" })).toHaveCount(0);
+      await expect(nearby.getByText("2 locales")).toBeVisible();
 
       await page.getByRole("button", { name: "Trekking y outdoor" }).click();
       await expect(nearby.getByRole("link", { name: /Sierras Trekking/ })).toBeVisible();
@@ -80,22 +79,23 @@ test.describe("Search views", () => {
   );
 
   test(
-    "Map shows a pin per business and the list in the bottom sheet",
+    "Home shows a pin per business and the old /map route lands on it",
     { tag: ["@high", "@e2e", "@search", "@SEARCH-E2E-002"] },
     async ({ page }) => {
       await mockApi(page);
       await page.goto("/map");
+      await expect(page).toHaveURL(/\/$/);
 
       await expect(page.locator(".leaflet-marker-icon")).toHaveCount(2);
-      await expect(page.getByText("2 disponibles")).toBeVisible();
       await expect(page.getByRole("button", { name: "Trekking y outdoor" })).toBeVisible();
 
       await page.getByTitle("Sierras Trekking").click({ force: true });
       await expect(page.getByRole("button", { name: "Bajar la lista" })).toBeVisible();
-      await expect(page.getByRole("link", { name: /Ver local/ }).first()).toHaveAttribute(
-        "href",
-        /\/businesses\//,
-      );
+      await expect(
+        page.getByRole("region", { name: "Locales cerca tuyo" }).getByRole("link", {
+          name: /Sierras Trekking/,
+        }),
+      ).toHaveAttribute("href", "/businesses/sierras-trekking");
     },
   );
 });

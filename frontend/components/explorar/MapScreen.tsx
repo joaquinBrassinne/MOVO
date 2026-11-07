@@ -5,9 +5,8 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { CoverTile } from "@/components/CoverImage";
-import { Logo } from "@/components/Logo";
 import { StarRating } from "@/components/reviews/StarRating";
-import { ArrowLeftIcon, ArrowRightIcon, StarIcon } from "@/components/socios/icons";
+import { ArrowRightIcon } from "@/components/socios/icons";
 import { useCategories } from "@/lib/business/hooks";
 import { cn } from "@/lib/cn";
 import { distanceBetween } from "@/lib/search/geo";
@@ -18,7 +17,7 @@ import type { Point, SearchResult } from "@/lib/search/types";
 import { AccountLink, AppFrame } from "./AppFrame";
 import { BenefitPill } from "./BenefitPill";
 import { CategoryChips } from "./CategoryChips";
-import { VerifiedIcon } from "./icons";
+import { Icon, VerifiedIcon } from "./icons";
 
 // Leaflet necesita `window`: el mapa se carga solo en el navegador.
 const SearchMap = dynamic(() => import("./SearchMap"), {
@@ -29,7 +28,9 @@ const SearchMap = dynamic(() => import("./SearchMap"), {
 /** Cuánto se tiene que mover el mapa para ofrecer "Buscar en esta zona". */
 const SEARCH_AGAIN_M = 300;
 
-/** Mapa: locales cerca del punto elegido, filtro por categoría y lista en una hoja inferior. */
+const FOCUS = "outline-none focus-visible:ring-2 focus-visible:ring-movo-accent";
+
+/** Home: mapa a pantalla completa con los locales cercanos y la lista en una hoja inferior. */
 export function MapScreen() {
   const [category, setCategory] = useState<string | null>(null);
   const [searched, setSearched] = useState<Point | null>(null);
@@ -71,7 +72,6 @@ export function MapScreen() {
               setExpanded(true);
             }}
             onMoved={setViewed}
-            onLocate={useMyLocation}
           />
         ) : (
           <div
@@ -81,29 +81,29 @@ export function MapScreen() {
         )}
       </div>
 
-      <div className="pointer-events-none fixed inset-x-0 top-0 z-[1000] space-y-3 bg-gradient-to-b from-movo-page/90 to-transparent pt-4 pb-6">
-        <header className="pointer-events-auto flex items-center justify-between px-5">
-          <Logo className="h-8" />
-          <AccountLink />
-        </header>
-
-        <div className="pointer-events-auto px-4">
-          <div className="flex h-14 items-center gap-3 rounded-full bg-movo-cream px-3 text-movo-ink shadow-md">
-            <Link
-              href="/"
-              aria-label="Volver al inicio"
-              className="grid size-10 place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-movo-ink"
-            >
-              <ArrowLeftIcon />
-            </Link>
-            <p className="truncate font-display text-lg font-bold">{area ?? "Cerca tuyo"}</p>
-          </div>
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-[1000] space-y-3 px-4 pt-4">
+        <div className="pointer-events-auto flex h-[3.25rem] items-center gap-2.5 rounded-2xl bg-white py-0 pr-2 pl-4 text-movo-ink shadow-[0_12px_30px_-10px_rgb(0_0_0/0.5)]">
+          <Icon name="pin" className="size-5 shrink-0" />
+          <p className="min-w-0 flex-1 truncate font-display text-base font-bold">
+            {area ?? "Cerca tuyo"}
+          </p>
+          <button
+            type="button"
+            aria-label="Usar mi ubicación"
+            onClick={useMyLocation}
+            className={cn(
+              "grid size-9 shrink-0 cursor-pointer place-items-center rounded-xl bg-movo-page text-white",
+              FOCUS,
+            )}
+          >
+            <Icon name="route" className="size-[1.125rem]" />
+          </button>
+          <AccountLink className="size-9 rounded-xl bg-movo-page" />
         </div>
 
-        <div className="pointer-events-auto">
-          {categories.status === "ready" ? (
+        {categories.status === "ready" ? (
+          <div className="pointer-events-auto -mx-4">
             <CategoryChips
-              variant="map"
               categories={categories.data}
               selected={category}
               onSelect={(slug) => {
@@ -111,8 +111,8 @@ export function MapScreen() {
                 setSelected(null);
               }}
             />
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         {moved ? (
           <div className="pointer-events-auto flex justify-center">
@@ -122,7 +122,7 @@ export function MapScreen() {
                 setSearched(viewed);
                 setSelected(null);
               }}
-              className="inline-flex h-12 items-center gap-2 rounded-full bg-movo-accent px-6 font-bold text-movo-ink shadow-lg outline-none focus-visible:ring-2 focus-visible:ring-movo-ink"
+              className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-xl bg-movo-accent px-5 text-sm font-bold text-movo-ink shadow-lg outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               Buscar en esta zona
             </button>
@@ -133,8 +133,8 @@ export function MapScreen() {
       <section
         aria-label="Locales cerca tuyo"
         className={cn(
-          "fixed inset-x-0 bottom-[4.5rem] z-[1050] flex flex-col rounded-t-[2rem] bg-movo-cream text-movo-ink shadow-[0_-8px_24px_rgb(0_0_0/0.25)] transition-[height] duration-300",
-          expanded ? "h-[65dvh]" : "h-40",
+          "fixed inset-x-0 bottom-[4.5rem] z-[1050] flex flex-col rounded-t-[1.75rem] bg-movo-tabs text-white shadow-[0_-12px_30px_rgb(0_0_0/0.35)] motion-safe:transition-[height] motion-safe:duration-300",
+          expanded ? "h-[70dvh]" : "h-[17rem]",
         )}
       >
         <button
@@ -142,25 +142,39 @@ export function MapScreen() {
           aria-expanded={expanded}
           aria-label={expanded ? "Bajar la lista" : "Subir la lista"}
           onClick={() => setExpanded((open) => !open)}
-          className="grid h-8 shrink-0 place-items-center outline-none focus-visible:ring-2 focus-visible:ring-movo-ink"
+          className={cn("grid h-8 shrink-0 cursor-pointer place-items-center", FOCUS)}
         >
-          <span className="h-1.5 w-12 rounded-full bg-movo-slate/40" />
+          <span className="h-1.5 w-10 rounded-full bg-movo-muted/35" />
         </button>
 
-        <div className="flex items-start justify-between gap-3 px-6">
-          <div>
-            <h2 className="font-display text-3xl font-extrabold">Cerca tuyo</h2>
-            {area ? <p className="text-movo-slate">en {area}</p> : null}
-          </div>
+        <div className="flex items-baseline justify-between gap-3 px-5">
+          <h1 className="font-display text-[1.375rem] font-extrabold tracking-tight">Cerca tuyo</h1>
           {results.status === "ready" ? (
-            <span className="rounded-full bg-movo-card px-4 py-1.5 text-sm font-bold text-movo-accent">
-              {items.length} {items.length === 1 ? "disponible" : "disponibles"}
-            </span>
+            <p className="text-sm text-movo-muted">
+              {items.length} {items.length === 1 ? "local" : "locales"}
+              {area ? ` · ${area}` : ""}
+            </p>
           ) : null}
         </div>
 
-        <div className="mt-3 flex-1 overflow-y-auto px-5 pb-4">
+        <div className="mt-3 flex-1 overflow-y-auto pb-4">
           <ResultList results={results} selected={selected} onSelect={setSelected} />
+          <Link
+            href="/plans"
+            className={cn(
+              "mx-5 mt-5 flex items-center justify-between gap-3 rounded-2xl p-4 ring-1 ring-movo-muted/20",
+              FOCUS,
+            )}
+          >
+            <span className="text-sm text-movo-muted">
+              <span className="block font-bold text-white">¿Tenés un local?</span>
+              Sumate a MOVO y aparecé en el mapa.
+            </span>
+            <span className="inline-flex shrink-0 items-center gap-1 text-sm font-bold text-movo-accent">
+              Ver planes
+              <ArrowRightIcon className="size-4" />
+            </span>
+          </Link>
         </div>
       </section>
     </AppFrame>
@@ -177,91 +191,111 @@ function ResultList({
   onSelect: (id: number) => void;
 }) {
   if (results.status === "loading") {
-    return <p className="py-4 text-movo-slate">Buscando locales…</p>;
+    return <p className="px-5 py-4 text-movo-muted">Buscando locales…</p>;
   }
   if (results.status === "failed") {
     return (
-      <p role="alert" className="rounded-2xl bg-white p-4 text-sm text-movo-danger">
+      <p role="alert" className="mx-5 rounded-2xl bg-movo-error-bg p-4 text-sm text-movo-error">
         No pudimos cargar los locales. Probá de nuevo en un rato.
       </p>
     );
   }
   if (results.items.length === 0) {
     return (
-      <p className="rounded-2xl bg-white p-4 text-sm text-movo-slate">
+      <p className="mx-5 rounded-2xl bg-movo-card p-4 text-sm text-movo-muted">
         No hay locales en esta zona. Mové el mapa y buscá de nuevo, o probá con otra categoría.
       </p>
     );
   }
+  // La tarjeta grande es el local elegido en el mapa; sin elección, el más cercano.
+  const lead = results.items.find((item) => item.branch_id === selected) ?? results.items[0];
+  const rest = results.items.filter((item) => item.branch_id !== lead.branch_id);
   return (
-    <ul className="space-y-3">
-      {results.items.map((item) => (
-        <li key={item.branch_id}>
-          <ResultCard item={item} selected={item.branch_id === selected} onSelect={onSelect} />
-        </li>
-      ))}
-    </ul>
+    <>
+      <LeadCard item={lead} />
+      <ul className="mt-1 px-4">
+        {rest.map((item) => (
+          <li key={item.branch_id}>
+            <ResultRow item={item} onSelect={onSelect} />
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
-function ResultCard({
-  item,
-  selected,
-  onSelect,
-}: {
-  item: SearchResult;
-  selected: boolean;
-  onSelect: (id: number) => void;
-}) {
+const profilePath = (item: SearchResult) => `/businesses/${item.business_slug}`;
+
+function LeadCard({ item }: { item: SearchResult }) {
   return (
-    <article
-      onClick={() => onSelect(item.branch_id)}
+    <Link
+      href={profilePath(item)}
       className={cn(
-        "flex items-center gap-4 rounded-3xl bg-white p-4 shadow-sm",
-        selected && "ring-2 ring-movo-accent",
+        "mx-4 flex items-center gap-3 rounded-[1.25rem] bg-movo-page p-3 ring-[1.5px] ring-movo-accent",
+        FOCUS,
       )}
     >
       <CoverTile
         src={item.cover_url}
         categorySlug={item.category_slug}
-        className="size-20 rounded-2xl bg-movo-card"
+        className="size-[5.25rem] shrink-0 rounded-[0.875rem] bg-movo-field"
         iconClassName="size-9"
       />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap gap-2">
-          {item.featured ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-movo-accent/30 px-2.5 py-1 text-xs font-bold text-movo-gold">
-              <StarIcon className="size-3.5" />
-              Destacado
-            </span>
-          ) : null}
-          {item.verified ? (
-            <span className="inline-flex items-center gap-1 rounded-full px-1 py-1 text-xs font-bold text-movo-gold">
-              <VerifiedIcon className="size-5" />
-              Verificado
-            </span>
-          ) : null}
-        </div>
-        <h3 className="truncate font-display text-xl font-extrabold">{item.business_name}</h3>
-        <p className="truncate text-sm text-movo-slate">{item.category_name}</p>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[0.8125rem] text-movo-muted">
+          {item.category_name} · a {formatDistance(item.distance_m)}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="truncate font-display text-[1.0625rem] font-extrabold tracking-tight">
+            {item.business_name}
+          </span>
+          {item.verified ? <VerifiedIcon className="size-4 shrink-0 text-movo-accent" /> : null}
+        </span>
         <StarRating
           average={item.rating_avg}
           count={item.rating_count}
           showCount
-          className="mt-1"
+          onDark
+          className="mt-0.5"
         />
+        <BenefitPill label={item.benefit_label} className="mt-1.5" />
+      </span>
+      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-movo-accent text-movo-ink">
+        <ArrowRightIcon className="size-[1.125rem]" />
+      </span>
+    </Link>
+  );
+}
+
+function ResultRow({ item, onSelect }: { item: SearchResult; onSelect: (id: number) => void }) {
+  return (
+    <div className="flex items-center gap-3 border-b border-movo-muted/10 px-1 py-3">
+      <CoverTile
+        src={item.cover_url}
+        categorySlug={item.category_slug}
+        className="size-[3.25rem] shrink-0 rounded-xl bg-movo-field"
+        iconClassName="size-6"
+      />
+      <Link
+        href={profilePath(item)}
+        onFocus={() => onSelect(item.branch_id)}
+        className={cn("min-w-0 flex-1 rounded", FOCUS)}
+      >
+        <span className="block truncate font-display text-base font-extrabold tracking-tight">
+          {item.business_name}
+        </span>
+        <span className="mt-0.5 flex items-center gap-1.5 text-[0.8125rem] text-movo-muted">
+          <span className="truncate">{item.category_name}</span>
+          <StarRating
+            average={item.rating_avg}
+            count={item.rating_count}
+            onDark
+            className="shrink-0"
+          />
+        </span>
         <BenefitPill label={item.benefit_label} className="mt-1" />
-        <div className="mt-1 flex items-center justify-between gap-2">
-          <span className="text-sm text-movo-slate">a {formatDistance(item.distance_m)}</span>
-          <Link
-            href={`/businesses/${item.business_slug}`}
-            className="inline-flex items-center gap-1 font-bold outline-none focus-visible:underline"
-          >
-            Ver local
-            <ArrowRightIcon className="size-5" />
-          </Link>
-        </div>
-      </div>
-    </article>
+      </Link>
+      <span className="shrink-0 text-sm font-bold">a {formatDistance(item.distance_m)}</span>
+    </div>
   );
 }
