@@ -1,12 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { MapScreen } from "@/components/explorar/MapScreen";
-
-export const metadata: Metadata = {
-  title: "Mapa — MOVO",
-  description: "Mirá en el mapa los gimnasios, pilates, yoga y más que tenés cerca.",
-};
-
+/** El mapa es la home: se conserva la ruta vieja para los enlaces que ya circulan. */
 export default function MapPage() {
-  return <MapScreen />;
+  redirect("/");
 }

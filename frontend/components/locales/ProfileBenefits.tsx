@@ -3,53 +3,56 @@
 import { useState } from "react";
 
 import { GetCouponSheet } from "@/components/coupons/GetCouponSheet";
+import { ArrowRightIcon } from "@/components/socios/icons";
 import { benefitHeadline } from "@/lib/benefits/format";
 import type { ClaimedBenefit } from "@/lib/benefits/types";
+
+import { BUTTON_FOCUS, HEADING, SECTION } from "./profileStyles";
 
 interface Props {
   businessName: string;
   benefits: ClaimedBenefit[];
 }
 
-/** Los beneficios que el local ofrece hoy, cada uno con su botón para obtener el cupón. */
+/** Los beneficios que el local ofrece hoy, como tickets: el descuento a la izquierda y el botón para obtener el cupón. */
 export function ProfileBenefits({ businessName, benefits }: Props) {
   const [chosen, setChosen] = useState<ClaimedBenefit | null>(null);
 
   if (benefits.length === 0) return null;
 
   return (
-    <section aria-labelledby="benefits" className="mt-8">
+    <section id="section-benefits" aria-labelledby="benefits" className={SECTION}>
       <div className="flex items-baseline justify-between">
-        <h2 id="benefits" className="font-display text-xl font-bold">
-          Beneficios
+        <h2 id="benefits" className={HEADING}>
+          Beneficios · {benefits.length}
         </h2>
-        <span className="text-sm font-semibold text-movo-slate">
-          {benefits.length} {benefits.length === 1 ? "disponible" : "disponibles"}
-        </span>
       </div>
 
-      <ul className="mt-3 space-y-3">
+      <ul className="mt-3.5 space-y-3">
         {benefits.map((benefit) => (
           <li
             key={benefit.id}
-            className="rounded-3xl bg-gradient-to-br from-movo-accent to-amber-200 p-5 text-movo-ink shadow-md"
+            className="flex items-stretch overflow-hidden rounded-2xl bg-movo-card"
           >
-            <span className="inline-flex rounded-full bg-movo-ink px-3 py-1 text-xs font-extrabold text-movo-accent">
+            <span className="grid min-w-[5.75rem] shrink-0 place-items-center border-r-2 border-dashed border-movo-tabs bg-movo-accent px-3 text-center font-display text-xl leading-tight font-extrabold tracking-tight whitespace-nowrap text-movo-ink">
               {benefit.short_label}
             </span>
-            <h3 className="mt-2 font-display text-lg leading-tight font-bold">
-              {benefitHeadline(benefit)}
-            </h3>
-            {benefit.conditions ? (
-              <p className="mt-1 text-sm font-medium text-movo-ink/80">{benefit.conditions}</p>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setChosen(benefit)}
-              className="mt-4 h-12 w-full cursor-pointer rounded-full bg-movo-ink font-display text-base font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-movo-ink focus-visible:ring-offset-2 focus-visible:ring-offset-amber-200"
-            >
-              Obtener cupón
-            </button>
+            <div className="min-w-0 flex-1 px-4 py-3.5">
+              <h3 className="font-display text-base leading-snug font-bold">
+                {benefitHeadline(benefit)}
+              </h3>
+              {benefit.conditions ? (
+                <p className="mt-0.5 text-[0.8125rem] text-movo-muted">{benefit.conditions}</p>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setChosen(benefit)}
+                className={`mt-2 inline-flex min-h-9 cursor-pointer items-center gap-1 rounded text-[0.8125rem] font-bold text-movo-accent ${BUTTON_FOCUS}`}
+              >
+                Obtener cupón
+                <ArrowRightIcon className="size-3.5" />
+              </button>
+            </div>
           </li>
         ))}
       </ul>

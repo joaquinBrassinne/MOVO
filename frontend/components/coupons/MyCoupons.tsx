@@ -148,7 +148,7 @@ export function MyCoupons() {
               Elegí un local con beneficios y generá tu cupón: queda acá, en este dispositivo.
             </p>
             <Link
-              href="/map"
+              href="/"
               className="inline-flex h-12 items-center rounded-full bg-movo-accent px-6 font-bold outline-none focus-visible:ring-2 focus-visible:ring-movo-ink"
             >
               Explorar locales
